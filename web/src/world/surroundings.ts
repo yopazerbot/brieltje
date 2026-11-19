@@ -16,6 +16,7 @@ import { spaceTrees } from './treeSpacing';
 import { bakeStandIns } from './groundShade';
 import { cardCrown, cardTrunk, crownFit, FORK, HEIGHT, Kind, KINDS, spotHash, TRUNK_OF, TRUNKS, treeKind, VARIANTS } from './cardTrees';
 import { hedgeCardMesh, hedgeCardPieces } from './hedgeCards';
+import { hedgeMean } from './hedgeLeaves';
 import { barkMaterial, cardsBuilt, enlist, leafCardMaterial, plainForBake, switchTrees } from './leafCards';
 import { reflectionSkips } from './reflections';
 import { houseIndex } from './houseIndex';
@@ -1161,6 +1162,7 @@ export function dipMesh(d: DipSpec, ground: number, material: THREE.Material): T
  * give them a ragged outline.
  */
 export function buildHedges(prisms: Prism[]): THREE.Object3D {
+  const LUMP = new THREE.Color('#7fa06a').multiply(new THREE.Color().setRGB(...hedgeMean()));
   let shape = 11;
   const lump = leafBall(1, 0, () => ((shape = (shape * 16807) % 2147483647) / 2147483647), 0.6);
   const spots: THREE.Matrix4[] = [];
@@ -1195,8 +1197,9 @@ export function buildHedges(prisms: Prism[]): THREE.Object3D {
         const r = 0.075 + rand() * rand() * 0.15; // many small, a few big
         q.setFromEuler(new THREE.Euler(rand() * 3, rand() * 3, rand() * 3));
         spots.push(new THREE.Matrix4().compose(new THREE.Vector3(pt.x, y, pt.y), q, new THREE.Vector3(r, r * 0.85, r)));
+        // The green of the hedge's face behind it (world/hedgeLeaves.ts), a little lighter (it stands out into the light).
         const patch = 0.5 + 0.5 * Math.sin(pt.x * 0.23 + pt.y * 0.19);
-        colors.push(new THREE.Color('#34482b').lerp(new THREE.Color('#526641'), 0.2 + patch * 0.55 + rand() * 0.15));
+        colors.push(LUMP.clone().multiplyScalar(1.05 + patch * 0.3 + rand() * 0.2));
       }
     }
   }

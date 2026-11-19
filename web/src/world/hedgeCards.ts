@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { Prism } from './houseData';
 import { Spray, sprayRect } from './cardTrees';
 import { cardsBuilt, leafCardMaterial } from './leafCards';
+import { hedgeMean } from './hedgeLeaves';
 import { reflectionSkips } from './reflections';
 import { terrain } from './terrain';
 
@@ -15,10 +16,16 @@ import { terrain } from './terrain';
  * kilometres of hedge, so the patches are drawn only in the tiles round the eye (world/tiles.ts Piece `lod`).
  */
 
-const GREEN = new THREE.Color('#56602f');
+/**
+ * The sprigs' colour: that of the hedge's face behind them (its tint, world/houseMeshes.ts, times the average of its
+ * leaves, world/hedgeLeaves.ts), divided by the broad spray's average grey (world/leafCards.ts paints it to 0.78), so a
+ * sprig is the same green as the leaves it grows out of.
+ */
+const GREEN = new THREE.Color('#7fa06a').multiply(new THREE.Color().setRGB(...hedgeMean())).multiplyScalar(1 / 0.78);
 
 let shapes: { side: THREE.BufferGeometry; top: THREE.BufferGeometry } | null = null;
-const material = leafCardMaterial(0.04, 0.02, false, 0.35);
+// Hardly any light through them from behind: the face behind them doesn't glow either.
+const material = leafCardMaterial(0.04, 0.02, false, 0.12);
 reflectionSkips.materials.add(material); // the reflections leave the sprigs out (world/reflections.ts)
 
 const random = (seed: number) => {
@@ -47,13 +54,14 @@ function patch(n: number, seed: number, foot: (r: () => number) => THREE.Vector3
     const corners = [at.clone().sub(half), at.clone().add(half), at.clone().add(half).add(tip), at.clone().sub(half).add(tip)];
     const uvs = [[u0, v0], [u0 + s, v0], [u0 + s, v0 + s], [u0, v0 + s]];
     const first = pos.length / 3;
-    // Darker at the sprig's foot, deep in the hedge, and lower down.
+    // Darker at the sprig's foot, deep in the hedge, and lower down; its tip as light as the face's outer leaves
+    // (lighter than the face's average, which takes in the shade between them).
     const tone = 0.85 + rand() * 0.3;
     corners.forEach((p, k2) => {
       pos.push(p.x, p.y, p.z);
       nor.push(normal.x, normal.y, normal.z);
       uv.push(uvs[k2][0], uvs[k2][1]);
-      c.copy(GREEN).multiplyScalar(tone * (k2 < 2 ? 0.6 : 1) * (0.8 + 0.2 * Math.min(1, Math.max(0, p.y))));
+      c.copy(GREEN).multiplyScalar(tone * (k2 < 2 ? 1.35 : 2.3) * (0.8 + 0.2 * Math.min(1, Math.max(0, p.y))));
       col.push(c.r, c.g, c.b);
     });
     idx.push(first, first + 1, first + 2, first, first + 2, first + 3);
@@ -73,9 +81,12 @@ function patch(n: number, seed: number, foot: (r: () => number) => THREE.Vector3
  * 1 up the side) or across its top (the top patch, z -0.5 to 0.5 across, y 0 on the top).
  */
 function patches(): { side: THREE.BufferGeometry; top: THREE.BufferGeometry } {
+  // Small sprigs (leaves of 2 to 4 cm, as on the face) whose foot is a few centimetres inside the hedge and which
+  // lean out only a little, mostly up and sideways along the face: their tips stand 3 to 8 cm proud of it, as the
+  // shoots of a hedge clipped a few weeks ago. They take the face's own normal, so they are lit as the face is.
   shapes ??= {
-    side: patch(16, 4711, (r) => new THREE.Vector3(r(), r() * 0.92, -0.1), (r) => new THREE.Vector3((r() - 0.5) * 0.6, 0.3 + r() * 0.4, 0.75 + r() * 0.3), 0.3, new THREE.Vector3(0, 0.35, 1).normalize()),
-    top: patch(10, 815, (r) => new THREE.Vector3(r(), -0.12, (r() - 0.5) * 0.85), (r, at) => new THREE.Vector3((r() - 0.5) * 0.4, 0.9, at.z * 0.9 + (r() - 0.5) * 0.3), 0.34, new THREE.Vector3(0, 1, 0)),
+    side: patch(24, 4711, (r) => new THREE.Vector3(r(), r() * 0.94, -0.06), (r) => new THREE.Vector3((r() - 0.5) * 1.1, 0.45 + r() * 0.5, 0.2 + r() * 0.3), 0.27, new THREE.Vector3(0, 0.1, 1).normalize()),
+    top: patch(18, 815, (r) => new THREE.Vector3(r(), -0.08, (r() - 0.5) * 0.9), (r, at) => new THREE.Vector3((r() - 0.5) * 0.7, 0.9, at.z * 0.6 + (r() - 0.5) * 0.5), 0.27, new THREE.Vector3(0, 1, 0)),
   };
   return shapes;
 }
