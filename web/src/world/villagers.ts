@@ -281,7 +281,9 @@ float vGroup = floor(uv.x / 16.0);
 bool vHidden = vGroup > 0.5 && ((int(aLook.y + 0.5) >> (int(vGroup) - 1)) & 1) == 0;
 vSlot = mod(floor(uv.x), 16.0);
 vRow = aAnim.w;
-vShade = uv.y;
+// A little form for free (per point, not per pixel): what faces down (under the arms, between the legs, under a hem
+// or a chin) a shade darker, so a dark coat is not a flat cut-out.
+vShade = uv.y * (0.8 + 0.2 * smoothstep(-0.7, 0.3, objectNormal.y));
 vFade = aLook.x;
 `;
 
