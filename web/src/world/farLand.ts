@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { groundNoise } from './groundNoise';
 import { terrain, terrainTexture } from './terrain';
+import './airHaze'; // its haze function in the fog chunk (the tree strips' own haze below uses it)
 
 /**
  * The countryside beyond the data, as it looks from the air at the end of autumn round Lede: blocks of land between
@@ -495,7 +496,8 @@ export class FarTrees {
     const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
     // Crowns at the start of November: each row one mix of trees, dull green, olive or turning brown, every crown a
     // little different within it.
-    const shades: Rgb[] = [[72, 86, 44], [86, 88, 46], [98, 82, 48], [66, 78, 42]];
+    // (A little greener than they were, to match the near trees' crowns in the same light.)
+    const shades: Rgb[] = [[72, 92, 44], [84, 92, 46], [94, 86, 48], [64, 84, 42]];
     for (const row of treeRows) {
       const crowns = row.closed ? [...row.crowns, row.crowns[0]] : row.crowns;
       const hue = shades[Math.floor(rand() * shades.length)];
@@ -516,8 +518,9 @@ export class FarTrees {
         // Round crowns: their shoulders a little lower than their tops, a shallow dip where two meet (deeper where
         // they stand apart).
         const dip = Math.min(a.h, b.h) * (len > 9 ? 0.7 : 0.86);
-        // Facing across the row, but mostly up: lit by the sky about alike on both sides, a little more on the sun's.
-        const n = new THREE.Vector3(-dz / len, 3, dx / len).normalize();
+        // Facing across the row and up (the shader turns it towards the eye on the back): the side the sun is on
+        // lit, the other in the crowns' own shade, as a wood's edge is.
+        const n = new THREE.Vector3(-dz / len, 2, dx / len).normalize();
         const columns: [number, number, Rgb][] = [[0, a.h, a.c], [0.28, a.h * 0.95, a.c], [0.5, dip, a.c], [0.72, b.h * 0.95, b.c], [1, b.h, b.c]];
         for (let k = 0; k + 1 < columns.length; k++) {
           const base = pos.length / 3;
@@ -561,12 +564,49 @@ ${FAR_LAND_GLSL}`)
       // Leaves: lighter and darker clumps of a few metres, finer ones near by (the noise tile's mipmaps fade them).
       shader.fragmentShader = shader.fragmentShader
         .replace('#include <common>', '#include <common>\nuniform sampler2D ftNoise;\nvarying vec2 vFt;')
+        // Seen from its back a strip's normal is turned round whole, down into the ground: no sun, no sky, a black
+        // cut-out against the fields. Facing up on both sides instead, across the row towards whoever looks.
+        .replace(
+          '#include <normal_fragment_begin>',
+          `#include <normal_fragment_begin>
+          if (!gl_FrontFacing) {
+            vec3 ftUp = normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz);
+            normal = -normal;
+            normal = normalize(2.0 * dot(normal, ftUp) * ftUp - normal);
+          }`,
+        )
         .replace(
           '#include <color_fragment>',
           `#include <color_fragment>
           float ftClump = texture2D(ftNoise, vFt / vec2(6.0, 5.0)).r;
           float ftLeaf = texture2D(ftNoise, vFt / vec2(1.3, 1.1) + 0.41).r;
           diffuseColor.rgb *= 0.62 + 0.5 * ftClump + 0.3 * (ftLeaf - 0.5);`,
+        )
+        // A strip stands for a mass of crowns, most of whose leaves are in the shade of others: the sun and the sky
+        // reach a part of it only, so a wood's edge facing a low sun isn't paler than the flat fields in front of it.
+        // And it doesn't mirror the sky as a smooth surface facing up does at a glancing look (the pale sheen that
+        // turned the strips into a ghost of a tree line): leaves scatter it.
+        .replace(
+          '#include <lights_fragment_end>',
+          `#include <lights_fragment_end>
+          reflectedLight.directDiffuse *= 0.5 + 0.25 * smoothstep(0.3, 0.9, ftClump);
+          reflectedLight.indirectDiffuse *= 0.7;
+          reflectedLight.directSpecular *= 0.1;
+          reflectedLight.indirectSpecular *= 0.1;`,
+        )
+        // The haze over them a quarter less than over the ground at their distance (the ground haze is thick enough
+        // to hide the tiles' end; the horizon's lines too keep under half of it at their tops): a tree line a few
+        // hundred metres off keeps its green instead of a pale ghost of it.
+        .replace(
+          '#include <fog_fragment>',
+          `#ifdef USE_FOG
+            #ifdef FOG_EXP2
+              float fogFactor = 1.0 - airHaze(vFogDepth, fogDensity);
+            #else
+              float fogFactor = smoothstep(fogNear, fogFar, vFogDepth);
+            #endif
+            gl_FragColor.rgb = mix(gl_FragColor.rgb, fogColor, fogFactor * 0.75);
+          #endif`,
         );
     };
     material.customProgramCacheKey = () => 'farTrees';
