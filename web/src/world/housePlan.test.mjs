@@ -11,7 +11,7 @@ registerHooks({
   },
 });
 const { Houses, BlockGrid, inside } = await import('./houseKeys.ts');
-const { planBases, planSteps, cutAt, isPlinthOf, area, planReveals, planDownpipes, alongFace, FRAME } = await import('./housePlan.ts');
+const { planBases, planSteps, cutAt, isPlinthOf, area, planReveals, planDownpipes, planOpeningTops, alongFace, FRAME } = await import('./housePlan.ts');
 const { makeTerrain } = await import('../../shared/terrain.mjs');
 
 const read = (file) => JSON.parse(fs.readFileSync(new URL(file, import.meta.url), 'utf8'));
@@ -162,4 +162,25 @@ for (const [name, set] of Object.entries(sets)) {
       }
     }
   });
+
+  test(`${name}: an eave's soffit finds every frame top along its wall line (the opening's own wall)`, () => {
+    const top = planOpeningTops(set.openings ?? []);
+    for (const o of (set.openings ?? []).slice(0, 2000)) {
+      // The wall's line through the opening, a metre either side: its own frame top is the highest there or lower.
+      const l = Math.hypot(o.b[0] - o.a[0], o.b[1] - o.a[1]) || 1;
+      const [dx, dz] = [(o.b[0] - o.a[0]) / l, (o.b[1] - o.a[1]) / l];
+      const a = [o.a[0] - dx, o.a[1] - dz];
+      const b = [o.b[0] + dx, o.b[1] + dz];
+      assert.ok(top(a, b, o.y[1], o.y[1] + 1) >= o.y[1] + FRAME - 1e-9, `${name}: the opening at (${o.a[0]}, ${o.a[1]}) not found`);
+    }
+  });
 }
+
+test('an eave over no opening finds none, and one 40 cm off the wall line is not under it', () => {
+  const o = { k: 'w', a: [0, 0], b: [1.2, 0], n: [0, 1], y: [1, 2.2] };
+  const top = planOpeningTops([o]);
+  assert.equal(top([-1, 0], [3, 0], 0, 5), 2.2 + FRAME);
+  assert.equal(top([-1, 0.4], [3, 0.4], 0, 5), -Infinity);
+  assert.equal(top([-1, 0], [3, 0], 2.5, 5), -Infinity); // its top under the range asked
+  assert.equal(top([10, 0], [12, 0], 0, 5), -Infinity);
+});

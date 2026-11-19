@@ -3,7 +3,7 @@ import type { Opening, Prism, RoofSpec } from './houseData';
 import { prismGeometry } from './houseMeshes';
 import { brickLook, Houses, isBrick } from './facadeLook';
 import { houseStyle, PLINTH_BRICK_SHADE, rollerDown, type HouseStyle } from './houseStyle';
-import { cutAt, planSteps, type BasePlan } from './housePlan';
+import { cutAt, planSteps, type BasePlan, type OpeningTop } from './housePlan';
 import { inside, stable } from './houseKeys';
 import { COVER, paneGeometry, type PaneLook } from './windows';
 // The game's own south (its map's), so the panels face the sun at midday.
@@ -135,13 +135,27 @@ export interface RoofEdges {
   trim: THREE.Color;
   /** Whether nothing stands against the roof's edge at (x, z) (on a terraced row, a neighbour's house) */
   free: (x: number, z: number) => boolean;
+  /** Its eaves boxed in (a fascia and a soffit), the soffit kept over the openings by this (world/housePlan.ts); none if null */
+  eaves: OpeningTop | null;
 }
+
+/** The fascia board along the eaves: metres down from the tiles' edge. */
+const FASCIA = 0.2;
+/** A soffit meets its wall at least this far under the wall's top. */
+const SOFFIT_GAP = 0.04;
+/** And this far over every frame on the wall under it: a stone lintel stands 18 cm over a frame (openingTrim), and 3 cm more. */
+const CLEAR_OVER_FRAME = 0.21;
 
 /**
  * Verge boards and ridge tiles for a roof (world/surroundings.ts `roof`): a board 16 cm deep and 3 cm thick at the
  * tiles' edge along each sloping gable edge (gable roofs), along both sloping ends and the high edge (shed roofs), up and
  * down both slopes at the ends of a closed one; a row of ridge tiles along the ridge (gable and hip roofs, a closed shed,
  * the larger half of a pair: world/roofPlan.ts). Leaves out an edge where a neighbour's wall stands against it.
+ * With `eaves`, each eave (where the gutters run) is boxed in as on most houses here: a fascia board 20 cm deep at the
+ * tiles' edge, behind the gutter, and a soffit level from its foot back to the wall (none where a window or door at the
+ * top of the wall reaches up to it: that eave keeps only its fascia); at a free gable end the box runs on under the verge
+ * and is closed. From the street the roof's edge then reads as a thick board with a shaded underside instead of a sheet
+ * with no thickness.
  * `trim` goes to the frames' mesh, `ridge` (with texture coordinates in metres) to the roof tiles'.
  */
 export function roofEdges(r: RoofSpec, f: RoofFrame, e: RoofEdges): { trim: THREE.BufferGeometry | null; ridge: THREE.BufferGeometry | null } {
@@ -199,6 +213,56 @@ export function roofEdges(r: RoofSpec, f: RoofFrame, e: RoofEdges): { trim: THRE
       const top = pt(a, W / 2, r.ridge);
       verge(pt(a, -o, eave), top, n);
       verge(top, pt(a, W + o, eave), n);
+    }
+  }
+  const tops = e.eaves;
+  if (tops) {
+    /**
+     * One eave boxed in: the fascia along the tiles' edge from e0 to e1 (a, b) at height y, facing n, and the soffit level
+     * from its foot back to the wall's line from w0 to w1, with a wall's top at `top`. Where a window or door at the top
+     * of the wall, or its lintel, comes near the soffit's level (CLEAR_OVER_FRAME), the eave keeps only its fascia.
+     * `caps`: where the box's end is closed (a free gable end), the roof's underside over the wall's line there.
+     */
+    const box = (e0: [number, number], e1: [number, number], y: number, n: THREE.Vector3, w0: [number, number], w1: [number, number], top: number, caps: [number | null, number | null]) => {
+      const foot = y - FASCIA;
+      const shift = n.clone().multiplyScalar(0.003); // just behind the gutter's back
+      const [p0, q0] = [pt(...e0, y).add(shift), pt(...e1, y).add(shift)];
+      boards.push(strip(p0, q0, n, FASCIA, e.trim));
+      const [pIn, qIn] = [pt(...w0, foot), pt(...w1, foot)];
+      if (foot > top - SOFFIT_GAP || tops([pIn.x, pIn.z], [qIn.x, qIn.z], foot - CLEAR_OVER_FRAME, top) > -Infinity) return;
+      const [pf, qf] = [p0.clone().addScaledVector(UP, -FASCIA), q0.clone().addScaledVector(UP, -FASCIA)];
+      boards.push(slopeQuad([pf, qf, qIn, pIn], new THREE.Vector3(0, -1, 0), e.trim));
+      const along = q0.clone().sub(p0).setY(0).normalize();
+      if (caps[0] !== null) boards.push(slopeQuad([p0, pf, pIn, pt(...w0, caps[0])], along.clone().negate(), e.trim));
+      if (caps[1] !== null) boards.push(slopeQuad([q0, qf, qIn, pt(...w1, caps[1])], along, e.trim));
+    };
+    /** An eave along the ridge at b (-o or W + o), the tiles' edge at y, the wall's top under it at top, the roof over the wall at under. */
+    const long = (b: number, y: number, top: number, under: number) => {
+      const wallB = b < 0 ? 0 : W;
+      // At a gable end with a neighbour against it the box stops at the wall; else it runs on under the verge, closed.
+      const ends = [free(-o - 0.3, W / 2), free(L + o + 0.3, W / 2)];
+      const [a0, a1] = [ends[0] ? -o : 0, ends[1] ? L + o : L];
+      box([a0, b], [a1, b], y, across3.clone().multiplyScalar(b < 0 ? -1 : 1), [a0, wallB], [a1, wallB], top, [ends[0] ? under : null, ends[1] ? under : null]);
+    };
+    if (r.closed) {
+      const { at, far } = r.closed;
+      const k = (r.ridge - r.y) / Math.max(0.01, at);
+      const kF = (r.ridge - far) / Math.max(0.01, W - at);
+      long(-o, r.y - k * o, r.y, r.y);
+      long(W + o, far - kF * o, far, far);
+    } else if (r.shape === 'shed') {
+      const k = (r.ridge - r.y) / Math.max(0.5, W);
+      long(-o, r.y - k * o, r.y, r.y);
+    } else if (r.shape === 'hip') {
+      // All four sides, the soffits' inner corners mitred to the walls' corners.
+      box([-o, -o], [L + o, -o], eave, across3.clone().negate(), [0, 0], [L, 0], r.y, [null, null]);
+      box([-o, W + o], [L + o, W + o], eave, across3.clone(), [0, W], [L, W], r.y, [null, null]);
+      box([-o, -o], [-o, W + o], eave, along3.clone().negate(), [0, 0], [0, W], r.y, [null, null]);
+      box([L + o, -o], [L + o, W + o], eave, along3.clone(), [L, 0], [L, W], r.y, [null, null]);
+    } else {
+      const under = eave + (o / (W / 2 + o)) * (r.ridge - eave); // the roof over the walls' line
+      long(-o, eave, r.y, under);
+      long(W + o, eave, r.y, under);
     }
   }
   const trim = boards.length ? merge(boards) : null;

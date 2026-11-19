@@ -691,6 +691,8 @@ export function buildTile(data: TileData, poles: Pole[], renderer: THREE.WebGLRe
     const edges: RoofEdges | undefined = r.ceiling || r.lm ? undefined : {
       trim: new THREE.Color(style.trim),
       free: (x, z) => !houses.wallsAt(x, z).some((w) => w.p.y1 > r.y - 1.5),
+      // Boxed eaves (fascia and soffit), not on a custom roof (its own wells and walls under it) nor at a private home.
+      eaves: r.panels?.length || r.p.some(([x, z]) => inHomes(x, z)) ? null : index.openingTop,
     };
     const g = roof(r, edges);
     const solid = roofs && !r.ceiling && !r.lm && !r.p.some(([x, z]) => inHomes(x, z)); // a private home's as on main

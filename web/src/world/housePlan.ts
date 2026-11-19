@@ -499,6 +499,41 @@ export function planReveals(openings: Opening[], houses: Houses, bases: Map<Pris
   return { faces, holes };
 }
 
+// ---- What the eaves' soffits stay over ----
+
+/**
+ * The highest frame top (an opening's top plus its frame) of the openings along a wall line, a to b on the plan, whose
+ * middle lies within 35 cm of it, among those with their top between y0 and y1; -Infinity if none. For a roof's boxed
+ * eaves (world/houseTrim.ts `roofEdges`): the soffit runs level from the fascia's foot to the wall unless a window there
+ * reaches higher, then it rises to clear it.
+ */
+export type OpeningTop = (a: [number, number], b: [number, number], y0: number, y1: number) => number;
+
+export function planOpeningTops(openings: Opening[]): OpeningTop {
+  const grid = new BlockGrid();
+  const ofBlock = new Map<Prism, Opening>();
+  for (const o of openings) {
+    const q: Prism = { m: 'opening', y0: o.y[0], y1: o.y[1], p: [[o.a, o.b, [o.a[0] + 1e-3, o.a[1] + 1e-3]]] };
+    ofBlock.set(q, o);
+    grid.add(q);
+  }
+  return (a, b, y0, y1) => {
+    const [dx, dz] = [b[0] - a[0], b[1] - a[1]];
+    const l2 = dx * dx + dz * dz || 1;
+    let top = -Infinity;
+    const box: [number, number, number, number] = [Math.min(a[0], b[0]) - 0.4, Math.min(a[1], b[1]) - 0.4, Math.max(a[0], b[0]) + 0.4, Math.max(a[1], b[1]) + 0.4];
+    for (const q of grid.inBox(box)) {
+      const o = ofBlock.get(q)!;
+      const t2 = o.y[1] + FRAME;
+      if (t2 < y0 || t2 > y1) continue;
+      const [mx, mz] = [(o.a[0] + o.b[0]) / 2, (o.a[1] + o.b[1]) / 2];
+      const t = Math.max(0, Math.min(1, ((mx - a[0]) * dx + (mz - a[1]) * dz) / l2));
+      if (Math.hypot(a[0] + dx * t - mx, a[1] + dz * t - mz) <= 0.35) top = Math.max(top, t2);
+    }
+    return top;
+  };
+}
+
 // ---- Downpipes from the flat roofs ----
 
 /** Of the flat roofs on a house (12 m² or more), the share with a downpipe at a corner. */
