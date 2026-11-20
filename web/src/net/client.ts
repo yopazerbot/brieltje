@@ -109,6 +109,7 @@ export interface Rules {
 import type { ModeView } from '../ui/games';
 import type { ClownSpec } from '../world/clowns';
 import type { Spot } from '../../shared/brutes.mjs';
+import type { SpiritMsg, SpiritWelcome } from '../../shared/brookSpirit.mjs';
 import type { HorseState } from '../world/horses';
 import type { BikeState } from '../world/bike';
 
@@ -150,6 +151,8 @@ export type ServerMsg =
       moodCycle?: { cycle?: unknown; time?: unknown };
       /** The cars and helicopters not whole now in a team match (server/vehicleDamage.mjs view), as `vdmg` tells them */
       vdmg?: VehicleDamageMsg[];
+      /** The Brook Spirit and its launcher (shared/brookSpirit.mjs readSpirit checks it); missing in a room */
+      spirit?: SpiritWelcome;
     }
   /** The admin changed the weather for everyone (`op`: set, skip or speed; `by`: who, a name for textContent only), with the cycle */
   | { t: 'mood'; mood: unknown; by?: string; op?: unknown; cycle?: unknown; time?: unknown }
@@ -190,6 +193,8 @@ export type ServerMsg =
   | Tick
   | { t: 'rock'; type: 'throw'; id: number; from: Spot; to: Spot; ms: number }
   | { t: 'stomp'; type: 'stomp'; id: number; at: Spot }
+  /** The Brook Spirit (server/brookSpirit.mjs): its state `sp`, its effects `spe`, its launcher `sgl` */
+  | SpiritMsg
   | { t: 'clownhit'; id: number; by: string; ms: number; w: string }
   /** The Zombies game: zombie `id` beaten by `by` with weapon `w`; fallen ones taken away (server/zombies.mjs) */
   | { t: 'zdown'; id: number; by: string; w: string; double?: boolean }

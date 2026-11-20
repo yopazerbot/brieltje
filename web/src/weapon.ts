@@ -676,6 +676,8 @@ export class Weapon {
   /** A bullet hit one of the cats. */
   onCatHit: (index: number, point: THREE.Vector3) => void = () => {};
   onClownHit: (id: number, point: THREE.Vector3, spot?: Spot) => void = () => {};
+  /** A bullet or a pellet hit the Brook Spirit's part `part` (0 its heart, 1 to 8 a light; a hit box's `userData.spirit`). */
+  onSpiritHit: (part: number, point: THREE.Vector3, w: WeaponId) => void = () => {};
   /**
    * The villagers take no rays (world/villagers.ts): this finds the one a shot along `ray` meets within `max`
    * metres, or null. A bullet or a paintball hit villager `id` at `point`.
@@ -1181,6 +1183,10 @@ export class Weapon {
         zombies.set(next, { id: next, body: h.object.userData.part === 'head' ? 0 : 1, head: h.object.userData.part === 'head' ? 1 : 0, legs: h.object.userData.part !== 'head' && lowOnBox(h) ? 1 : 0, point: h.point.clone(), ray: this.raycaster.ray.clone() });
         left--;
       }
+      return { point };
+    }
+    if (hit.object.userData.spirit !== undefined) {
+      this.onSpiritHit(hit.object.userData.spirit, hit.point.clone(), w);
       return { point };
     }
     if (hit.object.userData.clown !== undefined) {
