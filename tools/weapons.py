@@ -1,20 +1,21 @@
-"""Build the weapons for Action and Paintball in Blender: pistol, rifle, shotgun, sniper rifle and
-bazooka, with the gloved hands and sleeves that hold them in first person.
+"""Build the weapons for Action and Paintball in Blender: pistol, rifle, shotgun, sniper rifle, bazooka
+and grenade launcher, with the gloved hands and sleeves that hold them in first person.
 
 Run (Blender 5, no window):
   blender -b -P tools/weapons.py -- <out.glb> [preview_dir]
 
 Our own generic designs at believable real sizes, no brand, maker or marking on any of them:
 a polymer-framed pistol (19 cm), a carbine with a free-float handguard (93 cm), a pump shotgun
-with a wooden stock and fore-end (1.0 m), a bolt-action rifle with a scope (1.13 m) and an
-olive tube launcher (1.4 m). Bevelled edges, a few materials (steel, polymer, wood, rubber,
-glass, olive paint), no textures. Each weapon is a few thousand triangles.
+with a wooden stock and fore-end (1.0 m), a bolt-action rifle with a scope (1.13 m), an
+olive tube launcher (1.4 m) and a break-open grenade launcher with a 40 mm bore (0.7 m).
+Bevelled edges, a few materials (steel, polymer, wood, rubber, glass, olive paint), no textures. Each weapon is a few thousand triangles.
 
 Frame of each weapon in the GLB: the barrel along -z, up +y, right +x, metres, the origin where
 the web of the right hand sits on the grip. Nodes per weapon `w`:
   w                 the weapon (an empty at the origin)
     w_body          the parts that never move
-    w_mag, w_slide, w_pump, w_bolt, w_rocket   the parts that move (those it has);
+    w_mag, w_slide, w_pump, w_bolt, w_rocket, w_barrel, w_round   the parts that move (those it has;
+                    the launcher's barrel turns about its own origin, the hinge pin, to break open);
                     extras "out": the way the magazine leaves the gun (unit, the GLB's frame);
                     "knob": the bolt handle's knob from the bolt's pivot
     w_muzzle        where the shot leaves (the flash goes here)
@@ -1046,11 +1047,111 @@ def build_bazooka():
                   (0, 0.765, T), (SX, 0.16, SZ), kit, [right, left])
 
 
+def build_launcher():
+    """A break-open single-shot grenade launcher, 0.7 m: a short fat barrel (40 mm bore) that tips down about a
+    hinge under its breech, a thumb latch on the receiver, a pistol grip, a vertical fore grip under the barrel's
+    handguard (on the barrel: it moves with it), a folding leaf sight and a polymer stock. The grip, the trigger
+    and the fore grip are the bazooka's, so its hands fit the same way."""
+    W = "launcher"
+    B = 0.07  # the barrel's axis over the grip
+    HY, HZ = 0.088, B - 0.04  # the hinge pin, under the breech
+    DY = -0.05  # the fore grip, this much further back than the bazooka's
+    R, BORE = 0.027, 0.020  # the barrel's outside, and its bore
+    body = []
+    # The receiver: behind the breech the standing breech, under it the lug the barrel hinges on.
+    body.append(prism("receiver", [(-0.08, 0.004), (0.04, 0.0), (0.06, 0.012), (0.06, B - 0.052), (0.112, B - 0.05), (0.118, B - 0.042),
+                                   (0.112, B - 0.032), (0.058, B - 0.03), (0.056, B + 0.021), (0.046, B + 0.026), (-0.045, B + 0.026),
+                                   (-0.08, B + 0.016)], 0.028, M["Steel"], 0.003, 2))
+    for s in (-1, 1):  # a plate let into each side
+        body.append(block("plate", s * 0.0283 - 0.0006, s * 0.0283 + 0.0006, -0.065, 0.045, 0.01, B + 0.018, M["Dark"], 0.0005))
+    body.append(block("face", -0.019, 0.019, 0.0555, 0.0575, B - 0.019, B + 0.019, M["Dark"], 0.0004))  # the standing breech's face
+    body.append(sweep("pin", [(-0.0285, HY, HZ), (0.0285, HY, HZ)], [0.0055, 0.0055], M["Dark"], 10, tip=False))
+    # The thumb latch on top, a tab to its right.
+    body.append(block("latch", -0.006, 0.006, -0.01, 0.04, B + 0.025, B + 0.031, M["Dark"], 0.0012))
+    body.append(block("tab", 0.004, 0.02, -0.012, 0.004, B + 0.024, B + 0.034, M["Dark"], 0.0015))
+    # The bazooka's grip and trigger under it.
+    body.append(prism("grip", [(0.005, 0.0), (-0.003, -0.04), (-0.012, -0.095), (-0.05, -0.098), (-0.045, -0.06), (-0.036, -0.02), (-0.035, 0.0)],
+                      0.0145, M["Polymer"], 0.003, 2))
+    body.append(prism("gpanel", [(-0.004, -0.03), (-0.012, -0.088), (-0.044, -0.09), (-0.04, -0.03)], 0.0152, M["Grip"], 0.0006))
+    body.append(trigger_guard("guard", 0.005, 0.055, 0.0, -0.03, 0.006))
+    body.append(trigger("trigger", 0.022, -0.002, -0.02))
+    # The stock: a straight comb under the sight line, a rubber pad at the butt, wider towards it.
+    stock = [(-0.078, B + 0.014), (-0.115, B - 0.01), (-0.3, B - 0.016), (-0.305, B - 0.016), (-0.31, -0.07), (-0.3, -0.073), (-0.2, -0.05),
+             (-0.12, -0.03), (-0.08, -0.01), (-0.06, 0.003)]
+    body.append(prism("stock", stock, lambda y: 0.017 if y > -0.13 else 0.017 + (-0.13 - y) * 0.022, M["Polymer"], 0.004, 2))
+    body.append(prism("pad", [(-0.305, B - 0.015), (-0.322, B - 0.015), (-0.327, -0.074), (-0.31, -0.071)], 0.0215, M["Grip"], 0.003, 2))
+    body.append(block("sling", -0.0195, 0.0195, -0.255, -0.24, -0.063, -0.056, M["Dark"], 0.001))
+    # The barrel (it moves: it tips down about the pin): the tube, its bore open at the breech and the muzzle,
+    # a band at the muzzle, a handguard over its middle with the fore grip under it, and the sights on top.
+    # Each ring is wound to face the way it is seen (outside out, the bore in), so none is turned by guesswork.
+    barrel = [lathe("tube", [(0.372, R), (0.058, R)], M["Steel"], 20, at=(0, 0, B), caps=(False, False), inside=True),
+              lathe("bore", [(0.058, BORE), (0.392, BORE)], M["Dark"], 20, at=(0, 0, B), caps=(False, False), inside=True),
+              lathe("breech", [(0.058, R), (0.058, BORE)], M["Steel"], 20, at=(0, 0, B), caps=(False, False), inside=True, smooth=False),
+              lathe("band", [(0.392, 0.0285), (0.374, 0.0285), (0.372, R)], M["Steel"], 20, at=(0, 0, B), caps=(False, False), inside=True, smooth=False),
+              lathe("crown", [(0.392, BORE), (0.392, 0.0285)], M["Steel"], 20, at=(0, 0, B), caps=(False, False), inside=True, smooth=False)]
+    barrel.append(lathe("guard", [(0.125, 0.029), (0.13, 0.0335), (0.31, 0.0335), (0.315, 0.029)], M["Olive"], 8, at=(0, 0, B), turn=math.pi / 8, smooth=False))
+    for y in (0.16, 0.2, 0.24, 0.28):
+        barrel.append(block("rib", -0.012, 0.012, y, y + 0.012, B + 0.031, B + 0.0345, M["Olive"], 0.0008))
+    barrel.append(prism("fgrip", [(0.31 + DY, 0.036), (0.35 + DY, 0.036), (0.345 + DY, -0.065), (0.315 + DY, -0.065)], 0.014, M["Polymer"], 0.004, 2))
+    barrel.append(block("fmount", -0.015, 0.015, 0.30 + DY, 0.36 + DY, B - 0.04, B - 0.03, M["Dark"], 0.002))
+    barrel.append(block("fbase", -0.005, 0.005, 0.352, 0.37, B + 0.026, B + 0.032, M["Dark"], 0.0008))
+    barrel.append(block("fpost", -0.0014, 0.0014, 0.36, 0.364, B + 0.03, B + 0.048, M["Dark"], 0.0003))
+    barrel.append(block("fdot", -0.0015, 0.0015, 0.3595, 0.36, B + 0.0455, B + 0.048, M["Dot"], 0.0))
+    # The leaf sight, folded up: a base on the barrel, a frame and in it a ring to look through (a wide one: it
+    # is seen at arm's length), on the line of sight. The ring is wound like the barrel: in, front, out, back.
+    SY, SZ = 0.098, B + 0.048
+    barrel.append(block("lbase", -0.009, 0.009, 0.088, 0.11, B + 0.025, B + 0.031, M["Dark"], 0.0008))
+    for s in (-1, 1):
+        barrel.append(block("upright", s * 0.0075 - 0.0012, s * 0.0075 + 0.0012, SY - 0.002, SY + 0.002, B + 0.03, B + 0.066, M["Dark"], 0.0003))
+    barrel.append(block("ltop", -0.0087, 0.0087, SY - 0.002, SY + 0.002, B + 0.063, B + 0.067, M["Dark"], 0.0004))
+    barrel.append(lathe("ring", [(SY - 0.002, 0.0042), (SY + 0.002, 0.0042), (SY + 0.002, 0.0068), (SY - 0.002, 0.0068), (SY - 0.002, 0.0042)],
+                        M["Dark"], 16, at=(0, 0, SZ), caps=(False, False), inside=True, smooth=False))
+    for s in (-1, 1):
+        barrel.append(block("arm", min(s * 0.0064, s * 0.0076), max(s * 0.0064, s * 0.0076), SY - 0.0015, SY + 0.0015, SZ - 0.0012, SZ + 0.0012, M["Dark"], 0.0002))
+    # The round in the chamber (it moves: gone with the shot, and the hand brings a new one): its case, a band,
+    # the rounded head.
+    round_ = [lathe("case", [(0.06, 0.0196), (0.066, 0.0196), (0.067, 0.0188), (0.104, 0.0188)], M["Steel"], 16, at=(0, 0, B)),
+              lathe("rband", [(0.104, 0.0194), (0.11, 0.0194)], M["Brass"], 16, at=(0, 0, B), smooth=False),
+              lathe("head", [(0.11, 0.0188), (0.14, 0.0188), (0.152, 0.016), (0.162, 0.0105), (0.168, 0.004), (0.169, 0.0)], M["Warhead"], 16, at=(0, 0, B)),
+              disc("primer", 0.0045, M["Brass"], (0, 0.0598, B), -1, 10)]
+    # Paintball's kit: an air tank strapped to the stock's left, and three paint balloons in a tray on its right.
+    ty0, ty1, tr, tx, tz = -0.255, -0.115, 0.0145, -0.036, -0.018
+    kit = [lathe("tank", [(ty0, 0), (ty0 + tr * 0.3, tr * 0.7), (ty0 + tr * 0.9, tr), (ty1 - tr * 0.9, tr), (ty1 - tr * 0.3, tr * 0.7), (ty1, 0)],
+                 M["Tank"], 14, at=(tx, 0, tz)),
+           lathe("reg", [(ty1 - tr * 1.6, tr * 1.08), (ty1 - tr * 0.6, tr * 1.08)], M["KitTrim"], 14, at=(tx, 0, tz))]
+    for y in (-0.225, -0.165):
+        kit.append(block("strap", tx, -0.0175, y, y + 0.012, tz - 0.009, tz + 0.009, M["KitTrim"], 0.001))
+    kit.append(block("tray", 0.017, 0.022, -0.235, -0.105, B - 0.05, B - 0.01, M["KitTrim"], 0.002))
+    for y in (-0.21, -0.17, -0.13):
+        kit.append(lathe("balloon", [(-0.019, 0.0), (-0.016, 0.009), (-0.006, 0.0165), (0.006, 0.0165), (0.015, 0.011), (0.02, 0.0)], M["Hopper"], 12,
+                         at=(0.0385, y, B - 0.03), axis="z", squash=1.0))
+    gw = Wrap((0, -0.015, -0.002), (0, -0.018, -0.1), (0, 1, 0), 0.021, 0.0148)
+    right = hand("launcher_handR", gw,
+                 [(0.032, 70, -1, 0.09, 0.0098, 0.0), (0.052, 72, -1, 0.086, 0.0094, 0.0), (0.071, 76, -1, 0.07, 0.0086, 0.0)],
+                 [gw.at(0.022, 95, 0.004), gw.at(0.085, 100, 0.004), gw.at(0.022, 150, 0.004), gw.at(0.085, 150, 0.006),
+                  gw.at(0.02, 200, 0.002), gw.at(0.07, 185, 0.004), gw.at(0.03, 95, 0.026), gw.at(0.07, 100, 0.026)],
+                 (0.012, -0.085, -0.03), (0.25, -0.82, -0.5),
+                 ([(-0.006, -0.04, 0.004), (-0.02, -0.022, 0.01), (-0.024, 0.0, 0.016), (-0.023, 0.02, 0.02), (-0.021, 0.036, 0.022)], 0.0105),
+                 ([gw.at(0.01, 72, 0.01), (0.02, 0.012, -0.006), (0.016, 0.026, -0.008), (0.009, 0.029, -0.01), (0.004, 0.027, -0.012)], 0.0095))
+    fw = Wrap((0, 0.332 + DY, 0.075 - 0.045), (0, -0.01, -1), (0, 1, 0), 0.016, 0.0145)
+    left = hand("launcher_handL", fw,
+                [(0.012, -60, 1, 0.07, 0.0098, 0.0), (0.032, -60, 1, 0.07, 0.0096, 0.0), (0.052, -62, 1, 0.066, 0.009, 0.0), (0.07, -64, 1, 0.055, 0.0084, 0.0)],
+                [fw.at(0.012, -95, 0.004), fw.at(0.075, -100, 0.004), fw.at(0.012, -150, 0.004), fw.at(0.075, -150, 0.006),
+                 fw.at(0.02, -175, 0.004), fw.at(0.07, -175, 0.004), fw.at(0.03, -110, 0.026), fw.at(0.07, -115, 0.026)],
+                (-0.03, 0.285 + DY, -0.035), (-0.35, -0.6, -0.72),
+                ([fw.at(0.0, -160, 0.01), fw.at(-0.004, -185, 0.011), fw.at(-0.007, -215, 0.011), fw.at(-0.009, -240, 0.011)], 0.0108),
+                side=-1)
+    return finish(W, (0, -0.032, 0.0), body,
+                  {"barrel": (barrel, (0, HY, HZ)), "round": (round_, (0, 0.114, B))},
+                  (0, 0.393, B), (0, SY, SZ), kit, [right, left])
+
+
 build_pistol()
 build_rifle()
 build_shotgun()
 build_sniper()
 build_bazooka()
+build_launcher()
 
 
 def bake_shade():
@@ -1242,7 +1343,7 @@ if PREVIEW:
     scene.camera = cam
     os.makedirs(PREVIEW, exist_ok=True)
     roots = {o.name: o for o in bpy.data.objects if o.parent is None and o.type == "EMPTY"}
-    views = {"pistol": (0.09, 0.4), "rifle": (0.2, 1.1), "shotgun": (0.2, 1.2), "sniper": (0.25, 1.3), "bazooka": (0.3, 1.6)}
+    views = {"pistol": (0.09, 0.4), "rifle": (0.2, 1.1), "shotgun": (0.2, 1.2), "sniper": (0.25, 1.3), "bazooka": (0.3, 1.6), "launcher": (0.06, 1.0)}
     clay = bpy.data.materials.new("Clay")
     clay.use_nodes = True
     clay.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = (0.62, 0.6, 0.57, 1)
@@ -1257,8 +1358,8 @@ if PREVIEW:
     # From the player's eye, as the game draws it (weapon.ts): from the hip at 54 degrees (HIP, the grip a quarter
     # size, as far again), and aimed (the eye on the line of sight, the view narrowed by the gun's zoom).
     hip = {"pistol": (0.048, -0.04, -0.1), "rifle": (0.05, -0.045, -0.095), "shotgun": (0.05, -0.046, -0.095),
-           "sniper": (0.05, -0.046, -0.095), "bazooka": (0.072, -0.048, -0.1)}
-    ads = {"pistol": (0.5, 50.4), "rifle": (0.352, 46.8), "shotgun": (0.4, 57.6)}
+           "sniper": (0.05, -0.046, -0.095), "bazooka": (0.072, -0.048, -0.1), "launcher": (0.054, -0.05, -0.095)}
+    ads = {"pistol": (0.5, 50.4), "rifle": (0.352, 46.8), "shotgun": (0.4, 57.6), "launcher": (0.4, 57.6)}
     hip_far = math.tan(math.radians(36)) / math.tan(math.radians(27))
     for w, (mid, dist) in views.items():
         for name, r in roots.items():
