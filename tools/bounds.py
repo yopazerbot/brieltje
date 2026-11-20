@@ -262,7 +262,11 @@ def main():
     whole = [Point(x, z).buffer(REACH, 16) for _n, x, z, _s in named] + [Polygon(z["poly"]).buffer(REACH, 16) for z in zones]
     whole += [b.buffer(AROUND, 8) for b in footprints]
     whole += football_ground()
-    big = outline(shapes, area, home, whole)
+    # Yoshi (20 Nov 2026): "get rid of these illogical invisible walls, only keep the outer edges of the developed game
+    # as invisible wall". The bands round the streets and buildings left walls through the woods and fields between
+    # them. So the map is now the whole area the world is built in, and what reaches past it (the football ground, a
+    # garden round a building on the area's edge). `shapes` stays for the check picture and the party outline's lane.
+    big = outline([area], area, home, whole)
     if OUT.exists() and "--fresh" not in sys.argv:
         big = keep_edge(Polygon(read(OUT)["map"]), big)
     check(big, named, INSIDE, "map")
