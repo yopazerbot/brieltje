@@ -1,8 +1,9 @@
 // The helicopter's rotor wash, lights and sound from the ground (world/rotorWash.ts, world/heliLights.ts,
 // world/heliSound.ts), headless (tools/dev/cdp.mjs) on a running dev server. A machine is held in a hover (its pose set
 // every frame, the rest of the game running round it) over spots the check finds itself: the meadow by the house
-// (grass), a gravel patch, a pond, a street (in the rain) and the church square (at dusk); pictures at 2, 5 and 12 m
-// from a person standing 20 m off; a landing in four frames; the machine at 30 m seen from the ground 20, 80 and 250 m
+// (grass), a gravel patch, a ploughed field, a pond, a street (in the rain) and the church square (at dusk); pictures
+// at 2 and 5 m from where people stand, 15 and 30 m off, with how many sprites and bits are in the air; a landing in
+// four frames; the machine at 30 m seen from the ground 20, 80 and 250 m
 // away (day and dusk). With --bench, the frame time with and without the wash, alternated (A, B, A, B after a warm-up)
 // at a 3 m hover over gravel in view. With --sound, the sound by numbers (offline renders, no ears): its peak and loudest tenth
 // of a second against a rifle's shot (yours, and another's at 8 m), how loud it is at 20, 80 and 250 m, and the blade
@@ -54,7 +55,12 @@ async function standOff(x, z, dist, side, look) {
   const ground = await b.evaluate(`briel.world.groundAt(${x}, ${z}, 200, 0).y`);
   const yaw = Math.atan2(-(x - px), -(z - pz));
   const pitch = Math.atan2(ground + look - (feet + 1.6), dist);
-  await b.evaluate(`briel.teleport(${px}, ${pz}, ${feet}, ${yaw}, ${pitch})`, false);
+  // Again until standing there (a start's parachute or a fall can still be under way).
+  for (let i = 0; i < 4; i++) {
+    await b.evaluate(`briel.teleport(${px}, ${pz}, ${feet}, ${yaw}, ${pitch})`, false);
+    await b.sleep(400);
+    if (await b.evaluate(`briel.player.chute === null && Math.abs(briel.player.feet - ${feet}) < 1`)) break;
+  }
 }
 const ground = (x, z) => b.evaluate(`briel.world.groundAt(${x}, ${z}, 200, 0).y`);
 
@@ -79,10 +85,11 @@ try {
       const clear = (x, z, test, radii = [3, 6]) => { for (let a = 0; a < 8; a++) for (const r of radii) if (!test(x + Math.cos(a * 0.785) * r, z + Math.sin(a * 0.785) * r)) return false; return test(x, z); };
       const mat = (m) => (x, z) => (w.groundAt(x, z, 200, 0).mat ?? '') .match(m) && water.waterLevel(x, z) === null;
       const wet = (x, z) => water.waterLevel(x, z) !== null;
-      for (let r = 10; r < 700 && !(out.gravel && out.street && out.pond); r += 4) {
+      for (let r = 10; r < 700 && !(out.gravel && out.street && out.pond && out.field); r += 4) {
         for (let a = 0; a < 6.283; a += 4 / r) {
           const x = pad.x + Math.cos(a) * r, z = pad.z + Math.sin(a) * r;
           if (!out.gravel && clear(x, z, mat(/gravel|track/), [2])) out.gravel = { x, z };
+          if (!out.field && r > 40 && clear(x, z, mat(/^field_(soil|dark)/), [5, 10])) out.field = { x, z }; // a ploughed field
           if (!out.street && clear(x, z, mat(/road|street|asphalt/))) out.street = { x, z };
           if (!out.pond && clear(x, z, wet, [4, 8])) out.pond = { x, z };
         }
@@ -91,27 +98,24 @@ try {
       return out;
     })()`);
     console.log('spots:', JSON.stringify(spots));
-    const heights = [2, 5, 12];
+    // From where people stand: 15 and 30 m off, the machine hovering at 2 and 5 m.
+    const heights = [2, 5];
     const scene = async (name, at, mood, side = 0.6) => {
       if (!at || !want(name)) return;
       await b.evaluate(`briel.three.weather.setSolo(${JSON.stringify(mood)})`, false);
       const g = await ground(at.x, at.z);
-      await standOff(at.x, at.z, 20, side, 4);
+      await standOff(at.x, at.z, 15, side, 2.5);
       await pin(null);
-      await b.sleep(mood === 'sunny' ? 4000 : 9000);
-      await shot(`${name}-0m-before`);
+      await b.sleep(mood === 'sunny' ? 5000 : 9000);
+      await shot(`${name}-0m-before-15m`);
       for (const h of heights) {
         await pin({ x: at.x, y: g + h, z: at.z, yaw: 0.4 });
-        await b.sleep(3500); // the dust built up
-        const st = await b.evaluate('briel.rotorWash.state()');
-        console.log(`  ${name} ${h} m: strength ${st.machines.map((m) => `${r1(m.w)} on ${m.kind}`).join(', ')}; discs ${st.discs.map((d) => r1(d[3])).join(', ')}`);
-        await shot(`${name}-${h}m`);
-        if (h === 2) {
-          // Closer, looking down at the ground round it (the grass, the water, the leaves).
-          await standOff(at.x, at.z, 10, side + 0.5, 0.3);
-          await b.sleep(1500);
-          await shot(`${name}-${h}m-near`);
-          await standOff(at.x, at.z, 20, side, 4);
+        for (const d of [15, 30]) {
+          await standOff(at.x, at.z, d, side, h * 0.5 + 1.5);
+          await b.sleep(d === 15 ? 4500 : 1500); // the dust built up
+          const st = await b.evaluate('briel.rotorWash.state()');
+          console.log(`  ${name} ${h} m from ${d} m: strength ${st.machines.map((m) => `${r1(m.w)} on ${m.kind}`).join(', ')}; discs ${st.discs.map((q) => r1(q[3])).join(', ')}; ${st.dust.sprites} sprites, ${st.dust.bits} bits`);
+          await shot(`${name}-${h}m-from-${d}m`);
         }
       }
       await pin(null);
@@ -119,6 +123,7 @@ try {
     };
     await scene('grass', spots.grass, 'sunny');
     await scene('gravel', spots.gravel, 'sunny');
+    await scene('field', spots.field, 'sunny');
     await scene('pond', spots.pond, 'sunny');
     await scene('street', spots.street, 'rain');
     await scene('church', spots.church, 'dusk');
