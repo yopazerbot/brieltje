@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { Opening, Prism, RoofSpec } from './houseData';
 import { prismGeometry } from './houseMeshes';
 import { brickLook, Houses, isBrick } from './facadeLook';
@@ -284,7 +285,20 @@ export function roofEdges(r: RoofSpec, f: RoofFrame, e: RoofEdges): { trim: THRE
       a0 = half;
       a1 = Math.max(half, L - half);
     }
-    if (a1 - a0 > 0.3) ridge = ridgeRow(pt(a0, W / 2, r.ridge), pt(a1, W / 2, r.ridge), across3, k);
+    const rows: THREE.BufferGeometry[] = [];
+    if (a1 - a0 > 0.3) rows.push(ridgeRow(pt(a0, W / 2, r.ridge), pt(a1, W / 2, r.ridge), across3, k));
+    if (r.shape === 'hip') {
+      // Hip tiles: a row down each hip, from the ridge's end to the eaves' corner, its slopes dropping across the hip as
+      // the two roof faces either side of it do (a 45 degree hip in plan: k times the sine of 45 degrees).
+      for (const [ea, eb, ra] of [[-o, -o, a0], [L + o, -o, a1], [L + o, W + o, a1], [-o, W + o, a0]] as const) {
+        const top = pt(ra, W / 2, r.ridge);
+        const foot = pt(ea, eb, eave);
+        const plan = new THREE.Vector3(foot.x - top.x, 0, foot.z - top.z).normalize();
+        rows.push(ridgeRow(top, foot, new THREE.Vector3(-plan.z, 0, plan.x), k * Math.SQRT1_2));
+      }
+    }
+    if (rows.length) ridge = rows.length > 1 ? mergeGeometries(rows) : rows[0];
+    if (rows.length > 1) rows.forEach((g) => g.dispose());
   }
   return { trim, ridge };
 }
@@ -382,6 +396,58 @@ export function flatEdge(p: Prism, colour: THREE.Color, sides: number[]): THREE.
     out.push(face(new THREE.Vector3(mx + n.x * 0.04, p.y1 - 0.05, mz + n.z * 0.04), d, n, length + 0.08, 0.14, colour));
   }
   return out;
+}
+
+/** A parapet's height over the lid, and its thickness. */
+const PARAPET_H = 0.35;
+const PARAPET_T = 0.2;
+
+/**
+ * A flat roof's own parts, by its house's style: a low parapet in the walls' brick along the given free sides (instead
+ * of the edge trim; `parapet`), with a concrete coping, and a dome rooflight on its curb on a lid of 12 m² or more whose
+ * middle has room for it (`dome`). The parapets come back as blocks of the walls' brick (drawn as walls), the rest for
+ * the frames' mesh. Drawn only.
+ */
+export function flatRoofParts(p: Prism, wall: string, sides: number[], parapet: boolean, dome: boolean): { blocks: Prism[]; parts: THREE.BufferGeometry[] } {
+  const ring = p.p[0];
+  const blocks: Prism[] = [];
+  const parts: THREE.BufferGeometry[] = [];
+  const coping = new THREE.Color('#b4b0a8');
+  if (parapet) {
+    for (const i of sides) {
+      const [ax, az] = ring[i];
+      const [bx, bz] = ring[(i + 1) % ring.length];
+      const length = Math.hypot(bx - ax, bz - az);
+      let [nx, nz] = [(bz - az) / length, -(bx - ax) / length];
+      if (!inside(ring, (ax + bx) / 2 + nx * 0.05, (az + bz) / 2 + nz * 0.05)) [nx, nz] = [-nx, -nz]; // inward
+      const t = PARAPET_T;
+      blocks.push({ m: wall, y0: p.y1 - 0.03, y1: p.y1 + PARAPET_H, p: [[[ax, az], [bx, bz], [bx + nx * t, bz + nz * t], [ax + nx * t, az + nz * t]]] });
+      const d = new THREE.Vector3((bx - ax) / length, 0, (bz - az) / length);
+      const n = new THREE.Vector3(-nx, 0, -nz);
+      parts.push(box(new THREE.Vector3((ax + bx) / 2 + nx * (t / 2 - 0.02), p.y1 + PARAPET_H + 0.025, (az + bz) / 2 + nz * (t / 2 - 0.02)), d, n, length + 0.04, 0.05, t + 0.06, coping));
+    }
+  }
+  if (dome && area(ring) >= 12) {
+    const n = ring.length;
+    const at = ring.reduce(([x, z], q) => [x + q[0] / n, z + q[1] / n], [0, 0]);
+    const [ax, az] = ring[0];
+    const [bx, bz] = ring[1];
+    const l = Math.hypot(bx - ax, bz - az) || 1;
+    const d = new THREE.Vector3((bx - ax) / l, 0, (bz - az) / l);
+    const side = new THREE.Vector3(-d.z, 0, d.x);
+    const room = [[-0.8, -0.8], [0.8, -0.8], [0.8, 0.8], [-0.8, 0.8], [0, 0]].every(([u, v]) => inside(ring, at[0] + d.x * u + side.x * v, at[1] + d.z * u + side.z * v));
+    if (room) {
+      const centre = new THREE.Vector3(at[0], p.y1, at[1]);
+      parts.push(box(centre.clone().setY(p.y1 + 0.09), d, side, 1.0, 0.18, 1.0, new THREE.Color('#d6d3cc')));
+      // The dome: a low cap of milky acrylic on the curb.
+      const cap = new THREE.SphereGeometry(0.46, 10, 3, 0, Math.PI * 2, 0, Math.PI / 2).toNonIndexed();
+      cap.deleteAttribute('uv');
+      cap.scale(1, 0.45, 1);
+      cap.translate(centre.x, p.y1 + 0.18, centre.z);
+      parts.push(colourAll(cap, new THREE.Color('#e6eaec')));
+    }
+  }
+  return { blocks, parts };
 }
 
 // ---- On the slopes: solar panels and roof windows ----
@@ -521,7 +587,7 @@ export function chimneyRoofs(roofs: RoofSpec[], prisms: Prism[], keyOf: (r: Roof
  * A chimney on a roof's ridge: its stack as a block of the walls' brick (drawn as a wall, with the house's shade), and
  * its concrete cap and clay pots for the frames' mesh.
  */
-export function chimney(r: RoofSpec, f: RoofFrame, ch: NonNullable<HouseStyle['chimney']>): { stack: Prism; parts: THREE.BufferGeometry[] } {
+export function chimney(r: RoofSpec, f: RoofFrame, ch: NonNullable<HouseStyle['chimney']>, on: { aerial?: boolean; dish?: boolean } = {}): { stack: Prism; parts: THREE.BufferGeometry[] } {
   const { c, L, W, along, across } = f;
   const eave = r.y - 0.15;
   // The ridge across from the low side, and the steeper slope's drop per metre: a gable's middle; a closed single
@@ -558,6 +624,54 @@ export function chimney(r: RoofSpec, f: RoofFrame, ch: NonNullable<HouseStyle['c
   const pot = new THREE.Color('#a5533a');
   const offsets = ch.pots === 2 ? [-ch.across / 4, ch.across / 4] : ch.pots === 1 ? [0] : [];
   for (const b of offsets) parts.push(box(new THREE.Vector3(mx + n.x * b, y1 + 0.06 + 0.15, mz + n.z * b), d, n, 0.2, 0.3, 0.2, pot));
+  // The lead flashing where the stack meets the tiles: a band 15 cm up its sides and an apron 12 cm out over the tiles,
+  // following the slopes either side of the ridge.
+  const lead = new THREE.Color('#6b7075');
+  const roofY = (db: number) => r.ridge - k * Math.abs(db) + 0.01;
+  const p3 = (da: number, db: number, lift: number) => {
+    const [x, z] = pt(da, db);
+    return new THREE.Vector3(x, roofY(db) + lift, z);
+  };
+  const [fa, fc] = [al + 0.015, ac + 0.015];
+  const [oa, oc] = [al + 0.13, ac + 0.13];
+  for (const s of [-1, 1]) {
+    // The two sides along the ridge (level), facing across.
+    const nb = n.clone().multiplyScalar(s);
+    parts.push(slopeQuad([p3(-fa, s * fc, -0.02), p3(fa, s * fc, -0.02), p3(fa, s * fc, 0.15), p3(-fa, s * fc, 0.15)], nb, lead));
+    parts.push(slopeQuad([p3(-oa, s * fc, 0.005), p3(oa, s * fc, 0.005), p3(oa, s * oc, 0.005), p3(-oa, s * oc, 0.005)], UP, lead));
+    // The two ends across the ridge, over its top: two pieces each.
+    const na = d.clone().multiplyScalar(s);
+    for (const [b0, b1] of [[-fc, 0], [0, fc]]) {
+      parts.push(slopeQuad([p3(s * fa, b0, -0.02), p3(s * fa, b1, -0.02), p3(s * fa, b1, 0.15), p3(s * fa, b0, 0.15)], na, lead));
+      parts.push(slopeQuad([p3(s * fa, b0, 0.005), p3(s * fa, b1, 0.005), p3(s * oa, b1, 0.005), p3(s * oa, b0, 0.005)], UP, lead));
+    }
+  }
+  const steel = new THREE.Color('#8e9296');
+  if (on.aerial) {
+    // An old TV aerial clamped to the stack: a mast 1.6 m over its top, a boom with its elements across it.
+    const [ax, az] = pt(-al - 0.04, 0);
+    const foot = new THREE.Vector3(ax, y1 - 0.5, az);
+    parts.push(box(foot.clone().setY(y1 + 0.55), d, n, 0.035, 2.1, 0.035, steel));
+    const boom = d.clone().applyAxisAngle(UP, 0.4 + 0.8 * stable(ax, az, 3));
+    const side = boom.clone().cross(UP);
+    parts.push(box(foot.clone().setY(y1 + 1.5), boom, side, 1.5, 0.025, 0.025, steel));
+    for (let i = 0; i < 6; i++) parts.push(box(foot.clone().setY(y1 + 1.5).addScaledVector(boom, -0.6 + i * 0.24), side, boom, 0.9 - i * 0.08, 0.015, 0.015, steel));
+  }
+  if (on.dish) {
+    // A satellite dish on the stack's side, turned to the south and tilted up, on a short arm.
+    const toSouth = new THREE.Vector3(SOUTH.x, 0, SOUTH.z).normalize();
+    const face3 = Math.abs(toSouth.dot(n)) > Math.abs(toSouth.dot(d)) ? n.clone().multiplyScalar(Math.sign(toSouth.dot(n)) || 1) : d.clone().multiplyScalar(Math.sign(toSouth.dot(d)) || 1);
+    const half = Math.abs(face3.dot(n)) > 0.5 ? ac : al;
+    const [cx, cz] = pt(0, 0);
+    const centre = new THREE.Vector3(cx, y1 - 0.45, cz).addScaledVector(face3, half + 0.28);
+    const along3 = face3.clone().cross(UP).normalize();
+    parts.push(box(centre.clone().addScaledVector(face3, -0.14), along3, face3, 0.05, 0.05, 0.28, new THREE.Color('#5c5f62')));
+    const dish = new THREE.CylinderGeometry(0.32, 0.27, 0.07, 14, 1).toNonIndexed();
+    dish.deleteAttribute('uv');
+    const look = face3.clone().multiplyScalar(Math.cos(0.55)).add(new THREE.Vector3(0, Math.sin(0.55), 0)); // about 30 degrees up
+    dish.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(UP, look)).translate(centre.x, centre.y, centre.z);
+    parts.push(colourAll(dish, new THREE.Color('#d9dadb')));
+  }
   return { stack, parts };
 }
 

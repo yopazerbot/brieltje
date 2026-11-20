@@ -24,8 +24,9 @@ import { houseIndex } from './houseIndex';
 import { pointInside } from './houseKeys';
 import { flatEdgeSides, FRAME, type Downpipe, type Hole } from './housePlan';
 import { cutWall } from './wallCut';
-import { bandedWalls, chimney, flatEdge, openingTrim, roofEdges, roofExtras, roofFrame, type OpeningContext, type RoofEdges, type SolarArray } from './houseTrim';
-import { doorColour, GARAGE_MADE_UP, garageColour, houseStyle } from './houseStyle';
+import { bandedWalls, chimney, flatEdge, flatRoofParts, openingTrim, roofEdges, roofExtras, roofFrame, type OpeningContext, type RoofEdges, type SolarArray } from './houseTrim';
+import { doorColour, GARAGE_MADE_UP, garageColour, houseStyle, roofTile } from './houseStyle';
+import { roofRelief, TILE_BYTE } from './roofRelief';
 import type { RoofField } from './roofField';
 import { inHomes } from './modelRoofs';
 import { snowy } from './snowCover';
@@ -666,6 +667,8 @@ export function buildTile(data: TileData, poles: Pole[], renderer: THREE.WebGLRe
   };
   // Gutters and downpipes, from the roofs and the flat roofs' lids.
   const gutterGeos: THREE.BufferGeometry[] = [];
+  // The flat roofs' lids: gravel's texture, the covering's colour per vertex (taking the snow, as nb_roof's).
+  const flatMat = material('flat', () => snowy(Object.assign(tintedMaterial('gravel', '#ffffff', renderer), { vertexColors: true })));
   for (const p of data.prisms ?? []) {
     const { material: mat, tint, tag } = blockMaterial(p.m, renderer);
     // A house wall's base: a plinth following the ground, where the house has one (world/housePlan.ts, world/houseTrim.ts).
@@ -677,14 +680,27 @@ export function buildTile(data: TileData, poles: Pole[], renderer: THREE.WebGLRe
       const faces = index.reveals.faces.get(p);
       const wall = base ? g : walls(p.m, houses.keyOf(p), g);
       put(renderable(mat), faces ? cutWall(wall, faces) : wall, tag);
-    } else put(mat, coloured(mat) ? paint(g, tint) : g, tag, true, GROUND_COVERS.has(p.m) ? COVER_ORDER : undefined);
+    } else if (p.m !== 'nb_roof' || p.lm) put(mat, coloured(mat) ? paint(g, tint) : g, tag, true, GROUND_COVERS.has(p.m) ? COVER_ORDER : undefined);
     if (p.m === 'nb_roof' && !p.lm) {
       // A flat roof: on many houses an edge trim in the house's trim colour (world/houseTrim.ts), found from a point
       // inside the lid (the middle of an L-shaped one is outside it) and the walls under it.
       const at = pointInside(p.p[0]);
       const house = at && houses.wallAt(at[0], at[1], p.y0 - 0.3);
       const style = house && houseStyle(house.key, house.m, brickLook(house.m, house.key).render === 1);
-      if (style?.flatEdge) for (const e of flatEdge(p, new THREE.Color(style.trim), flatEdgeSides(p, index.lids, houses))) put(trimMat, e, 'alu', false, undefined, true);
+      const own = style && !p.p[0].some(([x, z]) => inHomes(x, z)); // a private home's as on main
+      // Its covering seen from above: gravel, bitumen with its grit or a grey membrane, by the house.
+      put(flatMat, paint(g, new THREE.Color(own ? style.flat.finish : '#45403c')), tag);
+      const sides = style ? flatEdgeSides(p, index.lids, houses) : [];
+      const parapet = !!own && style.flat.parapet && isBrick(house!.m);
+      if (style?.flatEdge && !parapet) for (const e of flatEdge(p, new THREE.Color(style.trim), sides)) put(trimMat, e, 'alu', false, undefined, true);
+      if (own) {
+        // A low brick parapet round its free sides on some, a dome rooflight on some (world/houseTrim.ts).
+        const wall = house!;
+        const { blocks, parts: bits } = flatRoofParts(p, wall.m, sides, parapet, style.flat.dome);
+        const { material: brick, tag: brickTag } = blockMaterial(wall.m, renderer);
+        for (const b of blocks) put(renderable(brick), walls(wall.m, wall.key, prismGeometry(b)), brickTag);
+        for (const b of bits) put(frameMat, b, 'alu', false, undefined, true);
+      }
       const pipe = index.downpipes.get(p);
       if (pipe) gutterGeos.push(downpipe(pipe));
     }
@@ -693,7 +709,7 @@ export function buildTile(data: TileData, poles: Pole[], renderer: THREE.WebGLRe
   // Roofs: the tiles in their colour per vertex, the gables in the brick of the walls below. A roof
   // over a room (the bungalow's) has a ceiling colour: then the outside (front faces) and the
   // underside (back faces) differ.
-  const tiles = material('tiles', () => glazeable(Object.assign(tintedMaterial('roof_tiles', '#ffffff', renderer, THREE.DoubleSide), { vertexColors: true })));
+  const tiles = material('tiles', () => roofRelief(glazeable(Object.assign(tintedMaterial('roof_tiles', '#ffffff', renderer, THREE.DoubleSide), { vertexColors: true }))));
   // The house under a roof; each house's chimney on its largest roof that can carry one; the houses with a gable or hip
   // roof (leaf shutters go only on those): all for the whole set (world/houseIndex.ts).
   const { chimneys, pitched, keyOf } = index;
@@ -722,8 +738,10 @@ export function buildTile(data: TileData, poles: Pole[], renderer: THREE.WebGLRe
     if (r.ceiling) put(material(`tiles|${tint}|${side}`, () => tintedMaterial('roof_tiles', tint, renderer, side)), g.roof, 'nb_roof');
     else {
       const look = roofLook(tint, key);
-      put(tiles, byteAttribute(paint(g.roof, look.color), 'gloss', look.gloss), 'nb_roof');
-      if (g.ridge) put(tiles, byteAttribute(paint(g.ridge, look.color.clone().multiplyScalar(0.85)), 'gloss', look.gloss), 'nb_roof');
+      // The tiles' kind for their relief near the eye (world/roofRelief.ts): by the covering's look and the house.
+      const kind = roofTile(key, look.gloss, look.color.r > look.color.b * 1.6);
+      put(tiles, byteAttribute(byteAttribute(paint(g.roof, look.color), 'gloss', look.gloss), 'tile', TILE_BYTE[kind]), 'nb_roof');
+      if (g.ridge) put(tiles, byteAttribute(byteAttribute(paint(g.ridge, look.color.clone().multiplyScalar(0.85)), 'gloss', look.gloss), 'tile', TILE_BYTE.plain), 'nb_roof');
     }
     if (g.trim) put(frameMat, g.trim, 'alu', false, undefined, true);
     // Solar panels on the slope facing south and roof windows, by the house's style (world/houseTrim.ts).
@@ -740,7 +758,7 @@ export function buildTile(data: TileData, poles: Pole[], renderer: THREE.WebGLRe
     const ch = chimneys.has(r) ? style.chimney : null;
     if (ch) {
       // The stack in the walls' brick and shade, as a wall; its cap and pots with the frames.
-      const { stack, parts: cap } = chimney(r, roofFrame(r), ch);
+      const { stack, parts: cap } = chimney(r, roofFrame(r), ch, { aerial: style.aerial, dish: style.dish });
       if (solid) {
         // Its top: solid down to the eaves, a small column on the ridge.
         const [a, b, c, d] = stack.p[0];

@@ -56,6 +56,23 @@ export const ROOF_WINDOWS = 0.25;
 /** Of the houses with a dormer-worthy roof, the share with a dormer. */
 export const DORMER_SHARE = 1 / 9;
 
+// Flat roofs: the covering seen from above (gravel on bitumen, bare bitumen with its grit, a grey membrane; shares add
+// up to 1), a low brick parapet round the free sides instead of the edge trim, a dome rooflight on a big enough one.
+const FLAT_FINISH: [string, number][] = [['#8c867b', 0.45], ['#3d3b39', 0.4], ['#5f6163', 0.15]];
+export const PARAPET_SHARE = 0.25;
+export const DOME_SHARE = 0.3;
+
+// By the front door: a wall lamp beside it (lit at night on most), a letterbox in the door, flower pots, a bench.
+export const PORCH_LIGHT = 0.6;
+/** Of the porch lights, the share switched on at night. */
+export const PORCH_LIT = 0.75;
+export const LETTERBOX = 0.7;
+export const DOOR_POTS = 0.3;
+export const DOOR_BENCH = 0.08;
+// On the roof: a satellite dish (on a wall bracket under the eaves) or an old TV aerial by the chimney.
+export const DISH_SHARE = 0.07;
+export const AERIAL_SHARE = 0.12;
+
 /** A number from 0 to 1 that depends only on the numbers given: the same as world/facadeLook.ts `stable`. */
 export function stable(...v: number[]): number {
   let h = 2166136261;
@@ -86,6 +103,13 @@ export interface HouseStyle {
   roofWindows: number;
   /** A dormer over the front door (change 7) */
   dormer: boolean;
+  /** Its flat roofs: the covering's colour (sRGB hex), a brick parapet instead of the trim, a dome rooflight */
+  flat: { finish: string; parapet: boolean; dome: boolean };
+  /** By its front doors: a wall lamp (and whether it is on at night), a letterbox, flower pots, a bench */
+  door: { lamp: boolean; lit: boolean; letterbox: boolean; pots: boolean; bench: boolean };
+  /** On its roof: a satellite dish, an old TV aerial */
+  dish: boolean;
+  aerial: boolean;
 }
 
 /** Pick from a list of [value, share] by h (0 to 1). */
@@ -144,7 +168,36 @@ export function houseStyle(key: number, brick: string, rendered: boolean, pitche
     solar: stable(key, 67) < SOLAR_SHARE ? 4 + Math.floor(stable(key, 67, 1) * 5) : 0,
     roofWindows: stable(key, 69) < ROOF_WINDOWS ? 1 + Math.floor(stable(key, 69, 1) * 2) : 0,
     dormer: stable(key, 71) < DORMER_SHARE,
+    flat: { finish: share(FLAT_FINISH, stable(key, 83)), parapet: stable(key, 83, 1) < PARAPET_SHARE, dome: stable(key, 83, 2) < DOME_SHARE },
+    door: {
+      lamp: stable(key, 89) < PORCH_LIGHT,
+      lit: stable(key, 89, 1) < PORCH_LIT,
+      letterbox: stable(key, 89, 2) < LETTERBOX,
+      pots: stable(key, 89, 3) < DOOR_POTS,
+      bench: stable(key, 89, 4) < DOOR_BENCH,
+    },
+    dish: stable(key, 97) < DISH_SHARE,
+    aerial: stable(key, 97, 1) < AERIAL_SHARE,
   };
+}
+
+// ---- The roof's covering: which tile ----
+
+/** The tiles' kinds (world/roofRelief.ts draws their relief): clay pantiles, flat interlocking tiles, slate, concrete tiles. */
+export type TileKind = 'pantile' | 'flat' | 'slate' | 'concrete';
+
+/**
+ * Which tile a roof is covered with, from its look (world/facadeLook.ts `roofLook`): `gloss` 1 for glazed tiles, about
+ * 0.7 for slate; `warm` whether its colour is a clay red or brown. Clay roofs are mostly pantiles (the old Boom pantile
+ * and its kin), some flat clay tiles; glazed black ones half flat tiles (newer houses); matt dark ones concrete or flat
+ * tiles; the rest pantiles, concrete or flat ones. Fixed by the house's key.
+ */
+export function roofTile(key: number, gloss: number, warm: boolean): TileKind {
+  const h = stable(key, 79);
+  if (gloss > 0.5 && gloss < 0.9) return 'slate';
+  if (warm) return h < 0.75 ? 'pantile' : 'flat';
+  if (gloss >= 0.9) return h < 0.45 ? 'pantile' : 'flat';
+  return share<TileKind>([['pantile', 0.5], ['concrete', 0.3], ['flat', 0.2]], h);
 }
 
 // Doors and garage doors (world/surroundings.ts). tools/facades.py makes up the colour of an outbuilding's garage door

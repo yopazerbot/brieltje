@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import {
   ANTHRACITE, doorColour, GARAGE_MADE_UP, garageColour, luminance, houseStyle, rollerDown, stable, CHIMNEY_SHARE, FLAT_EDGE, LEAF_SHUTTERS, LINTEL_SOLDIER, LINTEL_STONE, LINTEL_STONE_RENDERED, PLINTH_BRICK,
   PLINTH_CEMENT, PLINTH_PAINT, PLINTH_TAR, ROLLER_DOWN, ROLLER_HOUSES, ROLLER_PART, ROOF_WINDOWS, SOLAR_SHARE,
+  roofTile, PARAPET_SHARE, DOME_SHARE, PORCH_LIGHT, PORCH_LIT, LETTERBOX, DOOR_POTS, DOOR_BENCH, DISH_SHARE, AERIAL_SHARE,
 } from './houseStyle.ts';
 
 // The houses' own hash (world/houseKeys.ts): the copy here must give the same numbers.
@@ -85,4 +86,32 @@ test('a made-up garage door agrees with its frame', () => {
   assert.equal(garageColour('#4c3427'), '#7a5a3e'); // wood with brown
   assert.equal(garageColour('#9b7653'), '#7a5a3e');
   assert.equal(garageColour('#2f4a3a'), ANTHRACITE); // the odd green frame: anthracite
+});
+
+test('the new parts come out in their shares: flat roofs, front doors, dishes and aerials', () => {
+  const count = (list, f) => list.filter(f).length / list.length;
+  const brick = keys.map((k) => houseStyle(k, 'nb_red', false));
+  near(count(brick, (s) => s.flat.parapet), PARAPET_SHARE, 'parapets');
+  near(count(brick, (s) => s.flat.dome), DOME_SHARE, 'dome rooflights');
+  near(count(brick, (s) => s.flat.finish === '#8c867b'), 0.45, 'gravel');
+  near(count(brick, (s) => s.door.lamp), PORCH_LIGHT, 'porch lamps');
+  near(count(brick, (s) => s.door.lit), PORCH_LIT, 'porch lamps lit');
+  near(count(brick, (s) => s.door.letterbox), LETTERBOX, 'letterboxes');
+  near(count(brick, (s) => s.door.pots), DOOR_POTS, 'flower pots');
+  near(count(brick, (s) => s.door.bench), DOOR_BENCH, 'benches');
+  near(count(brick, (s) => s.dish), DISH_SHARE, 'dishes');
+  near(count(brick, (s) => s.aerial), AERIAL_SHARE, 'aerials');
+});
+
+test('the tiles of a roof follow its covering: slate for the grey glossy ones, mostly pantiles on clay', () => {
+  const count = (list, f) => list.filter(f).length / list.length;
+  assert.ok(keys.slice(0, 500).every((k) => roofTile(k, 0.7, false) === 'slate'));
+  const clay = keys.map((k) => roofTile(k, 0, true));
+  near(count(clay, (t) => t === 'pantile'), 0.75, 'clay pantiles');
+  assert.equal(count(clay, (t) => t === 'slate' || t === 'concrete'), 0);
+  const glazed = keys.map((k) => roofTile(k, 1, false));
+  near(count(glazed, (t) => t === 'flat'), 0.55, 'glazed flat tiles');
+  const other = keys.map((k) => roofTile(k, 0, false));
+  near(count(other, (t) => t === 'concrete'), 0.3, 'concrete tiles');
+  for (const k of keys.slice(0, 100)) assert.equal(roofTile(k, 0, false), roofTile(k, 0, false));
 });

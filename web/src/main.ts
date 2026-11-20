@@ -173,6 +173,7 @@ import { claimModelGround, claimModelGroundSoon } from './world/modelGround';
 import { GroundCutter, releaseGroundClaims } from './world/groundCutter';
 import { bakeLight, setBakeDetail } from './world/bakedLight';
 import { setWindowDetail, setWindowNight } from './world/windows';
+import { setRoofDetail } from './world/roofRelief';
 import { wet, WetMirror, wetOnModel } from './world/wetGround';
 import { glass as glassLook, GlassProbe, glassOnModel } from './world/glassLook';
 import { trackVillageHouse, VILLAGE_HOUSES } from './world/villageHouses';
@@ -730,6 +731,7 @@ function applyQuality(q: Quality): void {
   setBakeDetail(q !== 'low'); // the baked wear's fine pattern (world/bakedLight.ts)
   weather.setQuality(q, phone); // how many streaks of rain
   setWindowDetail(q !== 'low' && !phone); // rooms behind the village's windows (world/windows.ts)
+  setRoofDetail(q !== 'low' && !phone); // the village's roof tiles in relief near the eye (world/roofRelief.ts)
   setWaterDetail(q !== 'low' && !phone); // rain rings on the ponds (world/water.ts)
   wetMirror.fine = q !== 'low' && !phone; // wet streets mirror the scene, puddles ring (world/wetGround.ts)
   wet.fine.value = wetMirror.fine ? 1 : 0;
