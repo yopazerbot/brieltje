@@ -352,6 +352,8 @@ interface ViewModel {
   /** The grenade launcher's barrel (it breaks open about its pivot, the hinge pin) and the grenade it loads */
   barrel?: THREE.Object3D;
   round?: THREE.Object3D;
+  /** In paintball the grenade it loads is a paint balloon */
+  balloon?: THREE.Object3D;
   shell?: THREE.Object3D;
   handR?: THREE.Object3D;
   handL?: THREE.Object3D;
@@ -497,6 +499,13 @@ export function gunModel(id: WeaponId): THREE.Group {
 function smooth(a: number, b: number, x: number): number {
   const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
   return t * t * (3 - 2 * t);
+}
+
+/** Paintball's balloon in the grenade launcher goes where its grenade is. */
+function balloonOnRound(m: ViewModel): void {
+  if (!m.balloon || !m.round) return;
+  m.balloon.position.copy(m.round.position);
+  m.balloon.quaternion.copy(m.round.quaternion);
 }
 
 /** Where a loaded hand holds when it rests (the middle of what its fingers wrap), in the gun's frame. */
@@ -817,6 +826,16 @@ export class Weapon {
       m.rocket = part('rocket');
       m.barrel = part('barrel');
       m.round = part('round');
+      if (m.round) {
+        // Paintball: the grenade going into the breech is a paint balloon, in the colour of the gun's own balloons.
+        const mat = new THREE.MeshStandardMaterial({ color: HOPPER[w], roughness: 0.2 });
+        noNearCut(mat);
+        const balloon = new THREE.Mesh(new THREE.SphereGeometry(0.0205, 14, 10).scale(1, 1, 2.1), mat);
+        balloon.userData.ignoreRay = true;
+        balloon.visible = false;
+        m.round.parent!.add(balloon);
+        m.balloon = balloon;
+      }
       m.handR = part('handR');
       m.handL = part('handL');
       m.shell = hands.getObjectByName('shotgun_shell');
@@ -1720,8 +1739,10 @@ export class Weapon {
       return carried(_out, out);
     };
     const hand = m.handL;
-    if (round) round.visible = p < 0 ? !empty : p >= 0.46;
-    if (!hand || p < 0) return;
+    const shown = p < 0 ? !empty : p >= 0.46;
+    if (round) round.visible = shown && !paintball.on;
+    if (m.balloon) m.balloon.visible = shown && paintball.on;
+    if (!hand || p < 0) return balloonOnRound(m);
     const rest = hand.userData.rest as THREE.Vector3;
     const restQ = hand.userData.restQ as THREE.Quaternion;
     const grip = holdPoint(hand, _b).sub(rest); // the hold, from the wrist
@@ -1749,11 +1770,12 @@ export class Weapon {
       hand.position.copy(holding(slid(0, _out), _out)).lerp(onGrip, smooth(0.72, 0.8, p));
     } else hand.position.copy(onGrip);
     hand.quaternion.copy(restQ).premultiply(_r.identity().slerp(turn, onBarrel));
-    if (!round || p < 0.46) return;
+    if (!round || p < 0.46) return balloonOnRound(m);
     // The grenade: in the hand until it goes in, then slid home, and in the barrel as it swings shut.
     if (p < 0.62) round.position.copy(hand.position).add(grip).add(ROUND_HOLD);
     else round.position.copy(slid(ROUND_BACK * (1 - smooth(0.62, 0.72, p)), _out));
     round.quaternion.copy(turn).multiply(round.userData.restQ as THREE.Quaternion);
+    balloonOnRound(m);
   }
 
   /** A bullet that passed close by you: a short hiss falling in pitch, in your ears (`near` 0..1: how close). */
