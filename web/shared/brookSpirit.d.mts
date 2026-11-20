@@ -70,6 +70,8 @@ export interface SpiritData {
   beaten: { apart: number; back: number; names: number };
   /** The heart's hit box radius, the farthest a shot at a part counts from, the most one hit may count, a blast's largest radius */
   heart: { r: number; range: number; most: number; blast: number };
+  /** A lit light's hit box radius (the page's ray, the server's reach for a shot at it) */
+  light: { r: number };
   /** The look: s the heart takes to open, anger by phase, anger more during a tell, s of a hit's pulse */
   look: { open: number; anger: number[]; tell: number; hurt: number };
   /** `sp` goes to pages within `near` m, `hz` times a second while awake */

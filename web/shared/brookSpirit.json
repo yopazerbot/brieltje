@@ -1,6 +1,6 @@
 {
   "grove": { "x": -68, "z": 488, "y": -8.84, "r": 20, "leash": 30, "wakeR": 17 },
-  "up": 2.2,
+  "up": 3.8,
   "rest": { "x": -80.2, "z": 488, "y": -8.8, "links": [3, 4] },
   "hover": [
     [-68, 486, -8.83],
@@ -48,6 +48,7 @@
   "down": { "back": 3, "memory": 30 },
   "beaten": { "apart": 3, "back": 600, "names": 8 },
   "heart": { "r": 0.55, "range": 60, "most": 500, "blast": 8 },
+  "light": { "r": 0.5 },
   "look": { "open": 0.3, "anger": [0.3, 0.6, 0.9], "tell": 0.1, "hurt": 0.2 },
   "wire": { "near": 300, "hz": 5 },
   "launcher": { "lie": 180, "first": 20, "rounds": 6, "dropLie": 60, "lost": 15, "across": 1.6, "high": 2.2 }

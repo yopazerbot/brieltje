@@ -42,8 +42,6 @@ const LINE_NEAR = 60;
 const MAKE = 190;
 const SHOW = 220;
 const HIDE = 260;
-/** m: a lit light's hit box */
-const LIGHT_R = 0.5;
 /** s a launcher's line stays */
 const SAY = 4.5;
 
@@ -165,7 +163,7 @@ export class SpiritFight {
     this.heartBox.visible = false;
     this.lightBoxes = this.lightSpots.map((_, i) => {
       const m = new THREE.Mesh(ball, hitBoxMaterial);
-      m.scale.setScalar(LIGHT_R);
+      m.scale.setScalar(SPIRIT.light.r);
       m.userData.spirit = i + 1;
       m.visible = false;
       return m;
@@ -373,7 +371,7 @@ export class SpiritFight {
     this.lightBoxes.forEach((b, i) => {
       if (!b.visible) return;
       const p = b.position;
-      out.push({ id: -2 - i, foot: { x: p.x, y: p.y - 0.2, z: p.z }, top: { x: p.x, y: p.y + 0.2, z: p.z }, radius: LIGHT_R });
+      out.push({ id: -2 - i, foot: { x: p.x, y: p.y - 0.2, z: p.z }, top: { x: p.x, y: p.y + 0.2, z: p.z }, radius: SPIRIT.light.r });
     });
     return out;
   }
