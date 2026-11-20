@@ -8,7 +8,7 @@ import { FLAG_COLORS } from '../../shared/flagFields.mjs';
 import { truckModel } from './truck';
 import type { CarSample } from '../../shared/wire.mjs';
 import { netClock, Track } from '../net/track';
-import { CarBody, groundPlane, PITCH_MAX, ROLL_MAX, skid } from './carBody';
+import { AIR_GAP, CarBody, groundPlane, PITCH_MAX, rideHeight, ROLL_MAX, skid } from './carBody';
 import { G, MASS, surfaceGrip, tyreForces, YAW_INERTIA } from './carGrip';
 import { CarLamps } from './carLights';
 import { CarSound } from './carSound';
@@ -96,6 +96,8 @@ export interface CrashHit {
   nz: number;
   speed: number;
   what: string;
+  /** It came down on the ground (`speed` m/s downwards, `what` the ground's material), no crash (world/crash.ts land) */
+  land?: boolean;
 }
 
 /** Something round the car can't drive through: a player, a tree trunk. */
@@ -133,6 +135,13 @@ const SPIN_STEP = 0.3;  // rad: the most a wheel turns per frame on screen (fast
 const DRAW = 250;       // m from the eye: further off a car isn't drawn (about 30 draw calls each; the village's parked cars go at 200 m)
 const ROLL_H = 0.45;    // m: the height the body pitches and rolls about, between the axles and the sills
 const TILT = 0.2;       // rad: the most the ground under the wheels tilts the car
+// In the air (world/carBody.ts rideHeight): how far the wheels hang down on their springs (m), and the nose
+// dropping a little as a real car's does off a ramp: towards NOSE (rad, nose down) at NOSE_RATE (1/s).
+const HANG = 0.08;
+const NOSE = -0.08;
+const NOSE_RATE = 2.5;
+/** What the tyres give in the air: nothing. */
+const AIRBORNE = { fx: 0, fy: 0, mz: 0, roll: 0, slideF: 0, slideR: 0 };
 /** Ground the tyres don't squeal on or mark: grass, earth, gravel (the block's material name, or none for the bare ground). */
 const ROUGH = /grass|lawn|meadow|field|earth|soil|mud|gravel|sand|hedge|leaves|moss|forest|wood_floor/i;
 /** The player's system asks for less motion: no camera sway or roll, no wider view at speed. */
@@ -368,6 +377,10 @@ export class Car {
   }
   /** m/s along its heading (negative backwards) */
   speed = 0;
+  /** m/s up, at the wheel (world/carBody.ts rideHeight) */
+  vy = 0;
+  /** At the wheel, off the ground: its tyres hold nothing until it lands (world/carBody.ts rideHeight) */
+  air = false;
   /** Someone else at the wheel (multiplayer), or null */
   driver: string | null = null;
   /** Who rides along in the passenger seat (multiplayer), or null */
@@ -426,6 +439,12 @@ export class Car {
   private ride = { pitch: 0, roll: 0, lift: 0, twist: 0 };
   private plane = { pitch: 0, roll: 0, lift: 0, twist: 0 };
   private still = 0; // frames it hasn't moved
+  // Drawn in the air: the car you drive while it is (air), someone else's while its track is well over the ground;
+  // how far its wheels hang (m); and for someone else's, its height last frame and its speed up from that (m/s).
+  private flying = false;
+  private hang = 0;
+  private lastY = 0;
+  private riseShown = 0;
   /** rad/s: the turn an off-centre knock gives it, dying away */
   private spinKick = 0;
   /** The hardest hit this frame at the wheel, for onCrash */
@@ -576,12 +595,16 @@ export class Car {
     this.braking = this.reverse = this.brakeWas = false;
     this.stood = 0;
     this.pushing = 0;
+    // Left in the air (nobody drives it on): it stands on the ground under it.
+    if (this.air) this.y = this.world.groundAt(this.x, this.z, this.y, CLEAR).y;
+    this.vy = 0;
+    this.air = false;
     this.track.clear(); // the server's next states start from here
   }
 
   /** Through a portal: standing still at (x, y, z) facing `yaw`, the camera behind it. */
   place(x: number, y: number, z: number, yaw: number): void {
-    Object.assign(this, { x, y, z, yaw, steer: 0, speed: 0, vx: 0, vz: 0, turn: 0, pedal: 0, brakePedal: 0, lastSpeed: 0, spinKick: 0, braking: false, reverse: false, stood: 0, brakeWas: false, camHeading: yaw, camYaw: 0, fresh: true });
+    Object.assign(this, { x, y, z, yaw, steer: 0, speed: 0, vx: 0, vz: 0, vy: 0, air: false, turn: 0, pedal: 0, brakePedal: 0, lastSpeed: 0, spinKick: 0, braking: false, reverse: false, stood: 0, brakeWas: false, camHeading: yaw, camYaw: 0, fresh: true });
     this.motion.reset();
     this.track.clear();
   }
@@ -594,7 +617,7 @@ export class Car {
     this.driver = s.driver;
     this.passenger = s.passenger ?? null;
     if (snap || Math.hypot(s.x - this.x, s.z - this.z) > 10) {
-      Object.assign(this, { x: s.x, y: s.y, z: s.z, yaw: s.yaw, steer: s.s, speed: 0, spinKick: 0, turn: 0, fresh: true });
+      Object.assign(this, { x: s.x, y: s.y, z: s.z, yaw: s.yaw, steer: s.s, speed: 0, vy: 0, air: false, spinKick: 0, turn: 0, fresh: true });
       this.motion.reset();
       this.track.clear();
     }
@@ -648,9 +671,38 @@ export class Car {
     // The brake lights: braking, and standing on the brake or the handbrake.
     this.braking = (brk && !this.reverse) || (input.throttle > 0.05 && this.speed < -0.3) || !!input.handbrake;
     this.pushing = this.pedal || this.brakePedal; // as the car takes the pedals (eased in)
-    const g = this.world.groundAt(this.x, this.z, this.y, CLEAR).y;
-    this.y += (g - this.y) * (1 - Math.exp(-dt * 12));
+    // Its height: on the ground under it, or flying where that drops away (world/carBody.ts rideHeight).
+    const g = this.world.groundAt(this.x, this.z, this.y, CLEAR);
+    const was = this.air;
+    const down = rideHeight(this, g.y, dt);
+    // Off a ramp it was still rising onto (its height a little behind the ground's): it flies from where it is drawn.
+    if (this.air && !was && this.ride.lift > 0) {
+      this.y += this.ride.lift;
+      this.ride.lift = this.plane.lift = 0;
+    }
+    if (down > 0) this.landed(down, g.mat, true);
     return impact;
+  }
+
+  /**
+   * It came down on the ground (`mat`) at `speed` m/s: the body sinks on its springs by how hard (world/carBody.ts
+   * land), a thump as loud, dust off gravel, earth or grass and a crunch when it lands hard (world/crash.ts land, by
+   * onCrash). No damage: at the wheel it loses a little speed, at most 5 %. `local`: you drive it (else the others'
+   * cars, landing on their track).
+   */
+  private landed(speed: number, mat: string | undefined, local: boolean): void {
+    this.hang = 0; // its wheels are on the ground again
+    if (speed < 1) return;
+    this.motion.land(speed);
+    this.noise.thump(this.x, this.y, this.z, speed);
+    if (local) {
+      const k = 1 - Math.min(0.05, 0.005 * speed);
+      this.vx *= k;
+      this.vz *= k;
+      this.speed *= k;
+    }
+    const [fx, fz] = this.forward;
+    Car.onCrash({ x: this.x, y: this.y + 0.1, z: this.z, nx: fx, nz: fz, speed, what: mat ?? '', land: true });
   }
 
   private free(x: number, z: number, yaw: number, others: Obstacle[]): boolean {
@@ -715,12 +767,14 @@ export class Car {
     // The tyres on what is under them (front wheels, rear wheels).
     const muF = (TYRE * (this.grip[0] + this.grip[1])) / 2;
     const muR = (TYRE * (this.grip[2] + this.grip[3])) / 2;
-    const t = tyreForces({ u, s: side, r: this.turn, delta, drive, brake, locked: hb, muF, muR, ax: this.ax });
+    // In the air they hold nothing: no pull, no brakes, no steering; it flies on as it went, turning as it turned.
+    const flying = this.air;
+    const t = flying ? AIRBORNE : tyreForces({ u, s: side, r: this.turn, delta, drive, brake, locked: hb, muF, muR, ax: this.ax });
     // At a crawl the tyres can't slide: the car simply follows its front wheels (the sideways slide dies
     // out), blended into the tyres' own pushing and turning by 5 m/s.
     // (Its whole speed, not only along itself: a car sliding sideways in a handbrake turn is no crawl.)
     const moving = Math.hypot(u, side);
-    const grips = Math.min(1, Math.max(0, (moving - 2) / 3));
+    const grips = flying ? 1 : Math.min(1, Math.max(0, (moving - 2) / 3));
     let du = ((grips * t.fx + (1 - grips) * t.roll) / MASS) * dt;
     const ds = (t.fy / MASS) * dt;
     // The brakes stop it, they don't push it back the other way.
@@ -734,13 +788,13 @@ export class Car {
     // How fast it turns: what the tyres turn it by (at a crawl, the front wheels' way).
     const follow = (u / WHEELBASE) * Math.tan(delta);
     let turn = this.turn + (t.mz / YAW_INERTIA) * dt;
-    if (hb) {
+    if (hb && !flying) {
       // A handbrake turn swings the car round as far as about half round, not on into a spin: past SPIN_FROM
       // of slide its turning dies away.
       const beta = Math.abs(Math.atan2(side, u));
       turn *= Math.exp(-dt * SPIN_DAMP * Math.min(1, Math.max(0, (beta - SPIN_FROM) / 0.5)));
     }
-    if (!hb && moving > 5) {
+    if (!hb && !flying && moving > 5) {
       // The stability control: turning faster than the wheel asks (the back sliding out), or the other way,
       // it is brought back to what the tyres can hold. Not while the handbrake is on: that is the point of it.
       const most = (1.15 * Math.min(muF, muR) * G) / moving;
@@ -758,10 +812,10 @@ export class Car {
     const crawl = side * Math.exp(-dt * GRIP);
     let vx = grips * (fx * un - fz * sn) + (1 - grips) * (gx * un - gz * crawl);
     let vz = grips * (fz * un + fx * sn) + (1 - grips) * (gz * un + gx * crawl);
-    // Rolling and air: it coasts to a stop. Never over its top speed, whichever way it goes.
+    // Rolling and air: it coasts to a stop (in the air only the air slows it). Never over its top speed, whichever way it goes.
     const v = Math.hypot(vx, vz);
     if (v > 1e-9) {
-      const slow = Math.max(0, v - (0.4 + 0.0004 * v * v) * dt);
+      const slow = Math.max(0, v - ((flying ? 0 : 0.4) + 0.0004 * v * v) * dt);
       const keep = Math.min(slow, max) / v;
       vx *= keep;
       vz *= keep;
@@ -886,7 +940,8 @@ export class Car {
     const wide = CALM ? 0 : Math.min(1, Math.max(0, (v - 12) / 40));
     this.fovScale += (1 + 0.1 * wide * wide * (3 - 2 * wide) - this.fovScale) * (1 - Math.exp(-d * 1.5));
     const dist = 6.5 + this.camBack;
-    const target: Point = { x: this.x, y: this.y + this.ride.lift + 1.4 + (CALM ? 0 : 0.5 * this.motion.heave), z: this.z };
+    // It rides the bumps a little, and dips with the body as the car lands (world/carBody.ts land).
+    const target: Point = { x: this.x, y: this.y + this.ride.lift + 1.4 + (CALM ? 0 : 0.5 * this.motion.heave + 0.8 * this.motion.sink), z: this.z };
     const want: Point = {
       x: target.x + Math.sin(h) * Math.cos(this.camPitch) * dist + Math.cos(h) * this.camSide,
       y: target.y + Math.sin(this.camPitch) * dist,
@@ -946,13 +1001,16 @@ export class Car {
     this.blurMat.visible = this.blurMat.opacity > 0.02;
     for (const w of this.front) w.rotation.y = w.userData.baseYaw + this.steer;
     // Each wheel's spring takes the twist of the ground the car can't follow (front left and rear right one way).
+    // In the air the wheels hang down on their springs.
     const twist = Math.max(-0.06, Math.min(0.06, this.ride.twist));
+    this.hang += ((this.flying ? HANG : 0) - this.hang) * (1 - Math.exp(-Math.min(Math.max(dt, 0), 0.1) * 12));
     for (const w of this.wheels) {
       const i: number | undefined = w.pivot.userData.corner;
-      if (i !== undefined) w.pivot.position.y = this.axle.hub[i] + (i === 0 || i === 3 ? twist : -twist);
+      if (i !== undefined) w.pivot.position.y = this.axle.hub[i] + (i === 0 || i === 3 ? twist : -twist) - this.hang;
     }
-    // The body on its springs: back when it speeds up, forward when it brakes, out of a turn, knocked by kerbs.
-    this.body.position.y = ROLL_H + this.motion.heave;
+    // The body on its springs: back when it speeds up, forward when it brakes, out of a turn, knocked by kerbs,
+    // sinking as it lands.
+    this.body.position.y = ROLL_H + this.motion.heave + this.motion.sink;
     this.body.rotation.set(this.motion.pitch, 0, this.motion.roll);
     this.lastSpeed = this.speed;
     // Its lights: the brake lights as by day, and at night while someone drives it the headlights and tail lights.
@@ -978,9 +1036,10 @@ export class Car {
     this.fresh = false;
     let along = 0;
     if (jump) {
-      this.along = this.side = this.yawRate = 0;
+      this.along = this.side = this.yawRate = this.riseShown = 0;
       this.motion.reset();
     } else {
+      this.riseShown += ((this.y - this.lastY) / dt - this.riseShown) * (1 - Math.exp(-d * 12));
       const [fx, fz] = this.forward;
       const side = local ? -this.vx * fz + this.vz * fx : (-dx * fz + dz * fx) / dt;
       this.side += (side - this.side) * (1 - Math.exp(-d * 10));
@@ -994,8 +1053,9 @@ export class Car {
     const across = local && !jump ? this.ay : -this.speed * this.yawRate;
     this.motion.step(dt, local && !jump && !this.crashed ? this.ax : this.along, across);
     this.knock = Math.max(0, this.knock - dt);
-    this.still = Math.hypot(dx, dz) < 1e-3 && Math.abs(turned) < 1e-4 ? this.still + 1 : 0;
-    if (jump || this.still < 30) this.ground(dt, jump);
+    this.still = Math.hypot(dx, dz) < 1e-3 && Math.abs(turned) < 1e-4 && Math.abs(this.y - this.lastY) < 1e-3 ? this.still + 1 : 0;
+    if (local) this.flying = this.air;
+    if (jump || this.still < 30) this.ground(dt, jump, local);
     else this.settle(dt); // standing still: it keeps the plane it found
     // Someone else's car stopping dead (it hit something): a thump from it.
     if (!local && along < -18 && this.knock <= 0) {
@@ -1014,7 +1074,7 @@ export class Car {
     // slide to all out at 4.4 m/s; others' cars from how they move.
     const slid = (m: number) => Math.min(1, Math.max(0, (m - 0.4) / 4));
     const slip = local ? { front: slid(this.slideF), rear: slid(this.slideR) } : skid(this.speed, this.side, this.along, across, false);
-    this.marks(slip, jump);
+    this.marks(slip, jump || this.flying);
     let paved = 0;
     let rough = 0;
     for (let i = 0; i < 4; i++) {
@@ -1030,18 +1090,26 @@ export class Car {
       slide: local ? Math.max(this.slideF, this.slideR) : Math.abs(this.side),
     });
     this.lastX = this.x;
+    this.lastY = this.y;
     this.lastZ = this.z;
     this.lastYaw = this.yaw;
   }
 
-  /** The ground under the four wheels: the plane the car tilts to, and a knock where one wheel's ground jumps. */
-  private ground(dt: number, jump: boolean): void {
+  /**
+   * The ground under the four wheels: the plane the car tilts to, and a knock where one wheel's ground jumps. In
+   * the air (`local`: the car you drive, from its own height; someone else's from its track, well over the ground
+   * and down again when it is back on it) the body levels out of the ground's tilt, its nose drops a little, and
+   * it lands.
+   */
+  private ground(dt: number, jump: boolean, local = true): void {
     const c = Math.cos(this.yaw);
     const s = Math.sin(this.yaw);
     const step = [0, 0, 0, 0];
+    let mat: string | undefined;
     for (let i = 0; i < 4; i++) {
       const [lx, lz] = this.axle.at[i];
       const g = this.world.groundAt(this.x + lx * c + lz * s, this.z - lx * s + lz * c, this.y, CLEAR);
+      mat ??= g.mat;
       step[i] = g.y - this.under[i];
       this.under[i] = g.y;
       this.rise[i] = Math.max(-0.35, Math.min(0.35, g.y - this.y));
@@ -1049,6 +1117,16 @@ export class Car {
       this.grip[i] = surfaceGrip(g.mat, mood.wet, mood.snow);
     }
     const p = groundPlane(this.rise, this.axle.base, this.axle.track);
+    if (!local) {
+      const was = this.flying;
+      this.flying = !jump && (was ? -p.lift > 0.02 : -p.lift > AIR_GAP + 0.04);
+      if (was && !this.flying) this.landed(Math.max(0, -this.riseShown), mat, false);
+    }
+    if (this.flying) {
+      this.plane = { pitch: NOSE, roll: 0, lift: 0, twist: 0 };
+      this.settle(dt, false, NOSE_RATE);
+      return;
+    }
     this.plane = { pitch: Math.max(-TILT, Math.min(TILT, p.pitch)), roll: Math.max(-TILT, Math.min(TILT, p.roll)), lift: p.lift, twist: p.twist };
     this.settle(dt, jump);
     // One wheel's ground jumps against the others' (a kerb, the edge of the paving), not a slope under all four.
@@ -1067,13 +1145,17 @@ export class Car {
     }
   }
 
-  /** The car's tilt and height follow the ground's plane quickly (the tyres give a little); `now`: at once. */
-  private settle(dt: number, now = false): void {
+  /**
+   * The car's tilt and height follow the ground's plane quickly (the tyres give a little); `now`: at once. `tilt`
+   * (1/s): its tilt slower (in the air, where nothing under it turns it).
+   */
+  private settle(dt: number, now = false, tilt = 18): void {
     const k = now ? 1 : 1 - Math.exp(-Math.min(dt, 0.1) * 18);
+    const kt = now ? 1 : 1 - Math.exp(-Math.min(dt, 0.1) * tilt);
     const r = this.ride;
     const p = this.plane;
-    r.pitch += (p.pitch - r.pitch) * k;
-    r.roll += (p.roll - r.roll) * k;
+    r.pitch += (p.pitch - r.pitch) * kt;
+    r.roll += (p.roll - r.roll) * kt;
     r.lift += (p.lift - r.lift) * k;
     r.twist += (p.twist - r.twist) * k;
   }

@@ -25,6 +25,13 @@ const SUB = 1 / 120;
 /** A frame longer than this (s, a tab in the background) only moves the springs this far. */
 const DT_MAX = 0.1;
 
+/** A landing (land): the springs' speed per m/s it came down at, and the most; how far the body may sink (m). */
+const LAND_GAIN = 0.4;
+const LAND_MAX = 3.2;
+const SINK_MAX = 0.16;
+/** The landing's spring: a little more damped than the others, so it sinks once, comes up a touch and stays. */
+const SINK_DAMP = 0.6;
+
 /** A target that saturates softly at ±max instead of being cut off. */
 const soft = (x: number, max: number) => max * Math.tanh(x / max);
 
@@ -32,9 +39,12 @@ export class CarBody {
   pitch = 0;
   roll = 0;
   heave = 0;
+  /** m the body sinks on its springs as it lands (< 0 down; land), on top of heave */
+  sink = 0;
   private vPitch = 0;
   private vRoll = 0;
   private vHeave = 0;
+  private vSink = 0;
 
   /**
    * One frame: `along` the car's acceleration along its heading (m/s2, > 0 speeding up), `across` its
@@ -56,12 +66,24 @@ export class CarBody {
       this.roll += this.vRoll * h;
       this.vHeave += (HEAVE_W * HEAVE_W * -this.heave - 2 * DAMP * HEAVE_W * this.vHeave) * h;
       this.heave += this.vHeave * h;
+      this.vSink += (HEAVE_W * HEAVE_W * -this.sink - 2 * SINK_DAMP * HEAVE_W * this.vSink) * h;
+      this.sink += this.vSink * h;
     }
     // Never further than twice the usual most, and never not a number.
-    if (!Number.isFinite(this.pitch + this.roll + this.heave + this.vPitch + this.vRoll + this.vHeave)) this.reset();
+    if (!Number.isFinite(this.pitch + this.roll + this.heave + this.sink + this.vPitch + this.vRoll + this.vHeave + this.vSink)) this.reset();
     this.pitch = Math.max(-2 * PITCH_MAX, Math.min(2 * PITCH_MAX, this.pitch));
     this.roll = Math.max(-2 * ROLL_MAX, Math.min(2 * ROLL_MAX, this.roll));
     this.heave = Math.max(-0.08, Math.min(0.08, this.heave));
+    this.sink = Math.max(-SINK_MAX, Math.min(SINK_MAX, this.sink));
+  }
+
+  /**
+   * It came down at `speed` m/s (downwards, world/car.ts after rideHeight): the body sinks on its springs, the
+   * harder it lands the deeper (about 4 cm off a 25 cm drop, 8 cm off a metre, 15 cm at most), and settles.
+   */
+  land(speed: number): void {
+    if (!(speed > 0)) return;
+    this.vSink -= Math.min(LAND_MAX, speed * LAND_GAIN);
   }
 
   /** A knock from below (a kerb under a wheel): speeds given to the springs, in rad/s and m/s. */
@@ -74,8 +96,73 @@ export class CarBody {
 
   /** At rest at once (through a portal, back in the game). */
   reset(): void {
-    this.pitch = this.roll = this.heave = this.vPitch = this.vRoll = this.vHeave = 0;
+    this.pitch = this.roll = this.heave = this.sink = this.vPitch = this.vRoll = this.vHeave = this.vSink = 0;
   }
+}
+
+/** m/s2 down */
+export const GRAVITY = 9.81;
+/**
+ * m: how far the ground may fall away under the car before its tyres leave it (about a wheel's travel on its
+ * spring). Over less (the pavements' and the school plateau's 6 to 11 cm kerbs, a joint in the paving, a dip in a
+ * country road) the wheels follow it on their springs and keep their grip.
+ */
+export const AIR_GAP = 0.1;
+/** m/s up or down at most: the server takes a car up to 16 (server/game.mjs MAX_SPEED), so an honest fall never reaches it. */
+export const VY_MAX = 15;
+/** 1/s: how fast the car rises as the ground under it rises (as before: the tyres and springs give a little). */
+const RISE = 12;
+
+/** The car's height (m, where its tyres touch), its speed up (m/s), and whether it is off the ground. */
+export interface Height {
+  y: number;
+  vy: number;
+  air: boolean;
+}
+
+/**
+ * One frame of the car's height over `floor`, the ground under its middle (world/car.ts drive). On its wheels it
+ * follows the ground: up as the ground rises (eased a little, as before, so a kerb never throws it up), and down
+ * at once, but never faster than it can fall. Where the ground drops away faster than that (a crest at speed, a
+ * ledge, a ditch's bank) and more than AIR_GAP below it, it is in the air: gravity pulls it down from the speed
+ * up or down it had, until it meets the ground again. Returns the speed (m/s, downwards) it landed at this frame,
+ * or 0. Never faster than VY_MAX either way.
+ */
+export function rideHeight(h: Height, floor: number, dt: number): number {
+  if (!(dt > 0) || !Number.isFinite(floor)) return 0;
+  if (!Number.isFinite(h.y) || !Number.isFinite(h.vy)) {
+    h.y = floor;
+    h.vy = 0;
+    h.air = false;
+    return 0;
+  }
+  const clamp = (v: number) => Math.max(-VY_MAX, Math.min(VY_MAX, v));
+  // Where a free flight takes it this frame (exact under gravity alone).
+  const vy = clamp(h.vy - GRAVITY * dt);
+  const fall = h.y + ((h.vy + vy) / 2) * dt;
+  if (h.air) {
+    if (fall > floor) {
+      h.y = fall;
+      h.vy = vy;
+      return 0;
+    }
+    // Down: on its wheels at once (it never sinks into the ground), and still.
+    h.y = floor;
+    h.vy = 0;
+    h.air = false;
+    return Math.max(0, -vy);
+  }
+  if (floor >= h.y) {
+    const y = h.y + (floor - h.y) * (1 - Math.exp(-dt * RISE));
+    h.vy = clamp((y - h.y) / dt);
+    h.y = y;
+    return 0;
+  }
+  const y = Math.max(floor, fall);
+  h.vy = clamp((y - h.y) / dt);
+  h.y = y;
+  h.air = y - floor > AIR_GAP;
+  return 0;
 }
 
 /**

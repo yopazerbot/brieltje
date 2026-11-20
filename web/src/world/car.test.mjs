@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { stripTypeScriptTypes } from 'node:module';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { CarBody, groundPlane, PITCH_MAX, ROLL_MAX, skid } from './carBody.ts';
+import { AIR_GAP, CarBody, groundPlane, PITCH_MAX, rideHeight, ROLL_MAX, skid, VY_MAX } from './carBody.ts';
 import * as grip from './carGrip.ts';
 import { KNOCK } from '../../shared/bikeKnock.mjs';
 
@@ -16,7 +16,7 @@ const definition = (name) => {
   assert.ok(start >= 0);
   return stripTypeScriptTypes(source.slice(start, source.indexOf('\n}', start) + 2));
 };
-const constants = ['WHEELBASE', 'WHEEL_R', 'ACCEL', 'BRAKE', 'REVERSE', 'HANDBRAKE', 'REGEN', 'GRIP', 'ESC', 'STEER', 'TYRE', 'STEER_HALF', 'STEER_FALL', 'STEER_IN', 'STICK_CURVE', 'REVERSE_HOLD', 'SPIN_FROM', 'SPIN_DAMP', 'CAM_FOLLOW', 'CAM_SLIDE', 'CAM_SWING', 'CLEAR', 'SPIN_STEP', 'DRAW', 'ROLL_H', 'TILT', 'ROUGH', 'CALM', 'angle']
+const constants = ['WHEELBASE', 'WHEEL_R', 'ACCEL', 'BRAKE', 'REVERSE', 'HANDBRAKE', 'REGEN', 'GRIP', 'ESC', 'STEER', 'TYRE', 'STEER_HALF', 'STEER_FALL', 'STEER_IN', 'STICK_CURVE', 'REVERSE_HOLD', 'SPIN_FROM', 'SPIN_DAMP', 'CAM_FOLLOW', 'CAM_SLIDE', 'CAM_SWING', 'CLEAR', 'SPIN_STEP', 'DRAW', 'ROLL_H', 'TILT', 'HANG', 'NOSE', 'NOSE_RATE', 'AIRBORNE', 'ROUGH', 'CALM', 'angle']
   .map(name => source.match(new RegExp(`^const ${name} = .*?;`, 'm'))?.[0]).join('\n');
 const classCode = source.slice(source.indexOf('export class Car')).replace('export class Car', 'class Car');
 // The marks and sounds a car makes, counted instead of drawn and played.
@@ -24,13 +24,13 @@ const laid = [];
 const skidMarks = { lay: (...a) => laid.push(a) };
 // The weather the tyres feel (world/mood.ts), set by the tests.
 const mood = { wet: 0, snow: 0 };
-const Car = new Function('THREE', 'netClock', 'CarBody', 'groundPlane', 'skid', 'PITCH_MAX', 'ROLL_MAX', 'skidMarks', 'G', 'MASS', 'surfaceGrip', 'tyreForces', 'YAW_INERTIA', 'mood', 'KNOCK',
-  stripTypeScriptTypes(`${constants}\n${classCode}`, { mode: 'transform' }) + '\nreturn Car;')(THREE, { time: 0 }, CarBody, groundPlane, skid, PITCH_MAX, ROLL_MAX, skidMarks,
+const Car = new Function('THREE', 'netClock', 'CarBody', 'groundPlane', 'skid', 'PITCH_MAX', 'ROLL_MAX', 'AIR_GAP', 'rideHeight', 'skidMarks', 'G', 'MASS', 'surfaceGrip', 'tyreForces', 'YAW_INERTIA', 'mood', 'KNOCK',
+  stripTypeScriptTypes(`${constants}\n${classCode}`, { mode: 'transform' }) + '\nreturn Car;')(THREE, { time: 0 }, CarBody, groundPlane, skid, PITCH_MAX, ROLL_MAX, AIR_GAP, rideHeight, skidMarks,
   grip.G, grip.MASS, grip.surfaceGrip, grip.tyreForces, grip.YAW_INERTIA, mood, KNOCK);
 
 function vehicle(spec = specs.cars.tesla, groundAt = () => ({ y: 0, name: 'street', mat: 'asphalt' })) {
   return Object.assign(Object.create(Car.prototype), {
-    spec, x: 0, y: 0, z: 0, yaw: 0, steer: 0, vx: 0, vz: 0, speed: 0, lastSpeed: 0,
+    spec, x: 0, y: 0, z: 0, yaw: 0, steer: 0, vx: 0, vz: 0, speed: 0, lastSpeed: 0, vy: 0, air: false, flying: false, hang: 0, lastY: 0, riseShown: 0,
     halfL: spec.length / 2, halfW: spec.width / 2, key: 'test-car', ready: true, trees: [],
     group: new THREE.Group(), body: new THREE.Group(), chassis: new THREE.Group(), front: [], wheels: [], spin: 0,
     blurMat: new THREE.MeshStandardMaterial(), taillight: new THREE.MeshStandardMaterial(), lamps: { update() {} },
@@ -515,4 +515,228 @@ test('knocking a bike costs the car 3 % of its speed (at least 0.3 m/s) and a th
   car.nudge(before);
   run(car, 0.5, throttle);
   assert.ok(Math.hypot(car.vx, car.vz) > before * 0.97, 'it pulls on');
+});
+
+// In the air (world/carBody.ts rideHeight, world/car.ts drive): leaving the ground and landing.
+
+/** Rolling along -z at `v` m/s with `input`, frame by frame: when it took off and landed, how high and how fast. */
+function flight(car, v, seconds, input = { throttle: 0, brake: 0, steer: 0, handbrake: false }) {
+  Object.assign(car, { vz: -v, speed: v, lastSpeed: v });
+  car.noise.owner = car;
+  const out = { off: null, on: null, frames: 0, most: 0, vyMost: 0, nose: 0, hang: 0, landings: [] };
+  const onCrash = Car.onCrash;
+  Car.onCrash = (h) => out.landings.push(h);
+  try {
+    for (let i = 0; i < Math.round(seconds * 60); i++) {
+      const was = car.air;
+      car.drive(1 / 60, input, []);
+      car.update(1 / 60, true);
+      const floor = car.world.groundAt(car.x, car.z, car.y, 0.3).y;
+      out.most = Math.max(out.most, car.y - floor);
+      out.vyMost = Math.max(out.vyMost, Math.abs(car.vy));
+      if (car.air) {
+        out.frames++;
+        out.nose = Math.min(out.nose, car.ride.pitch);
+        out.hang = Math.max(out.hang, car.hang);
+      }
+      if (car.air && !was) out.off = { t: i / 60, z: car.z, speed: Math.hypot(car.vx, car.vz) };
+      if (!car.air && was) out.on = { t: i / 60, z: car.z, speed: Math.hypot(car.vx, car.vz) };
+    }
+  } finally {
+    Car.onCrash = onCrash;
+  }
+  return out;
+}
+
+test('off a 1 m ledge at 20 m/s it flies about 0.45 s and lands about 9 m on, its speed and heading kept, the nose down a little', (t) => {
+  const car = vehicle(specs.cars.tesla, (x, z) => ({ y: z > -5 ? 1 : 0, mat: 'asphalt' }));
+  car.y = 1;
+  const f = flight(car, 20, 2);
+  assert.ok(f.off && f.on, 'it took off and landed');
+  const air = f.on.t - f.off.t;
+  assert.ok(Math.abs(air - 0.45) < 0.04, `in the air ${air.toFixed(3)} s`);
+  assert.ok(Math.abs(f.off.z - f.on.z - 9) < 0.6, `flew ${(f.off.z - f.on.z).toFixed(2)} m`);
+  assert.ok(f.on.speed > 0.97 * f.off.speed, `kept its speed (${f.off.speed.toFixed(2)} to ${f.on.speed.toFixed(2)} m/s)`);
+  assert.equal(car.yaw, 0, 'and its heading');
+  assert.ok(f.nose < -0.03 && f.nose > -0.11, `the nose dropped a little (${f.nose.toFixed(3)} rad)`);
+  assert.ok(f.hang > 0.05, `the wheels hung down (${f.hang.toFixed(3)} m)`);
+  assert.ok(Math.abs(car.y) < 1e-9 && !car.air, 'on the lower ground again');
+  const land = f.landings.find((h) => h.land);
+  assert.ok(land && Math.abs(land.speed - 4.43) < 0.3, `landed at ${land?.speed.toFixed(2)} m/s (a metre's fall is 4.4)`);
+  assert.ok(car.thumps.some(([, , , s]) => Math.abs(s - land.speed) < 1e-9), 'a thump as loud');
+  assert.ok(f.landings.every((h) => h.land), 'no crash');
+  t.diagnostic(`air ${air.toFixed(3)} s, flew ${(f.off.z - f.on.z).toFixed(2)} m, landed at ${land.speed.toFixed(2)} m/s, ${f.off.speed.toFixed(2)} to ${f.on.speed.toFixed(2)} m/s, nose ${f.nose.toFixed(3)} rad, wheels hung ${f.hang.toFixed(3)} m`);
+});
+
+test('in the air the tyres hold nothing: no pull, no brake, no steering', () => {
+  for (const input of [throttle, brake, { ...throttle, steer: 1 }, handbrake]) {
+    const car = vehicle(specs.cars.tesla, (x, z) => ({ y: z > -5 ? 1 : 0, mat: 'asphalt' }));
+    car.y = 1;
+    Object.assign(car, { z: -4.9, vz: -20, speed: 20, lastSpeed: 20 });
+    car.drive(1 / 60, input, []);
+    assert.ok(car.air, 'off the ledge');
+    const [turn, vx, vz] = [car.turn, car.vx, car.vz];
+    for (let i = 0; i < 20; i++) car.drive(1 / 60, input, []);
+    assert.ok(car.air, 'still flying');
+    // It goes on as it went, turning only as it already turned (from its frame on the ground).
+    assert.ok(car.turn === turn && Math.abs(Math.atan2(car.vx, car.vz) - Math.atan2(vx, vz)) < 1e-12, `${JSON.stringify(input)}: the wheel turns nothing`);
+    // The air alone: 0.0004 v2 m/s2, 0.05 m/s in a third of a second at 20 m/s.
+    assert.ok(car.vz - vz > 0.04 && car.vz - vz < 0.06, `${JSON.stringify(input)}: no pull or brake, only the air (${vz} to ${car.vz} m/s)`);
+  }
+});
+
+test('on flat ground at any speed, however it is driven, it never leaves the ground', () => {
+  const car = vehicle();
+  let air = 0;
+  let most = 0;
+  for (const [s, input] of [[30, throttle], [2, { ...throttle, steer: 1 }], [1.5, handbrake], [2, { ...throttle, steer: -1 }], [3, brake], [0.4, { ...brake, steer: 1 }], [30, throttle], [3, brake]]) {
+    for (let i = 0; i < s * 60; i++) {
+      car.drive(1 / 60, input, []);
+      car.update(1 / 60, true);
+      air += car.air ? 1 : 0;
+      most = Math.max(most, Math.abs(car.y), Math.abs(car.vy));
+    }
+  }
+  assert.equal(air, 0, 'never in the air');
+  assert.equal(most, 0, 'its height never moved');
+});
+
+test('a 3 cm step at 5 km/h, up or down, does not lift it; nor do 1 cm joints in the paving at 100 or 200 km/h', () => {
+  for (const [name, at, v] of [
+    ['3 cm up', (x, z) => (z < -2 ? 0.03 : 0), 5 / 3.6],
+    ['3 cm down', (x, z) => (z < -2 ? 0 : 0.03), 5 / 3.6],
+    ['joints at 100', (x, z) => 0.01 * (Math.floor(-z / 4) % 2), 100 / 3.6],
+    ['joints at 200', (x, z) => 0.01 * (Math.floor(-z / 4) % 2), 200 / 3.6],
+    ['a 3 cm kerb up at 50', (x, z) => (z < -2 ? 0.03 : 0), 50 / 3.6],
+  ]) {
+    const car = vehicle(specs.cars.tesla, (x, z) => ({ y: at(x, z), mat: 'concrete' }));
+    car.y = at(0, 0);
+    const f = flight(car, v, 4, { ...throttle, throttle: v > 5 ? 0.6 : 0.05 });
+    assert.equal(f.frames, 0, `${name}: never in the air`);
+    assert.ok(f.most < 0.03 && f.vyMost < 0.6, `${name}: it follows it (${f.most.toFixed(3)} m over it at most, ${f.vyMost.toFixed(2)} m/s)`);
+    assert.equal(f.landings.length, 0, `${name}: nothing to land from`);
+  }
+});
+
+test('off a pavement\'s 8 cm kerb at 50 km/h, or through an 8 cm dip in a country road at 200, its wheels keep the ground', () => {
+  for (const [name, at, v] of [
+    ['kerb', (x, z) => (z < -2 ? 0 : 0.08), 50 / 3.6],
+    // Down 6.8 % for 1.2 m, as on the straight road in the fields (tools/dev/carAir.mjs).
+    ['dip', (x, z) => -Math.max(0, Math.min(0.08, (-z - 20) * 0.068)), 200 / 3.6],
+  ]) {
+    const car = vehicle(specs.cars.tesla, (x, z) => ({ y: at(x, z), mat: 'concrete' }));
+    car.y = at(0, 0);
+    const f = flight(car, v, 2, { ...throttle, throttle: 0.6 });
+    assert.equal(f.frames, 0, `${name}: never in the air (${f.most.toFixed(3)} m over the ground at most)`);
+    assert.equal(f.landings.length, 0, `${name}: no landing`);
+  }
+});
+
+test('a crest at speed throws it, gently driven it follows; a kerb up never throws it', (t) => {
+  // Up 10 % for 10 m, then down 10 %.
+  const hill = (x, z) => ({ y: Math.max(0, 1 - Math.abs(-z - 20) * 0.1), mat: 'asphalt' });
+  const slow = flight(vehicle(specs.cars.tesla, hill), 5, 8);
+  assert.equal(slow.frames, 0, 'at 18 km/h it keeps to the road');
+  const fast = flight(vehicle(specs.cars.tesla, hill), 25, 3);
+  assert.ok(fast.frames > 6 && fast.most > 0.1, `at 90 km/h it flies off the top (${fast.frames} frames, ${fast.most.toFixed(2)} m)`);
+  // A 25 cm kerb up at 50 km/h: lifted onto it, never thrown over it.
+  const kerb = flight(vehicle(specs.cars.tesla, (x, z) => ({ y: z < -3 ? 0.25 : 0, mat: 'concrete' })), 50 / 3.6, 2);
+  assert.equal(kerb.frames, 0, 'up the kerb, no flight');
+  assert.ok(kerb.most < 0.01, `never over it (${kerb.most.toFixed(3)} m)`);
+  t.diagnostic(`crest at 90 km/h: ${fast.frames} frames in the air, ${fast.most.toFixed(2)} m over the ground; at 18 km/h ${slow.most.toFixed(3)} m`);
+});
+
+test('its speed up or down never passes 15 m/s: off a 40 m drop it lands at 15', () => {
+  const car = vehicle(specs.cars.tesla, (x, z) => ({ y: z > -5 ? 40 : 0, mat: undefined }));
+  car.y = 40;
+  const f = flight(car, 20, 5);
+  assert.ok(f.on, 'it landed');
+  assert.ok(f.vyMost <= VY_MAX && VY_MAX < 16, `at most ${f.vyMost} m/s (the server takes 16)`);
+  assert.ok(Math.abs(f.landings[0].speed - 15) < 1e-9 && f.landings[0].what === '', 'on the bare ground at 15 m/s');
+  assert.ok(f.on.speed > 0.9 * 20, `no damage, a little speed lost (${f.on.speed.toFixed(1)} m/s)`);
+  assert.ok(finite(car) && Math.abs(car.motion.sink) <= 0.16);
+});
+
+test('rideHeight stays finite and on or over the ground at any frame time and input', () => {
+  for (const dt of [1 / 60, 0.5, 5, 1e-6, 0, -1, NaN, 1 / 240]) {
+    for (const floor of [0, 1e6, -1e6, NaN, Infinity, 0.03]) {
+      const h = { y: 0, vy: 0, air: false };
+      for (let i = 0; i < 5; i++) {
+        rideHeight(h, floor, dt);
+        assert.ok(Number.isFinite(h.y) && Number.isFinite(h.vy) && Math.abs(h.vy) <= VY_MAX, `dt ${dt}, floor ${floor}`);
+        if (Number.isFinite(floor) && dt > 0) assert.ok(h.y >= Math.min(floor, 0) - 1e-9, 'never under the ground');
+      }
+    }
+  }
+  const h = { y: NaN, vy: Infinity, air: true };
+  rideHeight(h, 2, 1 / 60);
+  assert.deepEqual(h, { y: 2, vy: 0, air: false }, 'not a number: put on the ground');
+  assert.ok(AIR_GAP > 0.03 && AIR_GAP <= 0.12);
+});
+
+test('a landing sinks the body deeper the harder it lands, and it settles', (t) => {
+  let last = 0;
+  const dips = [];
+  for (const v of [1, 2, 4.43, 6, 8, 15]) {
+    const body = new CarBody();
+    body.land(v);
+    let least = 0;
+    for (let i = 0; i < 90; i++) {
+      body.step(1 / 60, 0, 0);
+      least = Math.min(least, body.sink);
+    }
+    assert.ok(least < last || v === 15, `${v} m/s sinks deeper (${least.toFixed(3)} m)`);
+    assert.ok(least >= -0.16, 'never more than 16 cm');
+    if (v === 4.43) assert.ok(least < -0.06 && least > -0.1, `a metre's fall: about 8 cm (${least.toFixed(3)})`);
+    last = least;
+    dips.push(`${v} m/s: ${(least * 100).toFixed(1)} cm`);
+    assert.ok(Math.abs(body.sink) < 2e-3 && Math.abs(body.heave) < 1e-9 && Math.abs(body.pitch) < 1e-9, `settled after 1.5 s (${body.sink})`);
+  }
+  const body = new CarBody();
+  body.land(NaN);
+  body.land(-3);
+  body.step(1 / 60, 0, 0);
+  assert.equal(body.sink, 0, 'nothing from no landing');
+  t.diagnostic(`the body sinks ${dips.join(', ')}`);
+});
+
+test('a car someone else drives is drawn in the air from its track, its wheels hanging, and lands with a thump', () => {
+  // The server's states twenty a second: along -z at 20 m/s, off a 1 m ledge at z = -10.
+  const fall = (t) => Math.max(0, 1 - Math.max(0, t - 0.5) ** 2 * 4.905);
+  let now = 0;
+  const car = vehicle(specs.cars.tesla, (x, z) => ({ y: z > -10 ? 1 : 0, mat: 'gravel' }));
+  car.noise.owner = car;
+  Object.assign(car, { y: 1, pose: [], track: { at: (time, pose) => {
+    const k = Math.floor(now * 20) / 20;
+    const y = fall(k) + (fall(k + 0.05) - fall(k)) * (now - k) * 20;
+    pose.length = 0;
+    pose.push(0, y, -20 * now, 0, 0);
+    return true;
+  } } });
+  const landings = [];
+  const onCrash = Car.onCrash;
+  Car.onCrash = (h) => landings.push(h);
+  let flew = 0;
+  let drawnOver = 0;
+  let hang = 0;
+  try {
+    for (let i = 0; i < 2 * 60; i++) {
+      now = i / 60;
+      car.update(1 / 60, false);
+      if (car.flying) {
+        flew++;
+        hang = Math.max(hang, car.hang);
+        drawnOver = Math.max(drawnOver, car.group.position.y - (car.z > -10 ? 1 : 0));
+      }
+    }
+  } finally {
+    Car.onCrash = onCrash;
+  }
+  assert.ok(flew > 10, `drawn flying (${flew} frames)`);
+  assert.ok(drawnOver > 0.3, `drawn well over the ground, not on it (${drawnOver.toFixed(2)} m)`);
+  assert.ok(hang > 0.04, `its wheels hanging (${hang.toFixed(3)} m)`);
+  assert.equal(landings.length, 1, 'one landing');
+  assert.ok(landings[0].land && landings[0].speed > 2.5 && landings[0].what === 'gravel', `seen landing at ${landings[0].speed.toFixed(2)} m/s on gravel`);
+  assert.ok(car.thumps.length >= 1, 'a thump');
+  assert.ok(!car.flying && car.hang < 0.01, 'on its wheels again');
 });

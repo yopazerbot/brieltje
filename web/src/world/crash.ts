@@ -32,6 +32,17 @@ function dustOf(what: string): string {
   return '#c4beb3';
 }
 
+/**
+ * The dust a landing throws up, by the ground's material (none: the bare ground, earth and grass): gravel's grey,
+ * earth's brown, a thinner pale one off grass; the bits thrown with it. None off paving.
+ */
+function landDust(mat: string): { color: string; bits: string; alpha: number } | null {
+  if (/gravel|sand/i.test(mat)) return { color: '#bdb5a6', bits: '#8d877c', alpha: 0.5 };
+  if (!mat || /earth|soil|mud|field|forest|leaves/i.test(mat)) return { color: '#9b8466', bits: '#5e4a35', alpha: 0.45 };
+  if (/grass|lawn|meadow|moss/i.test(mat)) return { color: '#a89a78', bits: '#55662f', alpha: 0.3 };
+  return null;
+}
+
 let noise: AudioBuffer | null = null;
 function noiseBuffer(c: AudioContext): AudioBuffer {
   if (noise?.sampleRate === c.sampleRate) return noise;
@@ -47,6 +58,7 @@ export class Crash {
     c0: new THREE.Color(), c1: new THREE.Color(), alpha: 1, cell: 0, drag: 0, gravity: 0, spin: 0, stretch: 0,
   };
   private last = 0;
+  private lastLand = 0;
 
   constructor(private particles: Particles) {}
 
@@ -68,7 +80,52 @@ export class Crash {
     }
   }
 
+  /**
+   * A car coming down on the ground (world/car.ts landed: `h.speed` m/s downwards, `h.what` the ground's material,
+   * (nx, nz) the way it points): a puff of dust round its wheels off gravel, earth or grass, more the harder it
+   * lands, and from about 6 m/s down a crunch, softer than a crash's. Nothing on paving but the thump the car makes.
+   */
+  land(h: CrashHit): void {
+    const now = performance.now();
+    if (now - this.lastLand < 150) return;
+    this.lastLand = now;
+    const k = Math.min(1, (h.speed - 1) / 7); // 0 a small hop .. 1 about a 3 m drop
+    const dust = landDust(h.what);
+    if (dust && h.speed > 1.5) {
+      const s = this.s;
+      const n = Math.round((6 + 18 * k) * this.particles.budget);
+      const [rx, rz] = [-h.nz, h.nx]; // to the car's right
+      for (let i = 0; i < n; i++) {
+        // From under the four wheels (2.9 m apart, 1.6 m across), blown out sideways and along, low.
+        const along = (i % 2 ? 1.45 : -1.45) + (Math.random() - 0.5) * 0.6;
+        const across = (i % 4 < 2 ? 0.9 : -0.9) + (Math.random() - 0.5) * 0.4;
+        const out = (0.8 + 1.6 * k) * (0.5 + Math.random());
+        s.x = h.x + h.nx * along + rx * across;
+        s.y = h.y + Math.random() * 0.15;
+        s.z = h.z + h.nz * along + rz * across;
+        s.vx = rx * Math.sign(across) * out + (Math.random() - 0.5);
+        s.vy = 0.3 + Math.random() * (0.4 + 0.8 * k);
+        s.vz = rz * Math.sign(across) * out + (Math.random() - 0.5);
+        s.stretch = 0;
+        Object.assign(s, { life: 1 + Math.random() * 1.2, size0: 0.25, size1: 1 + 1.2 * k, alpha: dust.alpha, cell: PARTICLE.puff, drag: 2.6, gravity: -0.1, spin: (Math.random() - 0.5) * 1.5 });
+        s.c0.set(dust.color);
+        s.c1.copy(s.c0).multiplyScalar(1.08);
+        this.particles.spawn(s);
+      }
+      // Grit and bits of turf thrown up.
+      this.throw({ ...h, nx: 0, nz: 0 }, 4 + 10 * k, 1.5 + 2 * k, 1, 0.8, (p) => {
+        Object.assign(p, { life: 0.5 + Math.random() * 0.4, size0: 0.02 + Math.random() * 0.03, size1: 0.02, alpha: 1, cell: PARTICLE.chip, drag: 0.4, gravity: 9.8, spin: (Math.random() - 0.5) * 25 });
+        p.c0.set(dust.bits);
+        p.c1.copy(p.c0);
+      });
+    }
+    // A hard landing sounds like a crash, a softer one and without breaking glass (the thump is the car's own,
+    // world/carSound.ts).
+    if (h.speed > 6) this.crunch({ ...h, speed: Math.min(7, 1.5 + (h.speed - 6) * 1.5) }, 'masonry');
+  }
+
   hit(h: CrashHit): void {
+    if (h.land) return this.land(h);
     const now = performance.now();
     if (now - this.last < 120) return; // one crash, not one per frame of scraping
     this.last = now;
