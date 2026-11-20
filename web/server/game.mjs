@@ -58,6 +58,7 @@ import { churchPrisms, makeChurch } from '../shared/church.mjs';
 import { cafePrisms, makeCafe } from '../shared/sparrenhof.mjs';
 import { DROP, dropFrom, HOME_DROP } from '../shared/parachute.mjs';
 import { BikeHits } from './bikeHits.mjs';
+import { BrookSpirit } from './brookSpirit.mjs';
 import { CarSeats, SEAT_REFUSED } from './carSeats.mjs';
 import { Football } from './football.mjs';
 import { GoalTracker, readGoals } from './goals.mjs';
@@ -383,7 +384,7 @@ const ROOM_REFUSED = new Set(['furn', 'tesla', 'clown', 'rules', 'mood', 'moodsk
  * when a type Game.handle reads is in neither list.
  */
 export const HELI_REFUSED = new Set(['hit', 'rocket', 'nade', 'boom', 'shot', 'crack', 'vil', 'cat', 'clownhit', 'zhit', 'zitem', 'zbuy', 'revive', 'pickup', 'coin', 'tag', 'kickball',
-  'glass', 'door', 'furn', 'tesla', 'clown', 'claymore', 'turret', 'stakes', 'placement', 'car', 'horse', 'bike', 'bell', 'spawn', 'chute', 'unstuck', 'vhit', 'asup']);
+  'glass', 'door', 'furn', 'tesla', 'clown', 'claymore', 'turret', 'stakes', 'placement', 'car', 'horse', 'bike', 'bell', 'spawn', 'chute', 'unstuck', 'vhit', 'asup', 'sphit']);
 
 /** The ids a `door` message may carry: the house data's and the end house's door ids (letters, digits, dots and dashes), at most 40 characters. */
 export const DOOR_ID = /^[A-Za-z0-9.-]{1,40}$/;
@@ -495,6 +496,7 @@ export class Game {
       pace: GOAL_PACE, avg: GOAL_AVG, models: GOAL_MODELS, allTime: GOAL_ALL_TIME,
       store: () => this.auth?.store, clock: mono, tell: (name, m) => this.players.has(name) && this.send(this.players.get(name).ws, m), changed: () => this.hub?.scored(), onBoard,
     });
+    this.spirit = room ? null : new BrookSpirit(this, { trees: HOUSE.surroundings?.trees ?? [] }); // the Brook Spirit's fight (server/brookSpirit.mjs), in the open world
     this.zombieBests = Object.create(null); // place id -> the best wave ever in the Zombies game there (loadRules, saveZombieBest)
     // The ticks (see snapshot): their count, and what each car, horse and strongman looked like in the
     // last one, kept here so the objects sent in 'car' and 'horse' messages stay as they are.
@@ -694,7 +696,7 @@ export class Game {
       time: now, cats: this.catsDown.map((until) => Math.max(0, until - now)), ...this.villagersView(now), clowns: this.clownList(now, player), furniture: this.furnitureFor(player), rules: this.shownRules(),
       scores: this.scoreList(), limit: KILL_LIMIT, items: this.items.map((it) => now >= it.until), round: this.roundOver ? { winner: this.roundOver.winner, ms: this.roundOver.until - now } : null,
       cars: Object.values(this.cars).filter((c) => this.seenBy(player, 'car', c)), horses: this.horses.filter((h) => this.seenBy(player, 'horse', h)), bikes: Object.values(this.bikes).filter((k) => this.seenBy(player, 'bike', k)), helis: this.helis.view().filter((e) => this.seenBy(player, 'heli', e)), mode: this.modeFor(player, now), mood: this.mood, moodCycle: this.moodView(now),
-      room: this.roomView(), vdmg: this.vehicleDamage.view(player),
+      room: this.roomView(), vdmg: this.vehicleDamage.view(player), spirit: this.spirit?.view(now),
     };
   }
 
@@ -841,7 +843,7 @@ export class Game {
     this.releaseBike(targetName);
     if (!target.guard) target.score.deaths++; // a flag game's guard counts for nothing (server/flagGuards.mjs)
     target.weapons = this.loadout(targetName, target); // dropped what they picked up
-    this.broadcastFrom({ t: 'kill', killer: by, victim: targetName, head: false, w: by === 'a strongman' ? 'strongman' : 'zombie' }, target); // not to those it is hidden from (homeGate.hides)
+    this.broadcastFrom({ t: 'kill', killer: by, victim: targetName, head: false, w: by === 'a strongman' ? 'strongman' : by === 'the brook spirit' ? 'spirit' : 'zombie' }, target); // not to those it is hidden from (homeGate.hides)
     if (!target.guard) this.stats(targetName, { deaths: 1 });
     this.broadcast({ t: 'scores', list: this.scoreList() });
     zombies?.downed(targetName);
@@ -968,7 +970,7 @@ export class Game {
     }
     if (!m || typeof m !== 'object') return;
     if (m.t === 'state' ? ++player.states > 30 : ++player.others > 40) return;
-    if ((this.modes.noShooting || this.host?.holds(player)) && ['hit', 'vhit', 'rocket', 'nade', 'boom', 'shot', 'crack', 'vil'].includes(m.t)) return; // no fighting during a party game or a freeze
+    if ((this.modes.noShooting || this.host?.holds(player)) && ['hit', 'vhit', 'rocket', 'nade', 'boom', 'shot', 'crack', 'vil', 'sphit'].includes(m.t)) return; // no fighting during a party game or a freeze
     // A room changes nothing of the open world and holds its players at its place (server/rooms.mjs).
     if (this.room && ROOM_REFUSED.has(m.t)) return;
     if (this.room?.duel && (m.t === 'mode' || m.t === 'zwave')) return; // a duel room's game is the host's alone (server/duel.mjs)
@@ -1200,6 +1202,9 @@ export class Game {
     } else if (m.t === 'zhit') {
       // A shot that hit zombies (server/zombies.mjs checks it as a hit on a strongman is checked).
       this.modes.zombies?.hit(name, player, m, now);
+    } else if (m.t === 'sphit') {
+      // A shot that hit the Brook Spirit's heart or lights (server/brookSpirit.mjs hit: every check and the damage are the server's).
+      this.spirit?.hit(name, player, m, now);
     } else if (m.t === 'zitem') {
       // Walking over a reward (server/zombies.mjs take: there, within reach, of use, taken once).
       this.modes.zombies?.take(name, player, m, now);
@@ -2456,6 +2461,7 @@ export class Game {
     this.vehicleDamage.blast(name, at, w, now, act); // cars and helicopters in a team match (server/vehicleDamage.mjs)
     // Zombies caught in it lose health (server/zombies.mjs), as the strongmen do.
     this.modes.zombies?.blast(name, at, radius, bruteDamage(w, WEAPONS), w, now); // on its floor (at.y)
+    this.spirit?.blast(name, shooter, at, w, radius, damage, now); // the Brook Spirit's open heart and lit lights, for a thrower who fights it
     // Strongmen caught in it lose health too (less at the edge of the blast; they're big). Not during
     // the Zombies game, when they stand aside.
     for (const c of this.clowns.values()) {
@@ -2904,6 +2910,7 @@ export class Game {
       if (!p.alive && !this.roundOver && now >= p.respawnAt) {
         // After a death: by parachute onto open ground. In a room (Zombies only) at its place, on the ground.
         if (this.room) this.gather([name], this.room.arena);
+        else if (this.spirit?.wakes(p, now)) this.respawn(name, p, now, this.spirit.wakeSpot()); // downed by the Brook Spirit: on the lane by its wood
         else this.respawn(name, p, now, null, true);
       }
       else if (p.drop && !this.dropping(p, now)) this.landed(p, now); // a drop that took too long (a page gone quiet)
@@ -2918,6 +2925,7 @@ export class Game {
     if (!this.players.size) return;
     this.fenceAll();
     this.stepBrutes(now);
+    this.spirit?.tick(now); // the Brook Spirit (server/brookSpirit.mjs): its fighters, its attacks, `sp` to the pages near
     this.football.tick(this.players, now, (n) => this.onFoot(n), (p, msg) => this.send(p.ws, msg));
     this.snapshot(now);
   }

@@ -25,7 +25,7 @@ import { homeAt } from '../shared/homes.mjs';
 export const SEAT_REFUSED = new Set([
   'hit', 'vhit', 'rocket', 'nade', 'boom', 'shot', 'crack', 'glass', 'vil', 'cat', 'clownhit',
   'zhit', 'zitem', 'zbuy', 'revive', 'claymore', 'turret', 'stakes', 'placement',
-  'pickup', 'coin', 'tag', 'kickball', 'door', 'asup',
+  'pickup', 'coin', 'tag', 'kickball', 'door', 'asup', 'sphit',
 ]);
 
 /**
