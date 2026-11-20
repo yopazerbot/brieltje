@@ -671,16 +671,26 @@ export class Car {
     // The brake lights: braking, and standing on the brake or the handbrake.
     this.braking = (brk && !this.reverse) || (input.throttle > 0.05 && this.speed < -0.3) || !!input.handbrake;
     this.pushing = this.pedal || this.brakePedal; // as the car takes the pedals (eased in)
-    // Its height: on the ground under it, or flying where that drops away (world/carBody.ts rideHeight).
-    const g = this.world.groundAt(this.x, this.z, this.y, CLEAR);
+    // Its height: on the ground under it, or flying where that drops away (world/carBody.ts rideHeight). The ground
+    // under its four wheels, their mean: a seam between two pieces of paving or a bump under one wheel moves it a
+    // quarter as much, as the springs take it, where one sample under its middle threw it.
+    const c = Math.cos(this.yaw);
+    const s = Math.sin(this.yaw);
+    let floor = 0;
+    let mat: string | undefined;
+    for (const [lx, lz] of this.axle.at) {
+      const g = this.world.groundAt(this.x + lx * c + lz * s, this.z - lx * s + lz * c, this.y, CLEAR);
+      floor += g.y / 4;
+      mat ??= g.mat;
+    }
     const was = this.air;
-    const down = rideHeight(this, g.y, dt);
+    const down = rideHeight(this, floor, dt);
     // Off a ramp it was still rising onto (its height a little behind the ground's): it flies from where it is drawn.
     if (this.air && !was && this.ride.lift > 0) {
       this.y += this.ride.lift;
       this.ride.lift = this.plane.lift = 0;
     }
-    if (down > 0) this.landed(down, g.mat, true);
+    if (down > 0) this.landed(down, mat, true);
     return impact;
   }
 

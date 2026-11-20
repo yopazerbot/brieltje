@@ -531,7 +531,9 @@ function flight(car, v, seconds, input = { throttle: 0, brake: 0, steer: 0, hand
       const was = car.air;
       car.drive(1 / 60, input, []);
       car.update(1 / 60, true);
-      const floor = car.world.groundAt(car.x, car.z, car.y, 0.3).y;
+      // Over the ground under its four wheels, as the car takes it (world/car.ts drive).
+      const [c, s] = [Math.cos(car.yaw), Math.sin(car.yaw)];
+      const floor = car.axle.at.reduce((sum, [lx, lz]) => sum + car.world.groundAt(car.x + lx * c + lz * s, car.z - lx * s + lz * c, car.y, 0.3).y / 4, 0);
       out.most = Math.max(out.most, car.y - floor);
       out.vyMost = Math.max(out.vyMost, Math.abs(car.vy));
       if (car.air) {
@@ -618,14 +620,21 @@ test('a 3 cm step at 5 km/h, up or down, does not lift it; nor do 1 cm joints in
   }
 });
 
-test('off a pavement\'s 8 cm kerb at 50 km/h, or through an 8 cm dip in a country road at 200, its wheels keep the ground', () => {
+test('off a pavement\'s 8 cm kerb at 50 km/h, through an 8 cm dip in a country road at 200, over a seam in the paving or a wavy street, its wheels keep the ground', () => {
   for (const [name, at, v] of [
     ['kerb', (x, z) => (z < -2 ? 0 : 0.08), 50 / 3.6],
     // Down 6.8 % for 1.2 m, as on the straight road in the fields (tools/dev/carAir.mjs).
     ['dip', (x, z) => -Math.max(0, Math.min(0.08, (-z - 20) * 0.068)), 200 / 3.6],
+    // Down a 13 % slope onto paving that starts 2.7 cm proud of the ground and goes on down with it (Briel at
+    // 78, 254: one sample under the car's middle took the car's speed down away there, and it flew 15 cm).
+    ['seam', (x, z) => 0.13 * z + (z < -20 ? 0.027 : 0), 50 / 3.6],
+    // A street whose surface rises and falls 16 cm about every 5 m (Schildekensstraat at 119, -1063): under the
+    // middle alone it threw the car at 61 km/h; the wheels a wheelbase apart ride it out.
+    ['waves', (x, z) => 0.08 * Math.sin((2 * Math.PI * z) / 5), 70 / 3.6],
   ]) {
     const car = vehicle(specs.cars.tesla, (x, z) => ({ y: at(x, z), mat: 'concrete' }));
     car.y = at(0, 0);
+    car.vy = ((at(0, -0.05) - at(0, 0)) / 0.05) * v; // already going down the slope with it
     const f = flight(car, v, 2, { ...throttle, throttle: 0.6 });
     assert.equal(f.frames, 0, `${name}: never in the air (${f.most.toFixed(3)} m over the ground at most)`);
     assert.equal(f.landings.length, 0, `${name}: no landing`);
