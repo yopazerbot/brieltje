@@ -511,19 +511,22 @@ function* barkSteps(): Generator<void, THREE.DataTexture> {
   const relief = new Float64Array(BARK_W * BARK_H).fill(0.8);
   for (let y = 0; y < BARK_H; y++) {
     for (let x = 0; x < BARK_W; x++) {
-      // Furrowed: plates between cracks that wander a little as they run up.
-      const wander = noise(x / 24, y / 64, BARK_W / 24, BARK_H / 64, 1) * 2.2;
-      const ridge = Math.abs(Math.sin(((x / BARK_W) * 12 + wander) * Math.PI));
-      const plate = Math.pow(ridge, 0.45);
-      const grain = noise(x / 3, y / 14, BARK_W / 3, BARK_H / 14, 2);
-      const blotch = noise(x / 40, y / 40, BARK_W / 40, BARK_H / 40, 3);
-      const breaks = 1 - 0.45 * THREE.MathUtils.smoothstep(noise(x / 8, y / 5, BARK_W / 8, BARK_H / 5, 4), 0.7, 0.8);
-      const height = clamp01(plate * breaks * (0.8 + 0.2 * grain));
-      const lit = 0.22 + 0.5 * height + 0.08 * (blotch - 0.5);
+      // Furrowed: twenty narrow plates round the trunk between deep cracks that wander as they run up, now and then
+      // joining or splitting, the plates broken across into blocks, stringy along their length; grey-green lichen
+      // on some of them. (Every noise's cells divide the atlas, so it repeats without a seam.)
+      const wander = noise(x / 32, y / 64, BARK_W / 32, BARK_H / 64, 1) * 2.6 + noise(x / 8, y / 16, BARK_W / 8, BARK_H / 16, 9) * 0.7;
+      const ridge = Math.abs(Math.sin(((x / BARK_W) * 20 + wander) * Math.PI));
+      const plate = Math.pow(ridge, 0.32);
+      const grain = noise(x / 2, y / 8, BARK_W / 2, BARK_H / 8, 2);
+      const blotch = noise(x / 32, y / 32, BARK_W / 32, BARK_H / 32, 3);
+      const breaks = 1 - 0.55 * THREE.MathUtils.smoothstep(noise(x / 8, y / 4, BARK_W / 8, BARK_H / 4, 4), 0.66, 0.78);
+      const height = clamp01(plate * breaks * (0.76 + 0.24 * grain));
+      const lichen = THREE.MathUtils.smoothstep(noise(x / 16, y / 16, BARK_W / 16, BARK_H / 16, 8), 0.64, 0.8) * height;
+      const lit = 0.2 + 0.52 * height + 0.1 * (blotch - 0.5);
       const o = (y * W + x) * 4;
-      data[o] = Math.round(clamp01(lit * 1.02) * 255);
-      data[o + 1] = Math.round(clamp01(lit * 0.95) * 255);
-      data[o + 2] = Math.round(clamp01(lit * 0.86) * 255);
+      data[o] = Math.round(clamp01(lit * 1.02 * (1 + 0.04 * lichen)) * 255);
+      data[o + 1] = Math.round(clamp01(lit * 0.95 * (1 + 0.16 * lichen)) * 255);
+      data[o + 2] = Math.round(clamp01(lit * 0.86 * (1 + 0.1 * lichen)) * 255);
       data[o + 3] = Math.round(height * 255);
       // Birch: white with a faint sheen across.
       white[y * BARK_W + x] = 0.86 + 0.08 * noise(x / 30, y / 6, BARK_W / 30, BARK_H / 6, 5) - 0.05 * noise(x / 4, y / 2, BARK_W / 4, BARK_H / 2, 6);
@@ -811,28 +814,44 @@ export function leafCardMaterial(lean: number, flutter: number, turning: boolean
 /**
  * The bark of the trunks and branches on Medium and up: the bark atlas, its relief from the atlas's alpha, the
  * colour per corner (each kind of tree its own bark). Up the trunk the bark repeats every two trunk-widths
- * whatever the tree's height (the instance's own stretch, in the vertex shader), so a tall trunk's bark isn't drawn out.
+ * whatever the tree's height (the instance's own stretch, in the vertex shader), so a tall trunk's bark isn't drawn out;
+ * each trunk starts it at a place of its own, and a second, slower read varies its tone so the repeat doesn't show.
  * Its map (barkAtlas) too is put on once painted (paintSoon).
  */
 export function barkMaterial(): THREE.MeshStandardMaterial {
   const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 });
   material.userData.bark = true;
   material.onBeforeCompile = (shader) => {
-    shader.vertexShader = shader.vertexShader.replace(
+    shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vBarkAt;').replace(
       '#include <uv_vertex>',
       `#include <uv_vertex>
+      vBarkAt = vec3(0.0, 100.0, 0.0);
       #if defined(USE_INSTANCING) && defined(USE_MAP)
+      // Metres up the trunk (a trunk is 1 high, stretched to its height), and a number of the tree's own.
+      vBarkAt = vec3(fract(sin(dot(instanceMatrix[3].xz, vec2(12.9898, 78.233))) * 43758.5453), uv.y * length(instanceMatrix[1].xyz), 0.0);
       vMapUv.y *= length(instanceMatrix[1].xyz) / max(0.05, length(instanceMatrix[0].xyz));
+      vMapUv.y += vBarkAt.x * 7.0; // each trunk's bark starts at a place of its own
       #endif`,
     );
-    // Relief from the alpha: the cracks darker where the light falls across them.
-    shader.fragmentShader = shader.fragmentShader.replace(
+    // Relief from the alpha: the cracks darker where the light falls across them. The bark once more, a third the
+    // rate up the trunk, for its tone: the repeat up a tall trunk no longer lines up. Green algae and moss low down
+    // and on the trunk's north side, in its cracks (where it stays damp), less on a birch.
+    shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vBarkAt;').replace(
       '#include <map_fragment>',
       `#include <map_fragment>
       #ifdef USE_MAP
       float barkHigh = texture2D(map, vMapUv).a;
       vec2 barkSlope = vec2(dFdx(barkHigh), dFdy(barkHigh));
-      diffuseColor.rgb *= 0.75 + 0.25 * barkHigh;
+      vec4 barkSlow = texture2D(map, vec2(vMapUv.x, vMapUv.y * 0.31 + 0.43));
+      diffuseColor.rgb *= (0.75 + 0.25 * barkHigh) * (0.8 + 0.5 * dot(barkSlow.rgb, vec3(0.3, 0.55, 0.15)));
+      {
+        vec3 barkN = normalize((vec4(normalize(vNormal), 0.0) * viewMatrix).xyz);
+        float barkNorth = smoothstep(0.0, 0.8, dot(barkN.xz, vec2(-0.666, 0.746)));
+        float barkLow = smoothstep(1.8, 0.2, vBarkAt.y);
+        float barkGreen = max(barkNorth * 0.55, barkLow * 0.75) * (1.0 - barkHigh * 0.7) * smoothstep(0.2, 0.6, barkSlow.a + vBarkAt.x * 0.3);
+        barkGreen *= vMapUv.x > 0.5 ? 0.3 : 1.0;
+        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.05, 0.075, 0.025) * (0.7 + 0.6 * barkHigh), barkGreen * 0.7);
+      }
       #endif`,
     ).replace(
       '#include <normal_fragment_maps>',
@@ -844,7 +863,7 @@ export function barkMaterial(): THREE.MeshStandardMaterial {
         vec3 barkR1 = cross(barkY, normal);
         vec3 barkR2 = cross(normal, barkX);
         float barkDet = dot(barkX, barkR1);
-        vec3 barkGrad = sign(barkDet) * (barkSlope.x * barkR1 + barkSlope.y * barkR2) * 3.0;
+        vec3 barkGrad = sign(barkDet) * (barkSlope.x * barkR1 + barkSlope.y * barkR2) * 2.4;
         normal = normalize(abs(barkDet) * normal - barkGrad);
       }
       #endif`,
