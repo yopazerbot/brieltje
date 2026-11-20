@@ -1,41 +1,48 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { gpuName, guessFromName } from '../graphics';
 import { daylight } from './daylight';
 import { PARTICLE, particleSheet } from './sprites';
 
 /**
  * The brook spirit's look: a floating creature of mist for the woods by the brook (working name, in code only).
  * Our own design, a spirit of the brook valley in November, close to the will-o'-the-wisps of the marsh tales:
- * a rolling mass of dark mist with a lantern-like heart inside, seven long tendrils hanging and reaching out of
- * it, and fallen leaves and drops of brook water drawn up in a slow spiral round it.
+ * a boss: a rolling mass of dark mist about 5 m across with a lantern-like heart inside, seven thick tendrils of
+ * 6 to 8 m rising out of it in arches and curling down, and fallen leaves and drops of brook water drawn up in a
+ * slow spiral round it. Meant to float with its middle 3.5 to 4.5 m above the ground, so players look up at it.
  *
  * Only how it is drawn and moves: no rules, no health, no attacks. The rules will drive a few inputs:
  * - `group`: where it floats (the middle of the body) and which way it faces (rotation.y; its front is +z).
  * - `open` 0..1: how far the mist and the dark core open over the heart (the heart is what a player aims at).
- * - `shield` 0..1: the ring of leaves and drops closed into a shell round it.
+ * - `shield` 0..1: the ring of leaves and drops closed into a storm round it.
  * - `anger` 0..1: its cold green-white light turns amber; it moves faster.
  * - `reach`: a point in the world its two long front tendrils reach for, or null.
  * - `fade` 0..1: coming apart into mist and drifting lights (arriving, leaving, beaten).
- * - `hurt()`: a short flinch.
+ * - `ground`: the ground's height under it, for a soft dark patch there (null: none).
+ * - `hurt(strength, at?)`: a short flinch; `at`, where it was hit, flares the storm there while it shields itself.
  * open, shield, anger and reach ease towards what they are set to (a few tenths of a second), so the rules may set
  * them as 0 or 1; fade is shown as it is set (the rules animate it).
  *
  * How it is drawn, cheapest where it covers the most pixels:
  * - The model (tools/brook_spirit.py, public/models/brook-spirit.glb): the heart, the dark core and the tendrils,
  *   near and far. The tendrils are modelled straight; the vertex shader bends each along a curve made of a few
- *   numbers a frame (droop, curl at the tip, a wave running from the root, the pull of its motion, a reach), so
+ *   numbers a frame (an arch, a curl at the tip, a wave running from the root, the pull of its motion, a reach), so
  *   they need no bones (as some big games drive tentacles as effects tied to the creature's state). The core's
  *   opening closes in its vertex shader: each point slides along its meridian towards the front.
  * - The mist: soft camera-facing sprites from the game's own sheet (sprites.ts), one instanced draw, sorted back to
- *   front: dense dark puffs close round the core, thin torn wisps further out that trail behind as it moves, and a
- *   veil in front of the heart that parts when it opens. A sprite is never drawn through the core: one that would
+ *   front: near-black lobes at the heart of the cloud, charcoal ones round them, lighter torn wisps further out and
+ *   long ones hanging between the tendrils that trail behind as it moves, and a veil in front of the heart that
+ *   parts when it opens (40 soft sprites over the body on Medium and up, 16 on Low). A sprite is never drawn through the core: one that would
  *   cut it is slid along its line of sight to just in front of or behind it, so it keeps its size on screen and
  *   shows no hard edge. On Low (and phones) a single dark shell with moving bumps and a few sprites stand in.
  * - Light: drifting will-o'-the-wisp lights and a halo round the heart in a second, additive draw; the heart, the
  *   nodes under the tendrils and the hollow behind the opening glow (the game's bloom picks them up, Medium and up;
- *   every value stays far under the half floats' 65504). One small point light on Medium and up, none on Low.
- * - The leaves and drops: two instanced meshes; the shell a faint glassy skin of water round them.
- * Draw calls: 7 on Medium and up, 8 on Low (its body of mist), one more while it shields itself.
+ *   every value stays far under the half floats' 65504). One small point light on Medium and up on a graphics card
+ *   (spiritLightFits), none on Low.
+ * - The leaves and drops: two instanced meshes. Shielding, they race round in bands with the torn mist, the drops
+ *   drawn out into streaks, over a faint uneven skin that flares where it is hit.
+ * - A soft dark patch on the ground under it.
+ * Draw calls: 8 on Medium and up, 9 on Low (its body of mist), one more while it shields itself.
  */
 
 export type SpiritLook = 'low' | 'high';
@@ -67,19 +74,31 @@ const ARMS = 7;
 const LIP_OPEN = 0.78;
 const LIP_SHUT = 0.1;
 /** Within this distance from the core's middle (m), along the line of sight, no mist sprite is drawn. */
-const CORE_CLEAR = 0.95;
+const CORE_CLEAR = 1.35;
 /** The ring of leaves and drops: radius (m), and the shell's. */
-const RING = 2.6;
-const SHELL = 2.4;
+const RING = 3.6;
+const SHELL = 3.3;
 /** Beyond this (m) the far model is drawn. */
-const FAR = { low: 16, high: 32 };
+const FAR = { low: 24, high: 45 };
+/** The heart's middle in the body (tools/brook_spirit.py heart Z0). */
+const HEART_Z = 0.18;
 
 /** The light inside it: cold green-white, and amber when angered (linear). */
 const COLD = new THREE.Color('#c9ffe2');
 const AMBER = new THREE.Color('#ffa63a');
-/** The mist: charcoal close in, blue-grey further out. */
-const MIST_DENSE = new THREE.Color('#2f363d');
-const MIST_THIN = new THREE.Color('#66717c');
+/** The mist: near black at the heart of the cloud, charcoal lobes, blue-grey torn edges. */
+const MIST_CORE = new THREE.Color('#1a1f24');
+const MIST_DENSE = new THREE.Color('#2c343b');
+const MIST_THIN = new THREE.Color('#6f7a85');
+
+/**
+ * Whether its point light suits this graphics chip: a graphics card, not an integrated chip, where it costs about
+ * 0.6 ms a frame (it lights every lit pixel on the screen). For the constructor's `withLight`.
+ */
+export function spiritLightFits(renderer: THREE.WebGLRenderer): boolean {
+  const q = guessFromName(gpuName(renderer));
+  return q === 'high' || q === 'ultra';
+}
 
 let job: Promise<BrookSpiritModel | null> | null = null;
 
@@ -100,7 +119,7 @@ export function loadBrookSpirit(url = '/models/brook-spirit.glb'): Promise<Brook
         } else if (role === 'core') g.setAttribute('aInside', uv);
         g.deleteAttribute('uv');
         if (uv1) g.deleteAttribute('uv1');
-        g.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, -1, 0), role === 'tendrils' ? 7 : 1.6);
+        g.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), role === 'tendrils' ? 11 : 2.2);
         return g;
       };
       const src = gltf.scene.getObjectByName('Tendrils')!;
@@ -341,7 +360,10 @@ void main() {
   gl_FragColor = vec4(c, 1.0);
 }`;
 
-/** The shell: a faint skin of water, brightest at its edge, with slow ripples running over it. */
+/**
+ * The shell: a storm more than a skin. Streaks of water race round it in bands, the next band the other way,
+ * densest round the middle; the skin itself only shows faintly and unevenly, moving; where it is hit it flares.
+ */
 const SHELL_VERTEX = /* glsl */ `
 varying vec3 vN;
 varying vec3 vV;
@@ -360,14 +382,30 @@ const SHELL_FRAGMENT = /* glsl */ `
 uniform vec3 uLight;
 uniform float uShield;
 uniform float uTime;
+uniform vec4 uHit;
 varying vec3 vN;
 varying vec3 vV;
 varying vec3 vP;
 #include <fog_pars_fragment>
 void main() {
+  vec3 d = normalize(vP);
+  float lat = asin(clamp(d.y, -1.0, 1.0));
+  float lon = atan(d.z, d.x);
   float f = 1.0 - abs(dot(normalize(vN), vV));
-  float ripple = 0.5 + 0.5 * sin(vP.y * 7.0 + sin(vP.x * 3.0 + uTime) * 2.0 - uTime * 1.6);
-  vec3 c = uLight * uShield * (0.04 + 0.5 * pow(f, 3.0) + 0.05 * ripple * f);
+  // Two sheets of thin streaks racing round the opposite ways, one or the other by latitude (no hard band edge),
+  // each streak broken along its length; only round the middle.
+  float wave = sin(lat * 7.0 + sin(lon * 2.0 + uTime * 0.5));
+  float lane = sin(lat * 40.0 + wave * 2.0);
+  float east = pow(0.5 + 0.5 * sin(lon * 7.0 + uTime * 2.6 + lat * 5.0), 16.0);
+  float west = pow(0.5 + 0.5 * sin(lon * 6.0 - uTime * 2.2 - lat * 4.0 + 1.7), 16.0);
+  float streak = mix(east, west, 0.5 + 0.5 * wave) * smoothstep(0.2, 0.9, lane);
+  float middle = 1.0 - smoothstep(0.2, 1.1, abs(lat));
+  float uneven = 0.5 + 0.5 * sin(d.x * 6.0 + uTime * 1.3) * sin(d.y * 7.0 - uTime * 0.9) * sin(d.z * 5.0 + uTime * 1.1);
+  // A hit: a bright spot and a ring running out from it.
+  float near = 1.0 - dot(d, uHit.xyz);
+  float hit = uHit.w * (exp(-near * 40.0) + 0.5 * exp(-pow((near - (1.5 - uHit.w) * 0.2) * 25.0, 2.0)));
+  float a = 0.22 * pow(f, 3.0) * uneven * uneven + streak * middle * (0.35 + 0.4 * f) + hit * 2.5;
+  vec3 c = uLight * uShield * a;
   #ifdef USE_FOG
     #ifdef FOG_EXP2
       c *= exp(-fogDensity * fogDensity * vFogDepth * vFogDepth);
@@ -376,6 +414,25 @@ void main() {
     #endif
   #endif
   gl_FragColor = vec4(c, 1.0);
+}`;
+
+/** The soft dark patch on the ground under it, so it sits in the wood: darkest under its middle, no edge. */
+const PATCH_VERTEX = /* glsl */ `
+varying vec2 vUv;
+void main() {
+  vUv = uv;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}`;
+
+const PATCH_FRAGMENT = /* glsl */ `
+uniform float uDark;
+uniform float uTime;
+varying vec2 vUv;
+void main() {
+  vec2 q = vUv * 2.0 - 1.0;
+  float r = length(q) * (1.0 + 0.06 * sin(atan(q.y, q.x) * 5.0 + uTime * 0.4));
+  float a = uDark * pow(1.0 - smoothstep(0.0, 1.0, r), 1.6);
+  gl_FragColor = vec4(0.0, 0.0, 0.0, a);
 }`;
 
 /** Low's body: one dark shell with slow moving bumps, see-through at its edge and over the heart when open. */
@@ -430,7 +487,7 @@ function random(seed: number): () => number {
   return () => (s = (s * 16807) % 2147483647) / 2147483647;
 }
 
-type Layer = 'dense' | 'wisp' | 'veil' | 'mote' | 'halo';
+type Layer = 'dense' | 'wisp' | 'trail' | 'veil' | 'mote' | 'halo';
 
 interface Sprite {
   layer: Layer;
@@ -515,8 +572,8 @@ class SpritePool {
 
 /** How many of each, Medium and up / Low. The dense, wisp and veil sprites are the soft ones over the body (40 at most). */
 const COUNTS = {
-  high: { dense: 16, wisp: 14, veil: 4, mote: 12, leaves: 64, drops: 24 },
-  low: { dense: 6, wisp: 6, veil: 2, mote: 6, leaves: 32, drops: 12 },
+  high: { dense: 18, wisp: 12, trail: 6, veil: 4, mote: 14, leaves: 160, drops: 70 },
+  low: { dense: 7, wisp: 5, trail: 2, veil: 2, mote: 6, leaves: 50, drops: 24 },
 };
 
 // ---------------------------------------------------------------------------------------------- the creature
@@ -535,6 +592,23 @@ interface Bend {
   thick: number;
 }
 
+/**
+ * Each tendril's arch at rest (radians): its turn up at the root (negative is up), how far it bends down along its
+ * length, and its tip's curl under. The two front ones rise highest and reach forward, as if about to strike; the
+ * others differ a little each, so the outline is uneven.
+ */
+const ARCH: [number, number, number][] = [
+  [-0.95, 1.3, 1.2],
+  [-0.9, 1.25, 1.3],
+  [-0.7, 1.9, 1.3],
+  [-0.5, 2.1, 1.1],
+  [-0.45, 2.2, 1.4],
+  [-0.65, 1.8, 1.2],
+  [-0.55, 2.0, 1.0],
+];
+
+const Z_AXIS = new THREE.Vector3(0, 0, 1);
+
 const ease = (cur: number, target: number, rate: number, dt: number) => cur + (target - cur) * (1 - Math.exp(-rate * dt));
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 
@@ -548,11 +622,14 @@ export class BrookSpirit {
   fade = 0;
   /** A point in the world its two front tendrils reach for, or null. */
   reach: THREE.Vector3 | null = null;
+  /** The height of the ground under it in the world, for the soft dark patch there; null for none. */
+  ground: number | null = null;
 
   /** What is shown now (eased towards the inputs). */
   private shown = { open: 0, shield: 0, anger: 0, reach: 0 };
   private reachAt = new THREE.Vector3();
   private hurtT = 0;
+  private hitT = 0;
   private time = 0;
   private phase = 0;
   private pulse = 0;
@@ -567,13 +644,14 @@ export class BrookSpirit {
   private glow: SpritePool;
   private veil: THREE.Mesh;
   private shell: THREE.Mesh;
+  private patch: THREE.Mesh;
   private leaves: THREE.InstancedMesh;
   private drops: THREE.InstancedMesh;
   private light: THREE.PointLight | null = null;
   private sprites: Sprite[] = [];
   private order: number[] = [];
   private depth: number[] = [];
-  private ring: { u: number; r: number; h: number; tilt: number; spin: THREE.Vector3; size: number }[] = [];
+  private ring: { u: number; r: number; h: number; tilt: number; spin: THREE.Vector3; size: number; lat: number; lift: number }[] = [];
 
   private lightColor = new THREE.Color();
   private uniforms = {
@@ -592,7 +670,14 @@ export class BrookSpirit {
   };
   private shared = { uCore: { value: new THREE.Vector4(0, 0, 0, CORE_CLEAR) }, uTime: { value: 0 } };
   private heartU = { uLight: this.uniforms.uLight, uHeart: { value: 1 } };
-  private shellU = { ...THREE.UniformsUtils.clone(THREE.UniformsLib.fog), uLight: this.uniforms.uLight, uShield: { value: 0 }, uTime: this.shared.uTime };
+  private shellU = {
+    ...THREE.UniformsUtils.clone(THREE.UniformsLib.fog),
+    uLight: this.uniforms.uLight,
+    uShield: { value: 0 },
+    uTime: this.shared.uTime,
+    uHit: { value: new THREE.Vector4(0, 0, 1, 0) },
+  };
+  private patchU = { uDark: { value: 0 }, uTime: this.shared.uTime };
   private veilU = {
     ...THREE.UniformsUtils.clone(THREE.UniformsLib.fog),
     uLight: this.uniforms.uLight,
@@ -626,7 +711,7 @@ export class BrookSpirit {
 
     // Low's body of mist: a dark shell (drawn before the sprites).
     this.veil = new THREE.Mesh(
-      new THREE.IcosahedronGeometry(1, 3).scale(1.25, 1.0, 1.15),
+      new THREE.IcosahedronGeometry(1, 3).scale(2.0, 1.45, 1.8),
       new THREE.ShaderMaterial({ uniforms: this.veilU, vertexShader: VEIL_VERTEX, fragmentShader: VEIL_FRAGMENT, transparent: true, depthWrite: false, fog: true }),
     );
     this.veil.renderOrder = 1;
@@ -639,7 +724,7 @@ export class BrookSpirit {
 
     // The ring: leaves (a small folded leaf) and drops of water.
     const leaf = new THREE.BufferGeometry();
-    leaf.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0.11, 0.045, 0.004, 0.02, 0, 0.012, 0, -0.045, 0.004, 0.02, 0.035, 0.002, -0.05, -0.035, 0.002, -0.05, 0, 0.0, -0.1], 3));
+    leaf.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0.11, 0.045, 0.004, 0.02, 0, 0.012, 0, -0.045, 0.004, 0.02, 0.035, 0.002, -0.05, -0.035, 0.002, -0.05, 0, 0.0, -0.1].map((v) => v * 1.3), 3));
     leaf.setIndex([0, 1, 2, 0, 2, 3, 1, 4, 2, 3, 2, 5, 4, 6, 2, 2, 6, 5]);
     leaf.computeVertexNormals();
     const leafMat = new THREE.MeshStandardMaterial({ roughness: 0.85, side: THREE.DoubleSide });
@@ -647,13 +732,19 @@ export class BrookSpirit {
     const rnd = random(23);
     const browns = ['#7a4f26', '#9c6a2c', '#b8862f', '#6a4424', '#8f4523', '#a3772f'].map((c) => new THREE.Color(c));
     for (let i = 0; i < COUNTS.high.leaves; i++) this.leaves.setColorAt(i, browns[Math.floor(rnd() * browns.length)].clone().multiplyScalar(0.8 + rnd() * 0.4));
+    // Drops: a small round bead, drawn out into a streak along its flight as it races round the shell.
     this.drops = new THREE.InstancedMesh(
-      new THREE.IcosahedronGeometry(0.028, 0),
-      new THREE.MeshStandardMaterial({ color: '#8fb4c6', roughness: 0.05, metalness: 0.0, emissive: '#000000' }),
+      new THREE.IcosahedronGeometry(0.03, 0),
+      new THREE.MeshStandardMaterial({ color: '#9cc0d2', roughness: 0.05, metalness: 0.0, emissive: '#000000' }),
       COUNTS.high.drops,
     );
     for (let i = 0; i < COUNTS.high.leaves + COUNTS.high.drops; i++) {
-      this.ring.push({ u: rnd(), r: RING * (0.94 + rnd() * 0.12), h: rnd(), tilt: (rnd() - 0.5) * 0.18, spin: new THREE.Vector3(rnd() - 0.5, rnd() - 0.5, rnd() - 0.5).normalize(), size: 0.8 + rnd() * 0.5 });
+      // In the shell: a latitude mostly near the middle (the storm's densest band), the next band racing the other way.
+      const v = rnd() * 2 - 1;
+      this.ring.push({
+        u: rnd(), r: RING * (0.94 + rnd() * 0.12), h: rnd(), tilt: (rnd() - 0.5) * 0.18, spin: new THREE.Vector3(rnd() - 0.5, rnd() - 0.5, rnd() - 0.5).normalize(),
+        size: 0.8 + rnd() * 0.5, lat: Math.sign(v) * Math.abs(v) ** 1.8 * 1.25, lift: 0.94 + rnd() * 0.12,
+      });
     }
     for (const m of [this.leaves, this.drops]) {
       m.frustumCulled = false;
@@ -669,7 +760,13 @@ export class BrookSpirit {
     );
     this.shell.renderOrder = 4;
     this.group.add(this.shell);
-    for (const m of [this.heart, this.core, this.tendrils, this.veil, this.shell]) m.raycast = () => {};
+    this.patch = new THREE.Mesh(
+      new THREE.PlaneGeometry(9, 9).rotateX(-Math.PI / 2),
+      new THREE.ShaderMaterial({ uniforms: this.patchU, vertexShader: PATCH_VERTEX, fragmentShader: PATCH_FRAGMENT, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }),
+    );
+    this.patch.renderOrder = 1;
+    this.group.add(this.patch);
+    for (const m of [this.heart, this.core, this.tendrils, this.veil, this.shell, this.patch]) m.raycast = () => {};
 
     this.makeSprites();
     this.setLook(look);
@@ -710,11 +807,17 @@ export class BrookSpirit {
       }
     };
     const n = COUNTS.high;
-    add('dense', n.dense, (i) => ({ radius: 0.6 + (i / n.dense) * 0.65, size: 2.1 + rnd() * 0.9, alpha: 0.75 + rnd() * 0.2, follow: 10 }));
-    add('wisp', n.wisp, () => ({ radius: 1.35 + rnd() * 0.6, size: 1.6 + rnd() * 1.1, stretch: 1 + rnd() * 0.6, alpha: 0.3 + rnd() * 0.2, cell: rnd() < 0.6 ? PARTICLE.wisp : PARTICLE.puff, follow: 2 + rnd() * 1.5, speed: 0.1 + rnd() * 0.12 }));
-    add('veil', n.veil, (i) => ({ dir: new THREE.Vector3(i % 2 ? 1 : -1, (i < 2 ? 1 : -1) * 0.5, 0), radius: 0.22, size: 1.3 + rnd() * 0.3, alpha: 0.85, follow: 12 }));
-    add('mote', n.mote, () => ({ radius: 0.7 + rnd() * 1.1, size: 0.1 + rnd() * 0.1, alpha: 1, cell: PARTICLE.glow, follow: 5, speed: 0.25 + rnd() * 0.3 }));
-    add('halo', 1, () => ({ radius: 0, size: 1.1, alpha: 1, cell: PARTICLE.glow, follow: 30 }));
+    // Lobes from the dense middle outwards (the first ones darkest), so whatever the low settings keep is the middle.
+    add('dense', n.dense, (i) => ({ radius: 0.85 + (i / n.dense) * 1.6, size: 3.6 + rnd() * 1.5, alpha: 0.88 + rnd() * 0.12, follow: 10 - (i / n.dense) * 5 }));
+    add('wisp', n.wisp, () => ({ radius: 2.5 + rnd() * 0.9, size: 2.6 + rnd() * 1.8, stretch: 1 + rnd() * 0.6, alpha: 0.3 + rnd() * 0.2, cell: rnd() < 0.6 ? PARTICLE.wisp : PARTICLE.puff, follow: 2 + rnd() * 1.5, speed: 0.1 + rnd() * 0.12 }));
+    // Long wisps hanging down between the tendrils, trailing furthest when it moves.
+    add('trail', n.trail, (i) => {
+      const a = ((i + 0.5) / n.trail) * Math.PI * 2 + 0.4;
+      return { dir: new THREE.Vector3(Math.sin(a), 0, Math.cos(a)), radius: 1.5, size: 1.5 + rnd() * 0.8, stretch: 2.4 + rnd() * 0.9, alpha: 0.35 + rnd() * 0.15, cell: PARTICLE.wisp, follow: 1.4 + rnd() * 0.6, speed: 0.06 + rnd() * 0.05 };
+    });
+    add('veil', n.veil, (i) => ({ dir: new THREE.Vector3(i % 2 ? 1 : -1, (i < 2 ? 1 : -1) * 0.5, 0), radius: 0.3, size: 1.9 + rnd() * 0.4, alpha: 0.88, follow: 12 }));
+    add('mote', n.mote, () => ({ radius: 1.0 + rnd() * 1.6, size: 0.14 + rnd() * 0.14, alpha: 1, cell: PARTICLE.glow, follow: 5, speed: 0.25 + rnd() * 0.3 }));
+    add('halo', 1, () => ({ radius: 0, size: 1.6, alpha: 1, cell: PARTICLE.glow, follow: 30 }));
   }
 
   /** Medium and up ('high') or Low and phones ('low'): the mist's sprites, the shell, the light. */
@@ -725,8 +828,8 @@ export class BrookSpirit {
     this.leaves.count = n.leaves;
     this.drops.count = n.drops;
     if (look === 'high' && this.withLight && !this.light) {
-      this.light = new THREE.PointLight(COLD, 0, 14, 2);
-      this.light.position.set(0, 0, 0.35);
+      this.light = new THREE.PointLight(COLD, 0, 20, 2);
+      this.light.position.set(0, 0, 0.5);
       this.body.add(this.light);
     } else if (look === 'low' && this.light) {
       this.body.remove(this.light);
@@ -736,14 +839,22 @@ export class BrookSpirit {
     this.far = !this.far; // re-pick the model at the next update
   }
 
-  /** A short flinch: the body jerks back, the tendrils curl in, the heart flares. */
-  hurt(strength = 1): void {
+  /**
+   * A short flinch: the body jerks back, the tendrils curl in, the heart flares. `at`, a point in the world where it
+   * was hit: while it shields itself, the shell flares there.
+   */
+  hurt(strength = 1, at?: THREE.Vector3): void {
     this.hurtT = Math.min(1.5, this.hurtT + strength);
+    if (at) {
+      const d = this.group.worldToLocal(this.tmp.copy(at)).normalize();
+      this.shellU.uHit.value.set(d.x, d.y, d.z, 0);
+      this.hitT = Math.min(1.5, strength);
+    }
   }
 
   /** The heart's middle in the world. */
   heartWorld(out: THREE.Vector3): THREE.Vector3 {
-    return this.heart.localToWorld(out.set(0, 0, 0.12));
+    return this.heart.localToWorld(out.set(0, 0, HEART_Z));
   }
 
   /** How far the heart shows now, 0..1 (eased): for the rules' hit test later. */
@@ -773,11 +884,11 @@ export class BrookSpirit {
   private tmp = new THREE.Vector3();
   private tmp2 = new THREE.Vector3();
   private drag = new THREE.Vector3();
+  private flight = new THREE.Vector3();
   private col = new THREE.Color();
   private inv = new THREE.Matrix4();
   private mat = new THREE.Matrix4();
   private quat = new THREE.Quaternion();
-  private quat2 = new THREE.Quaternion();
   private scl = new THREE.Vector3();
 
   /** Each frame, before drawing. `camera`: for the far model and the mist's order. */
@@ -799,6 +910,7 @@ export class BrookSpirit {
 
     this.group.updateMatrixWorld();
     const pos = this.tmp.setFromMatrixPosition(this.group.matrixWorld);
+    const above = this.ground === null ? Infinity : pos.y - this.ground;
     if (dt > 0) this.velocity.lerp(this.tmp2.copy(pos).sub(this.lastPos).divideScalar(dt).clampLength(0, 12), 1 - Math.exp(-4 * dt));
     this.lastPos.copy(pos);
 
@@ -823,7 +935,7 @@ export class BrookSpirit {
 
     // The body: a slow bob and breath; a flinch backwards.
     const breath = 1 + 0.025 * Math.sin(this.time * 1.3);
-    this.body.position.set(0, 0.12 * Math.sin(this.time * 0.8), -0.35 * hurt);
+    this.body.position.set(0, 0.18 * Math.sin(this.time * 0.8), -0.45 * hurt);
     this.body.rotation.set(-0.25 * hurt + 0.04 * Math.sin(this.time * 0.55), 0, 0.03 * Math.sin(this.time * 0.43));
     this.body.scale.set(breath * (1 + 0.08 * hurt), breath * (1 - 0.1 * hurt), breath);
     this.group.updateMatrixWorld(true);
@@ -843,9 +955,18 @@ export class BrookSpirit {
     this.bendTendrils(s, fade, hurt);
     this.drawMist(dt, camera, s, fade, hurt, night);
     this.drawRing(s, fade);
-    this.shellU.uShield.value = s.shield * (1 - fade) * (0.55 - 0.3 * night); // at night the eyes' exposure and the glow do the rest
+    this.shellU.uShield.value = s.shield * (1 - fade) * (0.8 - 0.4 * night); // at night the eyes' exposure and the glow do the rest
+    this.hitT = Math.max(0, this.hitT - dt * 2);
+    this.shellU.uHit.value.w = this.hitT;
     this.shell.visible = s.shield > 0.01 && fade < 1;
     this.shell.scale.setScalar(1 + 0.25 * (1 - s.shield));
+    // The dark patch on the ground: fainter the higher it floats, gone as it comes apart.
+    this.patch.visible = above < 12;
+    if (this.patch.visible) {
+      this.patch.position.set(0, -above + 0.02, 0);
+      this.patch.scale.setScalar(0.8 + above * 0.08);
+      this.patchU.uDark.value = (0.55 - 0.025 * above) * (1 - fade) * (0.5 + 0.5 * daylight());
+    }
     this.veilU.uOpen.value = s.open;
     this.veilU.uAlpha.value = 0.88 * (1 - fade);
     this.veilU.uMist.value.copy(MIST_DENSE).multiplyScalar(0.35 + 0.65 * daylight() + 0.6 * night * 0.3);
@@ -860,34 +981,32 @@ export class BrookSpirit {
     const drag = this.drag.copy(this.velocity).applyQuaternion(this.quat.setFromRotationMatrix(this.inv)).multiplyScalar(speed > 1e-3 ? -Math.min(1, speed / 5) / speed : 0);
     const local = this.tmp2;
     if (s.reach > 0.001) this.body.worldToLocal(local.copy(this.reachAt));
-    const waveA = (0.2 + 0.12 * s.anger) * (1 - 0.6 * s.shield);
+    const waveA = (0.16 + 0.1 * s.anger) * (1 - 0.6 * s.shield);
     this.model.arms.forEach((a, i) => {
       const b = this.bends[i];
       const front = i < 2;
-      // At rest: the front ones held out ahead, the others drawn back, as if it drifts forward through still air.
-      const pullZ = front ? 0.4 : -0.9;
-      const pullY = front ? 0.2 : 0.3;
-      const px = drag.x * 0.6;
-      const py = pullY + drag.y * 0.6;
-      const pz = pullZ + drag.z * 0.6;
-      const pu = a.up.x * px + a.up.y * py + a.up.z * pz;
-      const ps = a.side.x * px + a.side.y * py + a.side.z * pz;
-      // The tips curl up and out, like a fern's (the glowing nodes on the outside of the curl, where they show).
-      b.a0 = -pu * 0.7 + (front ? -0.12 : -0.1);
-      b.b0 = ps * 0.7;
-      b.a1 = front ? 0.25 : 0.3;
-      b.curl = front ? -0.75 : -0.8;
+      const [rise, fall, curl] = ARCH[i];
+      // Its own motion pulls the arms back the way it came.
+      const pu = a.up.x * drag.x + a.up.y * drag.y + a.up.z * drag.z;
+      const ps = a.side.x * drag.x + a.side.y * drag.y + a.side.z * drag.z;
+      // At rest: up out of the mist in an arch, then down, the tip hooked under (its glowing nodes face down, to the
+      // players below). `rise` turns it up at the root, `fall` bends it down along its length.
+      b.a0 = rise - pu * 0.5;
+      b.b0 = ps * 0.5;
+      b.a1 = fall;
+      b.curl = curl;
       b.wa = waveA;
       b.b1 = 0;
-      b.wb = 0.16 + 0.1 * s.anger;
+      b.wb = 0.14 + 0.1 * s.anger;
       b.stretch = 1;
       b.thick = 1;
-      // Shielding: every arm drawn in and curled up under the body.
+      // Shielding: every arm drawn up and over the body, wrapped close round it inside the storm.
       if (s.shield > 0) {
-        b.a0 += 0.5 * s.shield;
-        b.a1 += 0.6 * s.shield;
-        b.curl += 1.2 * s.shield;
-        b.stretch = 1 - 0.25 * s.shield;
+        const k = s.shield;
+        b.a0 = THREE.MathUtils.lerp(b.a0, -1.15, k);
+        b.a1 = THREE.MathUtils.lerp(b.a1, 1.9, k);
+        b.curl = THREE.MathUtils.lerp(b.curl, 0.7, k);
+        b.stretch = 1 - 0.5 * k;
       }
       // Reaching: the two front arms point at the spot, nearly straight, their tips curled to grasp.
       if (front && s.reach > 0.001) {
@@ -897,9 +1016,9 @@ export class BrookSpirit {
         const ar = Math.asin(THREE.MathUtils.clamp(-w.dot(a.up), -1, 1));
         const br = Math.atan2(w.dot(a.side), w.dot(a.dir));
         const r = s.reach;
-        b.a1 = THREE.MathUtils.lerp(b.a1, 0.1, r);
-        b.curl = THREE.MathUtils.lerp(b.curl, 0.8, r);
-        b.a0 = THREE.MathUtils.lerp(b.a0, ar - 0.05 - 0.15, r);
+        b.a1 = THREE.MathUtils.lerp(b.a1, 0.3, r);
+        b.curl = THREE.MathUtils.lerp(b.curl, 0.9, r);
+        b.a0 = THREE.MathUtils.lerp(b.a0, ar - 0.15 - 0.2, r);
         b.b0 = THREE.MathUtils.lerp(b.b0, br, r);
         b.wa *= 1 - 0.75 * r;
         b.wb *= 1 - 0.75 * r;
@@ -921,8 +1040,8 @@ export class BrookSpirit {
   private drawMist(dt: number, camera: THREE.Camera, s: BrookSpirit['shown'], fade: number, hurt: number, night: number): void {
     const look = this.look;
     const n = COUNTS[look];
-    const keep: Record<Layer, number> = { dense: n.dense, wisp: n.wisp, veil: n.veil, mote: n.mote, halo: 1 };
-    const seen: Record<Layer, number> = { dense: 0, wisp: 0, veil: 0, mote: 0, halo: 0 };
+    const keep: Record<Layer, number> = { dense: n.dense, wisp: n.wisp, trail: n.trail, veil: n.veil, mote: n.mote, halo: 1 };
+    const seen: Record<Layer, number> = { dense: 0, wisp: 0, trail: 0, veil: 0, mote: 0, halo: 0 };
     const day = daylight();
     // The mist's own light: what the day gives it, and a little at night so its outline holds against a dark wood.
     const ambient = 0.3 + 0.7 * day;
@@ -942,17 +1061,28 @@ export class BrookSpirit {
     const spread = 1 + 2.4 * fade * fade + 0.25 * hurt;
     for (const sp of active) {
       const t = this.time;
-      if (sp.layer === 'halo') p.set(0, 0, 0.6);
+      if (sp.layer === 'halo') p.set(0, 0, 0.9);
       else if (sp.layer === 'veil') {
         // In front of the heart; parts to either side as it opens.
         const side = Math.sign(sp.dir.x);
-        p.set(side * (0.22 + 1.0 * s.open), sp.dir.y * (0.45 + 0.35 * s.open), 0.66 - 0.25 * s.open);
+        p.set(side * (0.3 + 1.4 * s.open), sp.dir.y * (0.6 + 0.5 * s.open), 0.95 - 0.35 * s.open);
+      } else if (sp.layer === 'trail') {
+        // Hanging under the body between the tendrils, turning slowly round, swaying.
+        p.copy(sp.dir).applyAxisAngle(this.scl.set(0, 1, 0), t * sp.speed).multiplyScalar(sp.radius * (1 + 0.15 * Math.sin(t * 0.5 + sp.seed)));
+        p.y = -1.9 + 0.3 * Math.sin(t * 0.6 + sp.seed);
       } else {
         p.copy(sp.dir).applyAxisAngle(sp.axis, t * sp.speed + sp.seed);
         const r = sp.radius * (1 + 0.12 * Math.sin(t * 0.7 + sp.seed));
         p.multiplyScalar(r).multiply(this.scl.set(1.25, sp.layer === 'wisp' ? 0.85 : 0.72, 1.1));
-        if (sp.layer === 'wisp') p.y -= 0.3; // its torn edge hangs low, among the tendrils
-        if (sp.layer === 'mote') p.y += 0.25 * Math.sin(t * 1.3 + sp.seed);
+        if (sp.layer === 'wisp') p.y -= 0.5; // its torn edge hangs low, among the tendrils
+        if (sp.layer === 'mote') p.y += 0.35 * Math.sin(t * 1.3 + sp.seed);
+      }
+      // Shielding: the torn edges and the trails are caught up in the storm, racing round just inside the shell.
+      if (s.shield > 0.001 && (sp.layer === 'wisp' || sp.layer === 'trail')) {
+        const lat = Math.sin(sp.seed * 3.7) * 0.6;
+        const lon = sp.seed + (sp.seed % 2 < 1 ? 1 : -1) * t * 1.1;
+        this.scl.set(Math.cos(lat) * Math.cos(lon), Math.sin(lat), Math.cos(lat) * Math.sin(lon)).multiplyScalar(SHELL * 0.92);
+        p.lerp(this.scl, s.shield);
       }
       p.multiplyScalar(sp.layer === 'halo' ? 1 : spread);
       if (sp.layer === 'mote') p.y += fade * (1.5 + (sp.seed % 1) * 2.5);
@@ -977,7 +1107,7 @@ export class BrookSpirit {
     for (const k of this.order) {
       const sp = active[k];
       const local = this.tmp.copy(sp.at).applyMatrix4(groupInv);
-      const toHeart = Math.sqrt((local.x * local.x) / 1.2 + local.y * local.y + (local.z - 0.3) * (local.z - 0.3));
+      const toHeart = Math.sqrt((local.x * local.x) / 1.2 + local.y * local.y + (local.z - 0.45) * (local.z - 0.45)) / 1.4;
       const fadeA = 1 - fade;
       if (sp.layer === 'halo') {
         const a = (0.1 + 0.9 * s.open) * facing * (1 - fade) * (1 - 0.7 * s.shield);
@@ -990,10 +1120,11 @@ export class BrookSpirit {
         this.glow.put(local, sp.size * grow, sp.size * grow, 0, sp.cell, this.col, (1 - THREE.MathUtils.smoothstep(fade, 0.7, 1)) * (0.5 + 0.5 * s.anger + 0.3 * night));
       } else {
         const dense = sp.layer === 'dense' || sp.layer === 'veil';
-        this.col.copy(dense ? MIST_DENSE : MIST_THIN);
+        // The heart of the cloud near black, the lobes round it charcoal, the torn edges and trails blue-grey.
+        this.col.copy(sp.layer === 'dense' && sp.radius < 1.6 ? MIST_CORE : dense ? MIST_DENSE : MIST_THIN);
         if (fade > 0) this.col.lerp(MIST_THIN, fade);
         // Lighter on top, as mist under an open sky; the inner light on what lies close round the heart.
-        const top = 0.75 + 0.5 * THREE.MathUtils.clamp(local.y / 1.2, -1, 1);
+        const top = 0.75 + 0.5 * THREE.MathUtils.clamp(local.y / 1.8, -1, 1);
         this.col.multiplyScalar(ambient * top);
         const inner = Math.exp(-toHeart * toHeart * 2.2) * (0.03 + 0.2 * s.open + 0.4 * hurt) * (0.5 + 0.5 * night);
         this.col.r += this.lightColor.r * inner;
@@ -1009,39 +1140,48 @@ export class BrookSpirit {
     this.glow.end();
   }
 
-  /** The leaves and drops: a slow tilted spiral round it, or a closed shell when it shields itself. */
+  /**
+   * The leaves and drops: a slow tilted spiral round it; when it shields itself, a storm racing round it in bands
+   * (the next band the other way), densest round the middle, the drops drawn out into streaks.
+   */
   private drawRing(s: BrookSpirit['shown'], fade: number): void {
     const n = COUNTS[this.look];
     const t = this.time;
     const shield = s.shield;
     const total = n.leaves + n.drops;
-    const golden = Math.PI * (3 - Math.sqrt(5));
+    const tangent = this.flight;
     for (let i = 0; i < total; i++) {
       const leaf = i < n.leaves;
       const r = this.ring[leaf ? i : COUNTS.high.leaves + (i - n.leaves)];
       // The ring: round it at its own radius, slowly rising through a band and fading in and out at its ends.
       const h = (r.h + t * 0.03) % 1;
       const ang = r.u * Math.PI * 2 + t * (leaf ? 0.32 : 0.45) + h * 2.2;
-      const ringP = this.tmp.set(Math.cos(ang) * r.r, -0.45 + h * 0.9 + r.tilt, Math.sin(ang) * r.r);
+      const ringP = this.tmp.set(Math.cos(ang) * r.r, -0.6 + h * 1.2 + r.tilt, Math.sin(ang) * r.r);
       ringP.applyAxisAngle(this.scl.set(1, 0, 0.3).normalize(), 0.3);
-      // The shell: an even spread over a sphere, turning faster.
-      const k = i + 0.5;
-      const yy = 1 - (2 * k) / total;
-      const rr = Math.sqrt(1 - yy * yy);
-      const sa = golden * k + t * 0.9;
-      const shellP = this.tmp2.set(Math.cos(sa) * rr, yy, Math.sin(sa) * rr).multiplyScalar(SHELL * (leaf ? 1.0 : 1.02));
+      tangent.set(-Math.sin(ang), 0, Math.cos(ang)).multiplyScalar(1 - shield);
+      // The storm: its band by latitude; each band races round at its own speed, the next one the other way.
+      const band = Math.round(r.lat * 3.2);
+      const way = band % 2 === 0 ? 1 : -1;
+      const lon = r.u * Math.PI * 2 + way * t * (1.3 + 0.4 * Math.cos(band * 1.7)) * (leaf ? 1 : 1.25);
+      const cl = Math.cos(r.lat);
+      const shellP = this.tmp2.set(cl * Math.cos(lon), Math.sin(r.lat), cl * Math.sin(lon)).multiplyScalar(SHELL * r.lift);
+      tangent.x += -Math.sin(lon) * way * shield;
+      tangent.z += Math.cos(lon) * way * shield;
+      tangent.normalize();
       ringP.lerp(shellP, shield);
       ringP.multiplyScalar(1 + 1.5 * fade);
       ringP.y -= fade * 1.5; // what it held falls when it comes apart
       const edge = Math.sin(Math.PI * h);
       const size = r.size * (shield + (1 - shield) * Math.min(1, edge * 3)) * (1 - THREE.MathUtils.smoothstep(fade, 0.5, 1));
-      // Tumbling in the ring; lying flat on the shell.
-      this.quat.setFromAxisAngle(r.spin, t * 0.8 + r.u * 20);
-      if (shield > 0) {
-        this.quat2.setFromUnitVectors(this.scl.set(0, 1, 0), this.tmp2.copy(shellP).normalize());
-        this.quat.slerp(this.quat2, shield);
+      if (leaf) {
+        // Tumbling slowly in the ring, fast in the storm.
+        this.quat.setFromAxisAngle(r.spin, t * (0.8 + 4 * shield) + r.u * 20);
+        this.mat.compose(ringP, this.quat, this.scl.setScalar(size * (1.4 + 0.5 * shield)));
+      } else {
+        // A drop drawn out along its flight: a bead in the ring, a streak in the storm.
+        this.quat.setFromUnitVectors(Z_AXIS, tangent);
+        this.mat.compose(ringP, this.quat, this.scl.set(size, size, size * (1.5 + 10 * shield)));
       }
-      this.mat.compose(ringP, this.quat, this.scl.setScalar(size * (leaf ? 1.4 : 1)));
       if (leaf) this.leaves.setMatrixAt(i, this.mat);
       else this.drops.setMatrixAt(i - n.leaves, this.mat);
     }
@@ -1054,8 +1194,9 @@ export class BrookSpirit {
   dispose(): void {
     this.mist.dispose();
     this.glow.dispose();
-    for (const m of [this.heart, this.core, this.tendrils, this.veil, this.shell, this.leaves, this.drops]) (m.material as THREE.Material).dispose();
+    for (const m of [this.heart, this.core, this.tendrils, this.veil, this.shell, this.patch, this.leaves, this.drops]) (m.material as THREE.Material).dispose();
     this.veil.geometry.dispose();
+    this.patch.geometry.dispose();
     this.shell.geometry.dispose();
     this.leaves.geometry.dispose();
     this.drops.geometry.dispose();
