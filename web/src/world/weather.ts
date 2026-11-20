@@ -139,11 +139,14 @@ const LOOKS: Record<Mood, Look> = {
 
 /**
  * Dusk, golden hour (0) into blue hour (1): the sun low and warm, then reddening and fading, the sky darker and bluer,
- * the lamps and windows coming on. On Auto it darkens through its time (the cycle's `progress`) and then blends into
- * the night; picked by hand it holds a little way in.
+ * the lamps and windows coming on. At golden hour the low sun is still most of the light on open ground (about half,
+ * with the sky photo's light at half its strength, `fill`), so the long shadows read across the streets; it was a
+ * tenth (sun 2.0, the sky's full light) and no shadow showed. They fade as the sun reddens and weakens into blue hour.
+ * On Auto it darkens through its time (the cycle's `progress`) and then blends into the night; picked by hand it holds
+ * a little way in.
  */
 const DUSK = [
-  look('dusk', { skyGain: 0.9, sun: 2.0, hemi: 0.6, inside: 0.9, exposure: 0.95, fog: 0.0022, horizonFade: 0.55, contrast: 0.95, wet: 0, rain: 0, night: 0.1, overcast: 0, snow: 0, sunLow: 1 }, ['#ffa45e', '#a9b5da', '#7d634f', '#f2c4a2']),
+  look('dusk', { skyGain: 0.9, sun: 5.5, hemi: 0.5, inside: 0.9, exposure: 1.05, fill: 0.5, fog: 0.0022, horizonFade: 0.55, contrast: 0.95, wet: 0, rain: 0, night: 0.1, overcast: 0, snow: 0, sunLow: 1 }, ['#ffa45e', '#a9b5da', '#7d634f', '#f2c4a2']),
   look('dusk', { skyGain: 0.42, sun: 0.55, hemi: 0.6, inside: 0.75, exposure: 2.0, fog: 0.0032, horizonFade: 0.8, contrast: 0.8, wet: 0, rain: 0, night: 0.6, overcast: 0, snow: 0, sunLow: 1 }, ['#ff8a5c', '#6c7cae', '#3b3640', '#d9ddff']),
 ] as const;
 /** How far into dusk a dusk picked by hand holds. */
