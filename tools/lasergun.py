@@ -1,10 +1,10 @@
-"""Build the laser rifle in Blender: the model only, not yet a weapon in the game.
+"""Build the laser rifle in Blender, with the gloved hands that hold it in first person.
 
 Run (Blender 5, no window):
   blender -b -P tools/lasergun.py -- <out.glb> [preview_dir]
-It writes the GLB (web/public/models/lasergun.glb in the repository). With preview_dir it also renders
-small pictures there: each view once in clay (one grey material, to judge the shapes) and once in the
-final materials.
+It writes the GLB (web/public/models/lasergun.glb in the repository); the game loads it beside weapons.glb.
+With preview_dir it also renders small pictures there: each view once in clay (one grey material, to judge
+the shapes) and once in the final materials, the player's views with the hands, and each hand alone in clay.
 
 Our own design, no brand, maker or marking on it. A near-future tool held like the game's carbine,
 84 cm long. It reads from back to front: the energy cell where a magazine would sit, the receiver that
@@ -23,16 +23,21 @@ the web of the right hand sits on the grip. Nodes:
                     (unit, the GLB's frame), as the magazines have
     laser_muzzle    where the beam leaves (the emitter's front face, on the bore's axis)
     laser_sight     a point on the line of sight (the sight's reticle)
+    laser_hands     first person only, as in weapons.glb:
+      laser_handR, laser_handL   glove, cuff and sleeve; each origin at its wrist; extras "grip": where it
+                                 holds, from the wrist
 The lit parts have materials of their own, so the game can light them: LaserLens (the lit point behind the
-emitter's glass), LaserGlow (the beam tube's core, the charge read-out, the cell's windows and charge marks)
-and LaserReticle (the sight's dot); LaserGlass is the emitter's dark glass. LaserAccent is the one accent
-colour: the copper coil, the selector, the cell's latch, a band on the emitter. The two big surfaces have
-names of their own, LaserAnodised (the dark, glossy upper, shroud, emitter and sight) and LaserPolymer
-(the paler, matt lower, grip, handguard, stock and cell): the game's gun finish (web/src/world/gunSurface.ts)
-has no entry for them yet and keeps their values. The small parts carry the names tools/weapons.py uses
-(Steel, Dark, Grip, Lens), so that finish takes them as it does for the other guns; the shading per
-corner it reads is baked here the same way (bake_shade).
-No hands in this file: where they go is in the hands' comment below.
+emitter's glass), LaserGlow (the beam tube's core, the cell's windows and charge marks), LaserBar0 to
+LaserBar4 (the charge read-out's five bars, back to front: the game lights as many as the cell has charge)
+and LaserReticle (the sight's dot); LaserGlass is the emitter's dark glass. LaserFin is the shroud's fins
+(bright metal that glows as the gun heats up and vents). LaserAccent is the one accent colour: the copper
+coil, the selector, the cell's latch, a band on the emitter. The two big surfaces have names of their own,
+LaserAnodised (the dark, glossy upper, shroud, emitter and sight) and LaserPolymer (the paler, matt lower,
+grip, handguard, stock and cell), each with its finish in the game (web/src/world/gunSurface.ts). The small
+parts carry the names tools/weapons.py uses (Steel, Dark, Grip, Lens), so that finish takes them as it does
+for the other guns; the shading per corner it reads is baked here the same way (bake_shade).
+The hands are fitted by tools/weapons.py's own helper (real_hand: the sculpted arms posed on the grip and the
+handguard), read from that file as it is, so both files' hands are made the same way and weapons.glb stays as it is.
 Inside Blender the barrel runs along +y and up is +z; the exporter turns that into the above.
 """
 import math
@@ -41,7 +46,7 @@ import sys
 
 import bmesh
 import bpy
-from mathutils import Matrix, Vector
+from mathutils import Matrix, Quaternion, Vector
 
 argv = sys.argv[sys.argv.index("--") + 1:]
 OUT = argv[0]
@@ -90,7 +95,14 @@ M = {
     "LaserLens": material("LaserLens", "#0b2a36", 0.3, 0.0, glow="#3fc8ff", strength=4.0),  # the lit point deep behind it
     "LaserGlow": material("LaserGlow", "#5fd4ff", 0.3, 0.0, glow="#52ccff", strength=2.0),
     "LaserReticle": material("LaserReticle", "#06141a", 0.5, 0.0, glow="#7fe8ff", strength=3.0),
+    "Fin": material("LaserFin", "#4d5056", 0.3, 1.0),  # the shroud's fins: the game makes them glow with the heat
+    # The hands' materials, as tools/weapons.py makes them (the game finds them by these names).
+    "Glove": material("Glove", "#26272a", 0.82, 0.0),
+    "GloveTrim": material("GloveTrim", "#23251f", 0.8, 0.0),
+    "Sleeve": material("Sleeve", "#4b4c3b", 0.9, 0.0),
 }
+for _k in range(5):  # the read-out's bars, each its own so the game can light them one by one
+    M[f"Bar{_k}"] = material(f"LaserBar{_k}", "#5fd4ff", 0.3, 0.0, glow="#52ccff", strength=2.0)
 
 
 def link(obj):
@@ -378,7 +390,7 @@ body.append(block("readframe", -0.0178, -0.0150, -0.072, -0.018, 0.0655, 0.0755,
 for k in range(5):
     y = -0.0685 + k * 0.0097
     body.append(prism("readbar", [(y, 0.0675), (y + 0.0062, 0.0675), (y + 0.0062 + 0.006 * SLANT, 0.0735), (y + 0.006 * SLANT, 0.0735)], 0.0007,
-                      M["LaserGlow"], 0.0002, 1, x=-0.0179))
+                      M[f"Bar{k}"], 0.0002, 1, x=-0.0179))
 for y, z in ((-0.095, 0.072), (0.150, 0.072), (0.150, 0.041), (-0.095, 0.041)):
     body.append(screw(0.0165, y, z, 1))
 for y, z in ((-0.095, 0.072), (0.150, 0.072), (0.072, 0.0715), (0.094, 0.0715), (0.072, 0.041), (0.094, 0.041), (0.150, 0.041)):
@@ -524,7 +536,7 @@ body.append(lathe("shcore", [(0.300, 0), (0.300, 0.0115), (0.418, 0.0115), (0.41
 for k in range(9):
     y = 0.3075 + k * 0.0074
     body.append(prism("fin", [(y, 0.024), (y + 0.0024, 0.024), (y + 0.0024 + 0.060 * SLANT, 0.084), (y + 0.060 * SLANT, 0.084)], 0.0226,
-                      M["Steel"], 0.0005, 1))
+                      M["Fin"], 0.0005, 1))
 for s in (-1, 1):
     body.append(screw(s * SHW(0.304), 0.304, 0.020, s))
     body.append(screw(s * SHW(0.402), 0.402, 0.062, s))
@@ -572,9 +584,50 @@ cell.append(prism("latch", [(yf(-0.050) - 0.001, -0.050), (yf(-0.050) + 0.0035, 
 cell.append(prism("cellbase", [(yf(-0.096) + 0.0012, -0.096), (yf(-0.108) + 0.002, -0.108), (yf(-0.108) - 0.002, -0.1125), (yr(-0.108) + 0.002, -0.1125),
                                (yr(-0.108) - 0.002, -0.108), (yr(-0.096) - 0.0012, -0.096)], 0.0150, M["Grip"], 0.003, 2))
 
-# The hands, for when the gun is wired in (tools/weapons.py fits them): the right hand round the grip, its web
-# at GRIP (the origin in the GLB), as on the carbine; the left hand under the fore-end, palm up, its palm's
-# middle under (0, 0.225, 0.016) here, behind the hand stop, the fingers up the right side over the rubber pad.
+# ---- The hands -------------------------------------------------------------------------------
+# tools/weapons.py's hands (its "Hands" part: the sculpted arms, real_hand and hand), read from that file and run
+# here with the few helpers it uses, so the laser's hands are fitted exactly as the other guns' are, and weapons.py
+# and weapons.glb stay as they are. That part needs these names; mesh_obj with its `smooth`.
+def weapons_hands():
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "weapons.py")
+    src = open(path, encoding="utf-8").read()
+    part = src[src.index("# ---- Hands ---"):src.index("# ---- The weapons ---")]
+
+    def mesh_obj_smooth(name, bm, mats, smooth=False):
+        o = mesh_obj(name, bm, mats)
+        if smooth:
+            for p in o.data.polygons:
+                p.use_smooth = True
+        return o
+
+    ns = {"__file__": path, "__name__": "weapons_hands", "math": math, "os": os, "sys": sys, "bmesh": bmesh, "bpy": bpy,
+          "Matrix": Matrix, "Quaternion": Quaternion, "Vector": Vector, "M": M, "link": link, "mesh_obj": mesh_obj_smooth,
+          "join": join, "pivot": pivot, "gl": gl}
+    exec(compile(part, path, "exec"), ns)
+    return ns
+
+
+H = weapons_hands()
+# The right hand round the grip, its web at GRIP (the origin in the GLB): the carbine's grip, trigger and lower line,
+# so the carbine's hand (tools/weapons.py build_rifle), its thumb 4 mm further out over this wider lower and the
+# selector. The left hand under the handguard, palm up, the middle of the palm under (0, 0.225, 0.016) behind the hand
+# stop, the fingers up the right side over the rubber pad, the thumb along the left; its forearm goes down and out
+# to the left, clear of the energy cell under the receiver.
+gw = H["Wrap"]((0, -0.027, -0.001), (0, -0.026, -0.1), (0, 1, 0), 0.0215, 0.0148)
+handR = H["hand"]("laser_handR", gw,
+                  [(0.034, 70, -1, 0.09, 0.0098, 0.0), (0.054, 72, -1, 0.086, 0.0094, 0.0), (0.073, 76, -1, 0.07, 0.0086, 0.0)],
+                  [], (0.012, -0.10, -0.035), (0.25, -0.82, -0.5),
+                  ([(-0.006, -0.05, 0.004), (-0.024, -0.03, 0.012), (-0.028, -0.008, 0.02), (-0.027, 0.014, 0.026), (-0.024, 0.03, 0.029)], 0.0105),
+                  ([gw.at(0.01, 72, 0.01), (0.02, 0.0, -0.004), (0.016, 0.014, -0.006), (0.009, 0.017, -0.008), (0.004, 0.015, -0.01)], 0.0095))
+LC = (0, 0.225, 0.046)  # the left hand's wrap: the handguard and the upper over it, 3 cm down to the bottom, 23 mm to a side
+LR1, LR2 = 0.030, 0.0232
+hw = H["Wrap"](LC, (0, 1, 0), (0, 0, -1), LR1, LR2)
+handL = H["hand"]("laser_handL", H["Wrap"](LC, (0, -1, 0), (0, 0, -1), LR1, LR2),
+                  [(-0.03, 13, 1, 0.062, 0.0098, -0.6), (-0.009, 38, 1, 0.064, 0.0096, -0.6), (0.012, 50, 1, 0.058, 0.009, -0.6),
+                   (0.031, 59, 1, 0.048, 0.0084, -0.6)],
+                  [], (-0.012, LC[1] - 0.075, LC[2] - 0.059), (-0.45, -0.3, -0.84),
+                  ([hw.at(-0.03, 40, 0.016), hw.at(0.0, 65, 0.012), hw.at(0.025, 80, 0.011), hw.at(0.048, 88, 0.011), hw.at(0.066, 92, 0.011)], 0.0108),
+                  side=-1)
 
 
 def finish():
@@ -592,16 +645,22 @@ def finish():
     objs = [b, c, empty("laser_muzzle", MUZZLE), empty("laser_sight", SIGHT)]
     for o in objs:
         o.location -= g
+    hand_root = empty("laser_hands", (0, 0, 0))  # as tools/weapons.py finish(): the hands under their own node
+    for h in (handR, handL):
+        h.location -= g
+        h.parent = hand_root
+    objs.append(hand_root)
     root = empty("laser", (0, 0, 0))
     for o in objs:
         o.parent = root
     tris = 0
-    for o in objs:
+    for o in [*objs, handR, handL]:
         if o.type == "MESH":
             o.data.calc_loop_triangles()
-            tris += len(o.data.loop_triangles)
+            if o not in (handR, handL):
+                tris += len(o.data.loop_triangles)
             print(f"{o.name}: {len(o.data.loop_triangles)} triangles")
-    print(f"laser: {tris} triangles")
+    print(f"laser: gun {tris} triangles")
     return root
 
 
@@ -619,7 +678,8 @@ def bake_shade():
         u, a = (i + 0.5) / rays, 2 * math.pi * ((i * 0.61803398875) % 1.0)
         dirs.append((math.sqrt(u) * math.cos(a), math.sqrt(u) * math.sin(a), math.sqrt(1 - u)))
     bpy.context.view_layer.update()
-    meshes = [o for o in ROOT.children if o.type == "MESH"]
+    hands = [h for e in ROOT.children if e.name == "laser_hands" for h in e.children if h.type == "MESH"]
+    meshes = [o for o in ROOT.children if o.type == "MESH"] + hands
     verts, polys = [], []
     for o in meshes:
         base = len(verts)
@@ -640,6 +700,26 @@ def bake_shade():
         bm.free()
         attr = me.color_attributes.new("shade", "FLOAT_COLOR", "CORNER")
         mw, rot = o.matrix_world, o.matrix_world.to_3x3()
+        if o in hands:
+            # As tools/weapons.py bakes the hands: one value per point from its own normal (no point split in the file),
+            # the shade between the fingers and under the cuffs, no worn edges.
+            per = {}
+            for v in me.vertices:
+                n = (rot @ v.normal).normalized()
+                t = n.orthogonal().normalized()
+                bi = n.cross(t)
+                start = mw @ v.co + n * 0.0006
+                closed = 0.0
+                for d in dirs:
+                    hit = tree.ray_cast(start, t * d[0] + bi * d[1] + n * d[2], reach)
+                    if hit[0] is not None:
+                        closed += 1 - hit[3] / reach
+                per[v.index] = min(1.0, closed / rays)
+            for lp in me.loops:
+                attr.data[lp.index].color = (per[lp.vertex_index], 0.0, 0.0, 1.0)
+            me.color_attributes.active_color = attr
+            me.color_attributes.render_color_index = me.color_attributes.find("shade")
+            continue
         for p in me.polygons:
             n = (rot @ p.normal).normalized()
             t = n.orthogonal().normalized()
@@ -659,12 +739,13 @@ def bake_shade():
         me.color_attributes.render_color_index = me.color_attributes.find("shade")
 
 
+H["drop_arms"]()  # the sculpt out again before the bake and the export
 bake_shade()
 
 bpy.ops.object.select_all(action="SELECT")
 os.makedirs(os.path.dirname(os.path.abspath(OUT)), exist_ok=True)
 bpy.ops.export_scene.gltf(filepath=OUT, export_format="GLB", use_selection=True, export_apply=True, export_yup=True,
-                          export_extras=True, export_texcoords=False, export_cameras=False, export_lights=False,
+                          export_extras=True, export_texcoords=True, export_cameras=False, export_lights=False,
                           export_vertex_color="ACTIVE", export_active_vertex_color_when_no_material=True)
 
 
@@ -726,6 +807,10 @@ def pack(path):
                 s4 = np.zeros((len(col), 4), np.uint8)
                 s4[:, :2] = np.clip(np.round(col[:, :2] * 255), 0, 255).astype(np.uint8)
                 new["_SHADE"] = put(s4, 5121, "VEC2", 34962, True, 4)
+            if "TEXCOORD_0" in at and g["materials"][prim["material"]]["name"] == "Glove":
+                # The gloves' place in their painted pictures, as in weapons.glb: two 16-bit numbers.
+                uvs = read(at["TEXCOORD_0"]).astype(np.float64)
+                new["TEXCOORD_0"] = put(np.clip(np.round(uvs * 65535), 0, 65535).astype(np.uint16), 5123, "VEC2", 34962, True, 4)
             idx = read(prim["indices"]).reshape(-1)
             assert idx.max() < 65536, f"{mesh['name']} has too many points for 16-bit indices"
             prim["indices"] = put(idx.astype(np.uint16), 5123, "SCALAR", 34963)
@@ -853,12 +938,40 @@ if PREVIEW:
     clay.node_tree.nodes["Principled BSDF"].inputs["Roughness"].default_value = 0.65
     meshes = [o for o in ROOT.children if o.type == "MESH"]
     kept = {o.name: [s.material for s in o.material_slots] for o in meshes}
+    # The painted glove on the hands, as in the game (tools/gloves.py writes it next to the model).
+    paint = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "web", "public", "models", "glove_color.webp")
+    if os.path.exists(paint):
+        nodes = M["Glove"].node_tree.nodes
+        tex = nodes.new("ShaderNodeTexImage")
+        tex.image = bpy.data.images.load(paint)
+        M["Glove"].node_tree.links.new(tex.outputs["Color"], nodes["Principled BSDF"].inputs["Base Color"])
+    hands = [handR, handL]
     for mode in ("clay", "final"):
         for o in meshes:
             for s, m in zip(o.material_slots, kept[o.name]):
                 s.material = clay if mode == "clay" else m
         for label, setup in views:
             setup()
+            for h in hands:  # the hands in the player's views only
+                h.hide_render = label not in ("hip_eye", "ads_eye")
             scene.render.filepath = os.path.join(PREVIEW, f"laser_{mode}_{label}.png")
             bpy.ops.render.render(write_still=True)
+    # Each hand alone and close, in clay: from the shooter's side, from the left, from below.
+    kept_h = [(h, [s.material for s in h.material_slots]) for h in hands]
+    for h, _ in kept_h:
+        for s in h.material_slots:
+            s.material = clay
+    for h in hands:
+        near = [h.matrix_world @ v.co for v in h.data.vertices if v.co.length < 0.13]
+        centre = sum(near, Vector()) / max(1, len(near))
+        for other in hands:
+            other.hide_render = other is not h
+        for label, off in (("back", Vector((-0.04, -0.5, 0.3))), ("left", Vector((-0.6, -0.05, 0.1))), ("right", Vector((0.6, -0.05, 0.1))),
+                           ("under", Vector((-0.1, -0.1, -0.6)))):
+            look(centre + off, centre, 85)
+            scene.render.filepath = os.path.join(PREVIEW, f"{h.name}_{label}.png")
+            bpy.ops.render.render(write_still=True)
+    for h, mats in kept_h:
+        for s, m in zip(h.material_slots, mats):
+            s.material = m
     print("previews in", PREVIEW)
