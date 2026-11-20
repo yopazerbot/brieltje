@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { FLAG_COLORS, baseOf, fieldOf } from '../../shared/flagFields.mjs';
 import { ASSAULT } from '../../shared/assaultFields.mjs';
 import type { FlagGameView, FlagTeam } from '../ui/flagHud';
+import { windAt } from './wind';
 
 /**
  * Steal the flag in the world (server/flags.mjs decides where each flag is; shared/flagFields.mjs has the bases): a stand
@@ -215,7 +216,9 @@ export class FlagWorld {
         const [x, z, y] = baseOf(field, team, !!v.swapped).stand;
         root.visible = true;
         root.position.set(x, y + PLINTH_H - 0.05, z);
-        root.rotation.set(0, this.time * 0.15, 0); // turning slowly in the wind
+        const w = windAt(x, z); // streaming downwind (world/wind.ts), more in a fresh wind
+        root.rotation.set(0, Math.atan2(-w.z, w.x) + Math.sin(this.time * 0.4) * 0.25 / (1 + w.speed), 0);
+        speed = w.speed;
         this.last.delete(team);
       } else if (f.at === 'ground') {
         root.visible = true;

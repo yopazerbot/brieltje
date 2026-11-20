@@ -281,7 +281,7 @@ const scattered = (one: THREE.BufferGeometry, count: number, kind: 'tuft' | 'lea
         gtPitch: { value: new THREE.Vector2(centre[0], centre[1]) }, gtPitchU: { value: new THREE.Vector2(u[0], u[1]) },
         gtPitchW: { value: new THREE.Vector2(w[0], w[1]) }, gtRail: { value: new THREE.Vector4(rail.u0, rail.u1, rail.w0, rail.w1) },
         gtHeights: { value: this.heights.texture }, gtCover: { value: this.cover.texture },
-        windTime: wind.time, windStrength: wind.strength,
+        windTime: wind.time, windStrength: wind.strength, windDir: wind.dir, windSpeed: wind.speed,
         ugShade: shade.groundShade, ugShadeAll: shade.groundShadeAll, ugArea: shade.groundArea, ugAreaAll: shade.groundAreaAll,
       });
       shader.vertexShader = shader.vertexShader
@@ -311,6 +311,8 @@ const scattered = (one: THREE.BufferGeometry, count: number, kind: 'tuft' | 'lea
           uniform sampler2D gtCover;
           uniform float windTime;
           uniform float windStrength;
+          uniform vec2 windDir;
+          uniform float windSpeed;
           uniform sampler2D ugShade;
           uniform sampler2D ugShadeAll;
           uniform vec3 ugArea;
@@ -371,7 +373,7 @@ ${blades ? `          float gtWild = clamp(1.0 - gs.a * 2.0, 0.0, 1.0);
           transformed *= gtShow;
           // The wind: the tips lean with it, each blade in its own time.
           float gtSway = sin(windTime * 2.1 + gtRoot.x * 0.9 + gtRoot.y * 0.7) * 0.5 + sin(windTime * 3.7 + gtRoot.x * 2.3) * 0.25;
-          transformed.xz += vec2(-0.998, 0.057) * gtSway * 0.35 * transformed.y * position.y * windStrength;
+          transformed.xz += windDir * gtSway * 0.35 * transformed.y * position.y * windStrength * windSpeed;
           transformed += vec3(gtRoot.x, gtY + gtBase, gtRoot.y);
           // Its colour: the ground's own, yellower or greener with the ground's slow variation, drier in rough grass,
           // each patch a little its own, lighter on a garden's light stripe as the ground is.
@@ -395,7 +397,7 @@ ${blades ? `          float gtWild = clamp(1.0 - gs.a * 2.0, 0.0, 1.0);
           transformed *= vec3(gtWide, gtTall, gtWide) * gtShow;
           // The wind: the tips lean with it, each tuft in its own time.
           float gtSway = sin(windTime * 2.1 + gtRoot.x * 0.9 + gtRoot.y * 0.7) * 0.5 + sin(windTime * 3.7 + gtRoot.x * 2.3) * 0.25;
-          transformed.xz += vec2(-0.998, 0.057) * gtSway * 0.35 * transformed.y * position.y * windStrength;
+          transformed.xz += windDir * gtSway * 0.35 * transformed.y * position.y * windStrength * windSpeed;
           transformed += vec3(gtRoot.x, gtY + gtBase, gtRoot.y);
           // Its colour: yellower or greener with the ground's slow variation, drier in rough grass, each its own.
           vGtTint = mix(vec3(1.06, 1.0, 0.78), vec3(0.95, 1.02, 1.1), gs.b) * mix(vec3(1.0), vec3(1.25, 1.12, 0.7), gtWild * gtMake.y)

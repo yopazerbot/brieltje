@@ -409,6 +409,7 @@ export class Undergrowth {
       shader.uniforms.ugReach = this.reachUniform;
       shader.uniforms.windTime = wind.time;
       shader.uniforms.windStrength = wind.strength;
+      Object.assign(shader.uniforms, { windDir: wind.dir, windSpeed: wind.speed });
       if (shade) Object.assign(shader.uniforms, { ugShade: shade.groundShade, ugShadeAll: shade.groundShadeAll, ugArea: shade.groundArea, ugAreaAll: shade.groundAreaAll });
       shader.vertexShader = shader.vertexShader
         .replace(
@@ -417,6 +418,8 @@ export class Undergrowth {
           uniform float ugReach;
           uniform float windTime;
           uniform float windStrength;
+          uniform vec2 windDir;
+          uniform float windSpeed;
           varying vec2 vUgLight;
           ${shade ? 'uniform sampler2D ugShade;\nuniform sampler2D ugShadeAll;\nuniform vec3 ugArea;\nuniform vec3 ugAreaAll;' : ''}`,
         )
@@ -426,7 +429,7 @@ export class Undergrowth {
           vec3 ugRoot = (modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
           // Grown in towards the edge of the reach: nothing pops in or out.
           transformed *= smoothstep(ugReach, ugReach * 0.72, distance(cameraPosition, ugRoot));
-          ${sway ? `transformed.xz += vec2(-0.998, 0.057) * sin(windTime * 1.6 + ugRoot.x * 0.4 + ugRoot.z * 0.3) * ${sway.toFixed(3)} * transformed.y * windStrength;` : ''}
+          ${sway ? `transformed.xz += windDir * sin(windTime * 1.6 + ugRoot.x * 0.4 + ugRoot.z * 0.3) * ${sway.toFixed(3)} * transformed.y * windStrength * windSpeed;` : ''}
           vUgLight = vec2(1.0);
           ${shade
             ? `{

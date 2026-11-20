@@ -3,6 +3,7 @@ import { sound } from '../sound';
 import type { CrashHit } from './car';
 import type { Particles, Spawn } from './particles';
 import { PARTICLE } from './sprites';
+import { windAt } from './wind';
 
 /**
  * A car crashing into something (world/car.ts onCrash): what flies off and how it sounds, by what it hit.
@@ -189,13 +190,14 @@ export class Crash {
   private leaves(h: CrashHit, n: number, spread: number): void {
     const s = this.s;
     const k = Math.round(n * this.particles.budget);
+    const w = windAt(h.x, h.z); // carried off with the wind (world/wind.ts)
     for (let i = 0; i < k; i++) {
       s.x = h.x + (Math.random() - 0.5) * spread * 2;
       s.y = h.y + (Math.random() - 0.3) * spread;
       s.z = h.z + (Math.random() - 0.5) * spread * 2;
-      s.vx = h.nx * (0.5 + Math.random()) + (Math.random() - 0.5);
+      s.vx = h.nx * (0.5 + Math.random()) + (Math.random() - 0.5) + w.x * 0.35;
       s.vy = 0.4 + Math.random() * 0.8;
-      s.vz = h.nz * (0.5 + Math.random()) + (Math.random() - 0.5);
+      s.vz = h.nz * (0.5 + Math.random()) + (Math.random() - 0.5) + w.z * 0.35;
       Object.assign(s, { life: 2 + Math.random() * 2, size0: 0.05, size1: 0.045, alpha: 1, cell: PARTICLE.chip, drag: 2.6, gravity: 1.2, spin: (Math.random() - 0.5) * 6, stretch: 0 });
       s.c0.set(['#4f6b2e', '#6b7a33', '#9a7a35', '#8a5a2b'][i % 4]);
       s.c1.copy(s.c0).multiplyScalar(0.9);

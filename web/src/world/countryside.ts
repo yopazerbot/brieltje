@@ -162,7 +162,6 @@ export class Countryside {
     const eye = camera.position;
     camera.updateMatrixWorld();
     this.frustum.setFromProjectionMatrix(this.viewProj.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
-    wind.time.value += dt;
     this.checkIn -= dt;
     if (this.checkIn <= 0) {
       this.checkIn = 1;

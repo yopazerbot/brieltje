@@ -13,6 +13,7 @@ import { Snow } from './snow';
 import { snowCover } from './snowCover';
 import { StreetLights } from './streetLights';
 import { wet as wetGround, wetState } from './wetGround';
+import { windStep } from './wind';
 
 /**
  * The weather and the time of day: sunny (as it always was), overcast, rain and night (shared/moods.mjs), or Auto,
@@ -145,6 +146,25 @@ const DUSK = [
 ] as const;
 /** How far into dusk a dusk picked by hand holds. */
 const DUSK_HELD = 0.25;
+
+/**
+ * The wind of each mood (world/wind.ts windStep): how hard as a factor of the sunny day's breeze, how much of the
+ * sharper gusts, radians it has turned from the sunny day's south-west, and how far it wanders round that. Calm at dusk
+ * (stiller as it darkens) and at night, a breeze in the sun (as it always was: the sniper's drift), fresh under
+ * clouds, gusty in the rain from a little more south, light with snow from the north-east.
+ */
+type WindLook = readonly [speed: number, rough: number, veer: number, wander: number];
+const WINDS: Record<Exclude<Mood, 'dusk'>, WindLook> = {
+  sunny: [1, 0, 0, 0],
+  overcast: [1.45, 0.15, 0.3, 0.25],
+  rain: [1.85, 0.45, -0.35, 0.3],
+  night: [0.25, 0, 0.3, 0.2],
+  snow: [0.6, 0.05, 2.6, 0.2],
+};
+const WIND_DUSK: readonly [WindLook, WindLook] = [[0.45, 0, 0.15, 0.2], [0.25, 0, 0.25, 0.2]];
+/** A mood's wind, dusk as deep as it is (`depth`, 0 golden to 1 blue). */
+const windOf = (m: Mood, depth: number): WindLook =>
+  m === 'dusk' ? (WIND_DUSK[0].map((v, i) => v + (WIND_DUSK[1][i] - v) * depth) as unknown as WindLook) : WINDS[m];
 const NUMBERS = ['skyGain', 'sun', 'hemi', 'inside', 'exposure', 'fog', 'horizonFade', 'contrast', 'bakeFill', 'fill', 'wet', 'rain', 'night', 'overcast', 'snow', 'sunLow'] as const;
 const COLOURS = ['sunColor', 'hemiSky', 'hemiGround', 'fogTint'] as const;
 
@@ -388,6 +408,10 @@ export class Weather {
     const depth = c && !this.fade ? (c.mood === 'dusk' ? c.progress : 0) : DUSK_HELD;
     blendLook(LOOKS.dusk, DUSK[0], DUSK[1], depth * depth * (3 - 2 * depth));
     this.apply(pair);
+    // The one wind (world/wind.ts): the two moods' blended as the light is, on the shared clock (the server's together).
+    const wa = windOf(pair.a, depth), wb = windOf(pair.b, depth);
+    const wk = (i: number) => wa[i] + (wb[i] - wa[i]) * pair.k;
+    windStep(Date.now() + (this.server !== null ? this.serverOffset : 0), wk(0), wk(1), wk(2), wk(3));
 
     // Wet: on Auto as the cycle has it (the same on every page); else towards the mood's, quickly up, slowly dry.
     const want = blendLook(this.tmp, LOOKS[pair.a], LOOKS[pair.b], pair.k).wet;

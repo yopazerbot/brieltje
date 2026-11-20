@@ -161,6 +161,7 @@ export class BankPlants {
       shader.uniforms.bpReach = this.reachUniform;
       shader.uniforms.windTime = wind.time;
       shader.uniforms.windStrength = wind.strength;
+      Object.assign(shader.uniforms, { windDir: wind.dir, windSpeed: wind.speed });
       if (shade) Object.assign(shader.uniforms, { bpShade: shade.groundShade, bpShadeAll: shade.groundShadeAll, bpArea: shade.groundArea, bpAreaAll: shade.groundAreaAll });
       shader.vertexShader = shader.vertexShader
         .replace(
@@ -169,6 +170,8 @@ export class BankPlants {
           uniform float bpReach;
           uniform float windTime;
           uniform float windStrength;
+          uniform vec2 windDir;
+          uniform float windSpeed;
           varying vec2 vBpLight;
           ${shade ? 'uniform sampler2D bpShade;\nuniform sampler2D bpShadeAll;\nuniform vec3 bpArea;\nuniform vec3 bpAreaAll;' : ''}`,
         )
@@ -178,9 +181,9 @@ export class BankPlants {
           vec3 bpRoot = (modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
           {
             // The wind's lean, more towards the top; gusts rolling over the land as in the trees (world/wind.ts).
-            vec2 dir = vec2(-0.998, 0.057);
+            vec2 dir = windDir;
             float h = max(0.0, transformed.y) / ${HEIGHT[kind].toFixed(2)};
-            float gust = 0.55 + 0.45 * sin(windTime * 0.23 - dot(bpRoot.xz, dir) * 0.012);
+            float gust = windSpeed * (0.55 + 0.45 * sin(windTime * 0.23 - dot(bpRoot.xz, dir) * 0.012));
             float lean = (0.55 + 0.45 * sin(windTime * 1.7 + bpRoot.x * 0.5 + bpRoot.z * 0.37)) * gust * h * h
               + 0.18 * h * h * h * sin(windTime * 4.3 + bpRoot.x * 1.3 - bpRoot.z * 0.7);
             vec3 w = vec3(dir.x, 0.0, dir.y) * lean * ${SWAY[kind].toFixed(3)} * windStrength;

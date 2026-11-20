@@ -4,6 +4,7 @@ import type { Ground } from './collision';
 import type { DipSpec } from './houseData';
 import { mood } from './mood';
 import { terrain } from './terrain';
+import { wind } from './wind';
 
 /**
  * The ponds' and ditches' water: a dark green mirror of the sky, now ruffled by the wind. Five
@@ -62,6 +63,8 @@ const MUD = new THREE.Color('#4a4030');
 
 let material: THREE.MeshStandardMaterial | null = null;
 const time = { value: 0 };
+/** The wind as the ponds read it: its turn from WIND (cos, sin) and how rough (waterClock) */
+const windNow = { value: new THREE.Vector3(1, 0, 1) };
 /** How hard it rains on the water now (0 to 1), 0 on Low */
 const rain = { value: 0 };
 let detail = true;
@@ -87,6 +90,7 @@ export function waterMaterial(): THREE.MeshStandardMaterial {
   m.onBeforeCompile = (shader) => {
     shader.uniforms.waterTime = time;
     shader.uniforms.waterRain = rain;
+    shader.uniforms.waterWind = windNow;
     shader.vertexShader = shader.vertexShader
       .replace(
         '#include <common>',
@@ -102,6 +106,7 @@ export function waterMaterial(): THREE.MeshStandardMaterial {
         `#include <common>
         uniform float waterTime;
         uniform float waterRain;
+        uniform vec3 waterWind;
         varying vec2 vWater;
         varying float vWaterDepth;
         varying vec4 vWaterFlow;
@@ -167,8 +172,15 @@ export function waterMaterial(): THREE.MeshStandardMaterial {
             ${flowWaves}
             grad = grad.x * down + grad.y * vec2(-down.y, down.x);
           } else {
-            ${waves}
+            // A pond's trains run with the wind as it blows now (world/wind.ts): turned from the sunny day's.
+            vec2 pw = vec2(p.x * waterWind.x + p.y * waterWind.y, p.y * waterWind.x - p.x * waterWind.y);
+            {
+              vec2 p = pw;
+              ${waves}
+            }
+            grad = vec2(grad.x * waterWind.x - grad.y * waterWind.y, grad.x * waterWind.y + grad.y * waterWind.x);
           }
+          grad *= waterWind.z; // glassy in a calm, rougher in a fresh wind
           // Gusts: rougher and calmer patches drifting downwind.
           float gust = 0.55 + 0.45 * sin(dot(p, vec2(${(WIND.x * 0.21).toFixed(3)}, ${(WIND.y * 0.21).toFixed(3)})) - waterTime * 0.5) * sin(p.x * 0.13 - p.y * 0.17 + waterTime * 0.11);
           grad *= gust;
@@ -202,6 +214,9 @@ export function waterMaterial(): THREE.MeshStandardMaterial {
 export function waterClock(): void {
   time.value = performance.now() / 1000;
   rain.value = detail ? raining() : 0;
+  // The wind now (world/wind.ts): its turn from the sunny day's (cos, sin) and how hard, the sun's breeze 1.
+  const d = wind.dir.value;
+  windNow.value.set(WIND.x * d.x + WIND.y * d.y, WIND.x * d.y - WIND.y * d.x, Math.min(1.5, 0.3 + 0.7 * wind.speed.value));
 }
 
 /** How hard it rains now: the rain mood's share of what is shown (world/mood.ts). */

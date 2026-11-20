@@ -1,12 +1,13 @@
 import * as THREE from 'three';
 import { daylight } from './daylight';
 import { mood } from './mood';
+import { windAt } from './wind';
 
 /**
  * Wood smoke from chimneys: at home the house across the street from the main house and the
  * bungalow (world/homeLife.ts), in the village two chimneys by the church square (main.ts). Each
- * puff is a small soft disc turned to the camera that rises, grows, drifts off with the wind (from
- * the south-west) and fades; all of it in the vertex shader from one clock, one draw call for each
+ * puff is a small soft disc turned to the camera that rises, grows, drifts off with the wind (the
+ * one wind of world/wind.ts, with its gusts) and fades; all of it in the vertex shader from one clock, one draw call for each
  * set of chimneys, no texture (the fragment shader draws the soft, lumpy edge). Puffs are
  * see-through and cost pixels, so Medium and up only. The puffs light nothing and take no light, so their colour
  * follows the weather (world/mood.ts): pale grey in the sun, greyer under a grey sky, dark and a little blue at night.
@@ -16,6 +17,8 @@ const DAY = new THREE.Color(0.6, 0.62, 0.66);
 const GREY = new THREE.Color(0.52, 0.53, 0.55);
 const NIGHT = new THREE.Color(0.55, 0.6, 0.75); // times the night's light: moonlit
 
+/** m/s: the sunny day's breeze on average (world/wind.ts): the drift the puffs were made for. */
+const BREEZE = 2.5;
 const PUFFS = 14; // per chimney
 const LIFE = 9; // s from the chimney to gone
 
@@ -61,6 +64,7 @@ export class Smoke {
   private time = { value: 0 };
   /** The middle of its chimneys */
   private centre = new THREE.Vector3();
+  private wind = new THREE.Vector3();
 
   /** `chimneys`: the middle of each chimney's top; `opacity`: how thick a fresh puff is. */
   constructor(chimneys: THREE.Vector3[], opacity = 0.5) {
@@ -96,7 +100,13 @@ export class Smoke {
 
   update(dt: number): void {
     this.time.value += dt;
-    const c = (this.mesh.material as THREE.ShaderMaterial).uniforms.uColor.value as THREE.Color;
+    const u = (this.mesh.material as THREE.ShaderMaterial).uniforms;
+    // The one wind (world/wind.ts), with its gusts: 1 is the sunny day's breeze on average. Up nearly straight in a calm
+    // dusk, laid flat in a gusty rain. Eased, so a plume swings over with a gust rather than snapping.
+    const w = windAt(this.centre.x, this.centre.z);
+    const k = 1 - Math.exp(-dt * 0.8);
+    (u.uWind.value as THREE.Vector3).lerp(this.wind.set(w.x / BREEZE, 0, w.z / BREEZE), k);
+    const c = u.uColor.value as THREE.Color;
     c.copy(DAY).lerp(GREY, mood.overcast).lerp(NIGHT, mood.night).multiplyScalar(daylight());
   }
 
