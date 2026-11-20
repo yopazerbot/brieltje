@@ -18,7 +18,7 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { launch, options, startGame } from './cdp.mjs';
 
-const o = options({ url: 'http://localhost:5200/', port: '9500', out: '', night: false, quality: 'high', phone: false, swiftshader: false, size: '1600x900', quick: false, minutes: '20', together: false, sound: false, bench: false, frames: '120', runs: '4' });
+const o = options({ url: 'http://localhost:5200/', port: '9500', out: '', night: false, quality: 'high', phone: false, swiftshader: false, size: '1600x900', quick: false, minutes: '20', together: false, sound: false, hits: false, tells: false, moods: '', bench: false, frames: '120', runs: '4' });
 const [width, height] = o.size.split('x').map(Number);
 if (o.out) mkdirSync(o.out, { recursive: true });
 const b = await launch({ port: Number(o.port), width, height, swiftshader: o.swiftshader });
@@ -31,7 +31,7 @@ const BOT = String.raw`(() => {
   const B = briel, S = B.spirit, P = B.player, W = B.weapon;
   const trunks = S.fight.trunks;
   const ground = (x, z) => B.world.groundAt(x, z, -4, 0).y;
-  const bot = { on: true, hp: 100, hurt: {}, act: '', tell: '', downs: 0, wasAlive: true, shots: 0, away: 0, mended: false, angle: 0, lastHp: 0, stuck: 0, log: [] };
+  const bot = { on: true, hp: 100, hurt: {}, hits: [], dodging: false, act: '', tell: '', downs: 0, wasAlive: true, shots: 0, away: 0, mended: false, angle: 0, lastHp: 0, stuck: 0, log: [] };
   const free = (x, z) => trunks.every((t) => Math.hypot(t.x - x, t.z - z) > t.r + 0.55);
   function stepTo(tx, tz, dt) {
     const dx = tx - P.x, dz = tz - P.z, d = Math.hypot(dx, dz);
@@ -57,16 +57,30 @@ const BOT = String.raw`(() => {
     // What hurt it: the act just before each loss of health (sweep, bolt, pool).
     if (sim.act !== bot.act) { if (['sweep', 'bolt', 'pool'].includes(sim.act)) bot.tell = sim.act; bot.act = sim.act; }
     const hp = B.combat.hp;
-    if (alive && hp < bot.hp) { const k = sim.pools.length && sim.pools.some((p) => Math.hypot(P.x - p.x, P.z - p.z) < 2.6) ? 'pool' : bot.tell; bot.hurt[k] = (bot.hurt[k] ?? 0) + (bot.hp - hp); }
+    if (alive && hp < bot.hp) {
+      const k = sim.pools.length && sim.pools.some((p) => Math.hypot(P.x - p.x, P.z - p.z) < 2.6) ? 'pool' : bot.tell;
+      bot.hurt[k] = (bot.hurt[k] ?? 0) + (bot.hp - hp);
+      if (bot.hits.length < 80) bot.hits.push({ t: Math.round(st.clock / 100) / 10, d: bot.hp - hp, k, act: sim.act, me: [+P.x.toFixed(1), +P.z.toFixed(1)], pools: sim.pools.map((p) => +Math.hypot(P.x - p.x, P.z - p.z).toFixed(1)), bolts: (bot.prevBolts ?? []).map((b) => +Math.hypot(P.x - b.x, P.z - b.z).toFixed(1)), dodging: bot.dodging });
+    }
     bot.hp = alive ? hp : 100;
+    bot.prevBolts = sim.bolts.length ? sim.bolts.map((b) => ({ ...b })) : bot.prevBolts;
     bot.wasAlive = alive;
     if (!alive) return;
     if (W.current !== 'rifle' && W.owned.has('rifle') && sim.mode !== 'gone') W.select('rifle');
-    const dt = 0.05;
+    // Moves at a player's speed on the fight's own clock (the page's timers can run late).
+    const dt = Math.min(0.25, Math.max(0, (st.clock - (bot.clock ?? st.clock)) / 1000));
+    bot.clock = st.clock;
+    bot.ticks = (bot.ticks ?? 0) + 1;
     const me = { x: P.x, z: P.z };
     let tx = me.x, tz = me.z, dodge = false;
     const sx = sim.x, sz = sim.z;
-    const out = (fx, fz, r) => { const d = Math.hypot(me.x - fx, me.z - fz) || 0.01; tx = fx + ((me.x - fx) / d) * r; tz = fz + ((me.z - fz) / d) * r; dodge = true; };
+    // Out of a circle round (fx, fz): straight away from its middle, or (standing on the middle: a tell aimed where
+    // you stood) to the side, across the line from the spirit, as a player steps aside.
+    const out = (fx, fz, r) => {
+      let ux = me.x - fx, uz = me.z - fz, d = Math.hypot(ux, uz);
+      if (d < 0.5) { const sx0 = me.x - sim.x, sz0 = me.z - sim.z, l = Math.hypot(sx0, sz0) || 1; bot.side ??= Math.random() < 0.5 ? 1 : -1; ux = (-sz0 / l) * bot.side; uz = (sx0 / l) * bot.side; d = 1; }
+      tx = fx + (ux / d) * r; tz = fz + (uz / d) * r; dodge = true;
+    };
     // Threats first: the sweep's lane, a bolt's ring (tell or flying), a pool.
     if (sim.act === 'sweep' && sim.aim) {
       const a = sim.aim, ex = a.x - a.fx, ez = a.z - a.fz, len = Math.hypot(ex, ez) || 1;
@@ -85,6 +99,7 @@ const BOT = String.raw`(() => {
       if (sim.mode === 'mend' && !bot.mended) { bot.mended = true; bot.log.push('it mends at ' + Math.round(st.clock / 1000) + ' s'); }
       if (bot.away <= 0) bot.log.push('back to it');
     } else if (!bot.mended && sim.phase >= 2 && sim.shell === null && sim.act !== 'stun') { bot.away = 22; bot.log.push('walking off at ' + Math.round(st.clock / 1000) + ' s'); }
+    if (!dodge) bot.side = undefined;
     if (!dodge && sim.mode !== 'asleep') {
       // Keep 13.5 m from it (outside the sweep's 11), round the grove; a new angle when shots stop counting.
       if (st.heart && sim.hp === bot.lastHp) bot.stuck += dt; else bot.stuck = 0;
@@ -99,6 +114,7 @@ const BOT = String.raw`(() => {
       if (bot.angle && st.heart) { const b2 = Math.atan2(tx - sx, tz - sz) + 0.35; tx = sx + Math.sin(b2) * 13.5; tz = sz + Math.cos(b2) * 13.5; bot.angle = Math.max(0, bot.angle - 0.02); }
     }
     if (sim.mode === 'asleep') { tx = -60; tz = 481; }
+    bot.dodging = dodge;
     const [nx, nz] = stepTo(tx, tz, dt);
     // Aim: the open heart, else the nearest lit light, else at it.
     let aim = st.heart;
@@ -233,11 +249,12 @@ async function fight() {
     if (s.mode === 'apart' && beatenAt === null) beatenAt = s.clock;
     if (s.mode === 'gone' && s.drop && seen.has('15-launcher')) break;
   }
-  const bot = await b.evaluate('({ downs: __bot.downs, shots: __bot.shots, log: __bot.log, hurt: __bot.hurt })', false);
+  const bot = await b.evaluate('({ downs: __bot.downs, shots: __bot.shots, log: __bot.log, hurt: __bot.hurt, hits: __bot.hits })', false);
   await b.evaluate('__bot.on = false; clearInterval(__bot.timer)', false);
   log(`fight: ${beatenAt === null ? 'NOT beaten' : `beaten after ${(beatenAt / 60000).toFixed(2)} min on the fight's clock`}; went down ${bot.downs} times; ${bot.shots} shots fired`);
   for (const l of bot.log) log('   ', l);
   log('health lost to:', JSON.stringify(bot.hurt));
+  if (o.hits) for (const h of bot.hits) log('   hit', JSON.stringify(h));
   log('pictures taken:', [...seen].join(', '), '| not seen:', states.map((x) => x[0]).filter((n) => !seen.has(n)).join(', ') || 'none');
   // The launcher: walk into it, then fire it.
   const took = await b.evaluate(`(async () => {
@@ -356,6 +373,38 @@ async function sounds() {
 }
 
 /** What the fight's drawing costs: a shell up with its lights, three tells showing; with and without, alternating. */
+/**
+ * The three tells together, held still: a sweep's lane, a bolt's ring with its bolt on the way, two pools, the shell's
+ * lights; pictures of them from two spots in each weather of --moods (a mood takes 9 s to blend in).
+ */
+async function tells() {
+  await startGame(b, o.url, { noAsk: true });
+  await b.evaluate(`briel.three.applyQuality(${JSON.stringify(o.quality.split(',')[0])}); briel.three.holdQuality(true)`, false);
+  await b.evaluate('briel.teleport(-60, 466, -8.6, 0, 0)', false);
+  await b.waitFor('briel.spirit.state().look', 60000);
+  await b.evaluate(`(() => { const f = briel.spirit.fight, s = f.sim, now = f.clock, up = s.d.up;
+    const g = (x, z) => briel.world.groundAt(x, z, -4, 0).y;
+    briel.spirit.hold(true);
+    for (const i of [1, 3, 6]) Object.assign(s.lights[i], { lit: true, used: true, hp: 300 });
+    Object.assign(s, { mode: 'fight', phase: 2, shell: 0, act: 'sweep', node: 0, x: -68, z: 486, y: g(-68, 486) + up, since: now - 1000, until: now + 700,
+      aim: { fx: -68, fz: 486, y: g(-68, 486), x: -57, z: 486 }, tx: -57, tz: 486,
+      pools: [{ x: -73, y: g(-73, 476), z: 476, from: now - 2000, until: now + 4000 }, { x: -76, y: g(-76, 481), z: 481, from: now - 2000, until: now + 4000 }] });
+    f.fx.flight(f.heart, { x: -62, y: g(-62, 476), z: 476 }, 5000, now / 1000 - 3); })()`, false);
+  const views = [['wide', -61, 469, -67, -7.6, 482], ['close', -67, 470, -68, -8.3, 478], ['side', -63, 471.5, -63, -6.8, 486]];
+  for (const mood of (o.moods || 'sunny,dusk,night,rain').split(',')) {
+    await b.evaluate(`briel.three.weather.setSolo(${JSON.stringify(mood)})`, false);
+    await b.sleep(9500);
+    for (const [name, x, z, lx, ly, lz] of views) {
+      await b.evaluate(`(() => { const f = briel.world.groundAt(${x}, ${z}, -4, 0).y, dx = ${lx} - ${x}, dy = ${ly} - (f + 1.6), dz = ${lz} - ${z};
+        briel.teleport(${x}, ${z}, f, Math.atan2(-dx, -dz), Math.atan2(dy, Math.hypot(dx, dz))); })()`, false);
+      await b.sleep(900);
+      const file = join(o.out, `tells-${mood}-${name}.png`);
+      await b.screenshot(file);
+      log('  picture', file);
+    }
+  }
+}
+
 async function bench() {
   await startGame(b, o.url, { noAsk: true });
   await b.evaluate('briel.three.holdQuality(true)', false);
@@ -393,6 +442,7 @@ try {
   if (o.together) await together();
   else if (o.sound) await sounds();
   else if (o.bench) await bench();
+  else if (o.tells) await tells();
   else await fight();
   const errors = b.logs.filter((l) => /^(error|exception)/.test(l));
   if (errors.length) log('page errors:\n' + errors.slice(0, 12).join('\n'));
