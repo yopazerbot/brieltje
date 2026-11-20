@@ -804,6 +804,43 @@ export function leafCardMaterial(lean: number, flutter: number, turning: boolean
       // A card closer than 30 cm to the eye (walking into a low crown or along a hedge) is left out: it would fill half
       // the screen with one blurred spray.
       .replace('#include <alphatest_fragment>', '#include <alphatest_fragment>\nif (vViewPosition.z < 0.3) discard;');
+    if (turning) {
+      // The end of November: the trees that have turned most have lost the most leaves too, up to over half of them, in
+      // clusters (soft noise over the sprays, a few leaves across): the sky shows through their crowns. By the same
+      // number from the tree's place as its turning (world/wind.ts), so the brownest crowns are the barest.
+      shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nvarying float vLeafBare;').replace(
+        '#include <begin_vertex>',
+        `#include <begin_vertex>
+        vLeafBare = 0.0;
+        #ifdef USE_INSTANCING
+        {
+          float bHash = fract(sin(dot(floor(instanceMatrix[3].xz * 2.0), vec2(12.9898, 78.233))) * 43758.5453);
+          vLeafBare = smoothstep(0.4, 1.0, bHash) * 0.62;
+          #ifdef USE_COLOR
+          // And three weeks later than world/wind.ts's end of October: more of the crowns turned, and further, to the
+          // same yellow, rust or brown as there; only about one in six still green.
+          float bKind = fract(bHash * 17.31);
+          vec3 bCol = bKind < 0.4 ? vec3(0.2, 0.15, 0.025) : bKind < 0.75 ? vec3(0.21, 0.09, 0.02) : vec3(0.13, 0.08, 0.03);
+          vColor.rgb = mix(vColor.rgb, bCol * dot(vColor.rgb, vec3(0.3, 0.59, 0.11)) / 0.16, smoothstep(0.12, 0.55, bHash) * 0.55);
+          #endif
+        }
+        #endif`,
+      );
+      shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vLeafBare;').replace(
+        '#include <alphatest_fragment>',
+        `#include <alphatest_fragment>
+        #ifdef USE_MAP
+        if (vLeafBare > 0.0) {
+          vec2 bc = vMapUv * 40.0;
+          vec2 bi = floor(bc);
+          vec2 bf = fract(bc);
+          bf = bf * bf * (3.0 - 2.0 * bf);
+          vec4 bh = fract(sin(vec4(dot(bi, vec2(127.1, 311.7)), dot(bi + vec2(1.0, 0.0), vec2(127.1, 311.7)), dot(bi + vec2(0.0, 1.0), vec2(127.1, 311.7)), dot(bi + 1.0, vec2(127.1, 311.7)))) * 43758.5453);
+          if (mix(mix(bh.x, bh.y, bf.x), mix(bh.z, bh.w, bf.x), bf.y) < vLeafBare) discard;
+        }
+        #endif`,
+      );
+    }
   };
   const key = material.customProgramCacheKey.bind(material);
   material.customProgramCacheKey = () => `${key()}|leafCards${through}`;
