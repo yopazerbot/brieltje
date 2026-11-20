@@ -89,9 +89,12 @@ const guest = async (name) => {
   if (!r.ok) console.log(`     ${name} could not join: ${r.status} ${data?.code ?? ''}`);
   return connect(name, cookieOf(r));
 };
+/** Facing the spirit while it is there, as a player who fights it does (a watch view behind them shows it), else ahead. */
 const state = (c, p) => {
+  const v = c.view;
+  const yaw = v && v.mode !== 'gone' && Math.hypot(v.x - p.x, v.z - p.z) > 0.1 ? Math.atan2(-(v.x - p.x), -(v.z - p.z)) : 0;
   c.at = { ...p };
-  c.send({ t: 'state', x: +p.x.toFixed(2), y: +p.y.toFixed(2), z: +p.z.toFixed(2), yaw: 0, pitch: 0, armed: true, w: c.w });
+  c.send({ t: 'state', x: +p.x.toFixed(2), y: +p.y.toFixed(2), z: +p.z.toFixed(2), yaw: +yaw.toFixed(3), pitch: 0, armed: true, w: c.w });
 };
 /** One step of at most SPEED m/s towards (x, z), on the relief. True when there. */
 const stepTo = (c, x, z) => {
