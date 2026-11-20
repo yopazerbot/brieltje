@@ -5,6 +5,7 @@ import { wind } from './wind';
 import { reflectionSkips } from './reflections';
 import { WASH_GLSL, washUniforms } from './washShader';
 import type { GroundShadeUniforms } from './undergrowth';
+import { SPRUCE_WOOD } from './cardTrees';
 import FC from '../../shared/football.json';
 
 /**
@@ -33,7 +34,9 @@ import FC from '../../shared/football.json';
  * Fallen leaves lie the same way (it is November): yellow, orange and brown, flat on whatever is there (the grass,
  * a road, a pavement: the second image also keeps how high the cover lies), where the sky is half hidden in the
  * ground's baked shade: under the crowns and along walls and hedges, where leaves gather. Not where it is fully
- * hidden (indoors, under a roof).
+ * hidden (indoors, under a roof). On the woods' floor, which has a litter of its own (world/forestFloor.ts), fewer of
+ * them and in its colours (beech, oak, ochre), and few under the spruces: the cover image also says which cover is the
+ * woods' floor. No blade grows there: the floor covers the grass.
  */
 
 /** In the dev build, `?oldgrass` shows the grass as it was before 14 Nov 2026, to compare (one star-shaped tuft mesh). */
@@ -234,20 +237,27 @@ const scattered = (one: THREE.BufferGeometry, count: number, kind: 'tuft' | 'lea
       fragmentShader: 'varying float vY;\nvoid main() { gl_FragColor = vec4(vY, 0.0, 0.0, 1.0); }',
       side: THREE.DoubleSide,
     });
+    // Whether what covers the ground is the woods' floor: the fields' kind of row (world/fields.ts, the woods' 9 of
+    // kind * 8 + hue, in a signed byte); none on the rest (their `row` reads 0).
     this.coverPass = new THREE.ShaderMaterial({
       uniforms: { gtArea: this.area, gtBase: this.base, gtHeights: { value: this.heights.texture } },
-      vertexShader: head,
+      vertexShader: head
+        .replace('varying float vY;', 'varying float vY;\n      attribute vec4 row;\n      varying float vWood;')
+        .replace('vY = w.y - gtBase;', 'vY = w.y - gtBase;\n        vWood = step(71.5, row.z * 127.0);'),
       fragmentShader: /* glsl */ `
         uniform sampler2D gtHeights;
         varying float vY;
+        varying float vWood;
         void main() {
           float over = vY - texture2D(gtHeights, gl_FragCoord.xy / ${SIZE}.0).r;
           if (over > 0.5 || over < -0.5) discard;
-          // Covered, and how high over the relief (the highest of what lies there is kept: the depth test).
-          gl_FragColor = vec4(1.0, over + 0.5, 0.0, 1.0);
+          // Covered, how high over the relief (the highest of what lies there is kept: the depth test), and whether
+          // it is the woods' floor.
+          gl_FragColor = vec4(1.0, over + 0.5, vWood, 1.0);
         }`,
       side: THREE.DoubleSide,
     });
+    Object.assign(this.coverPass.defaultAttributeValues, { row: [0, 0, 0, 0] });
     // The ponds' and ditches' water covers the ground under it however deep (no blade under the water), and the wet
     // mud up to some 15 cm over it in part (the blades thin out there). Its sheet runs on under a bank: none there.
     this.waterPass = new THREE.ShaderMaterial({
@@ -417,8 +427,13 @@ ${blades ? `          float gtWild = clamp(1.0 - gs.a * 2.0, 0.0, 1.0);
             * (0.85 + 0.3 * gtMake.z) * (1.0 + 0.14 * gtMown);
 ` : `          float gtInside = step(0.9, gtGround.a) * step(max(abs(gtUv.x - 0.5), abs(gtUv.y - 0.5)), 0.49);
           // Where leaves gather: the sky half hidden (under a crown, along a wall or a hedge), not fully (indoors).
-          float gtGather = smoothstep(0.9, 0.5, gs.g) * smoothstep(0.1, 0.28, gs.g);
-          float gtShow = gtInside * step(gtPlace.w, gtGather * 0.95) * smoothstep(gtReach, gtReach * 0.75, gtFar) * (1.0 - smoothstep(0.05, 0.3, gtSnow));
+          float gtGather = smoothstep(0.9, 0.5, gs.g) * smoothstep(0.1, 0.28, gs.g) * 0.95;
+          // On the woods' floor, which has its litter of its own (world/forestFloor.ts): the freshest leaves on it,
+          // fewer, in its colours, and few under the spruces.
+          float gtWood = step(0.5, gtCovered) * step(0.5, gtOver.b);
+          float gtSpruce = 0.86 * smoothstep(${(SPRUCE_WOOD[2] + 10).toFixed(1)}, ${(SPRUCE_WOOD[2] - 40).toFixed(1)}, distance(gtRoot, vec2(${SPRUCE_WOOD[0].toFixed(1)}, ${SPRUCE_WOOD[1].toFixed(1)})));
+          gtGather = mix(gtGather, 0.4 * (1.0 - 0.85 * gtSpruce), gtWood);
+          float gtShow = gtInside * step(gtPlace.w, gtGather) * smoothstep(gtReach, gtReach * 0.75, gtFar) * (1.0 - smoothstep(0.05, 0.3, gtSnow));
           float gtSize = (0.05 + 0.04 * gtMake.x) * gtShow;
           float gtC = cos(gtPlace.z), gtS = sin(gtPlace.z);
           vec3 transformed = vec3(position.x * gtC - position.z * gtS, position.y, position.x * gtS + position.z * gtC) * gtSize;
@@ -432,6 +447,9 @@ ${blades ? `          float gtWild = clamp(1.0 - gs.a * 2.0, 0.0, 1.0);
           transformed.y += 0.04 * length(gtWash.xy) * (0.5 + 0.5 * sin(washTime * 13.0 + gtMake.w * 40.0));
           // Yellow, orange or brown.
           vGtTint = gtMake.y < 0.35 ? vec3(0.5, 0.34, 0.03) : gtMake.y < 0.65 ? vec3(0.42, 0.16, 0.025) : vec3(0.16, 0.085, 0.03);
+          // In a wood: copper beech, oak brown, ochre, the odd yellow birch leaf, old dark ones (the floor's own).
+          if (gtWood > 0.5) vGtTint = gtMake.y < 0.3 ? vec3(0.19, 0.088, 0.042) : gtMake.y < 0.55 ? vec3(0.13, 0.08, 0.047)
+            : gtMake.y < 0.75 ? vec3(0.19, 0.135, 0.062) : gtMake.y < 0.83 ? vec3(0.27, 0.2, 0.065) : vec3(0.09, 0.062, 0.044);
           vGtTint *= 0.8 + 0.4 * gtMake.z;`}`,
         );
       shader.fragmentShader = shader.fragmentShader
