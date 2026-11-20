@@ -200,9 +200,12 @@ function quiet(o: THREE.Object3D): void {
 
 const LANE_VERT = /* glsl */ `
 varying vec2 vUv;
+varying float vNear;
 void main() {
   vUv = uv;
-  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  vec4 mv = modelViewMatrix * vec4(position, 1.0);
+  vNear = smoothstep(0.6, 3.0, -mv.z);
+  gl_Position = projectionMatrix * mv;
 }`;
 const LANE_FRAG = /* glsl */ `
 uniform sampler2D uNoise;
@@ -213,6 +216,7 @@ uniform float uLen;
 uniform float uI;
 uniform float uAlpha;
 varying vec2 vUv;
+varying float vNear;
 void main() {
   float u = vUv.x;
   float v = vUv.y;
@@ -229,7 +233,7 @@ void main() {
   float strike = smoothstep(0.65, 1.0, uP);
   float a = body * ends * (fill * (0.3 + 0.6 * uP + 0.4 * strike) * (0.12 + 0.88 * n * n) * 1.5 + uFlash * 0.9);
   vec3 c = vec3(0.78, 0.88, 1.0) * uI * (0.75 + 0.5 * n + 0.8 * strike + 1.2 * uFlash);
-  gl_FragColor = vec4(c, clamp(a * uAlpha, 0.0, 1.0));
+  gl_FragColor = vec4(c, clamp(a * uAlpha * vNear, 0.0, 1.0));
 }`;
 
 /** The sweep's lane: two low walls of mist along the strip's edges, one draw. */
@@ -317,6 +321,7 @@ varying vec4 vTint;
 varying float vSpeed;
 varying float vArc;
 varying float vFacing;
+varying float vNear;
 void main() {
   vUv = uv;
   vTint = iTint;
@@ -325,6 +330,7 @@ void main() {
   vec3 p = vec3(iBand.x + position.x * iBand.z, iBand.w - 0.15 + position.y * 1.8, iBand.y + position.z * iBand.z);
   // Seen edge-on the wall would show a hard outline: it thins away there, as mist does.
   vFacing = abs(dot(normalize(vec3(position.x, 0.0, position.z)), normalize(cameraPosition - p)));
+  vNear = smoothstep(0.6, 3.0, distance(cameraPosition, p));
   gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0);
 }`;
 const BAND_FRAG = /* glsl */ `
@@ -335,6 +341,7 @@ varying vec4 vTint;
 varying float vSpeed;
 varying float vArc;
 varying float vFacing;
+varying float vNear;
 void main() {
   float v = vUv.y;
   // Soft patches of mist drifting round and rising through the wall at its own pace: wisps with gaps between them.
@@ -343,7 +350,7 @@ void main() {
   float n = smoothstep(0.3, 0.85, n1 * 0.6 + n2 * 0.4);
   // Densest just above the ground (it starts under it: no seam there), thinning fast upward, no edge at its top.
   float body = smoothstep(0.04, 0.22, v) * exp(-v * 3.6) * smoothstep(1.0, 0.55, v);
-  float a = body * (0.08 + 0.92 * n * n) * smoothstep(0.05, 0.6, vFacing) * vTint.a;
+  float a = body * (0.08 + 0.92 * n * n) * smoothstep(0.05, 0.6, vFacing) * vNear * vTint.a;
   gl_FragColor = vec4(vTint.rgb * (0.6 + 0.7 * n), clamp(a * 1.6, 0.0, 1.0));
 }`;
 
