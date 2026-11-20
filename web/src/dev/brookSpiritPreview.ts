@@ -4,7 +4,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { BloomPass } from '../bloom';
 import { gradedOutput } from '../grade';
 import { mood } from '../world/mood';
-import { BrookSpirit, loadBrookSpirit, type SpiritLook } from '../world/brookSpirit';
+import { BrookSpirit, loadBrookSpirit, spiritLightFits, type SpiritLook } from '../world/brookSpirit';
 
 /**
  * A separate page for the brook spirit's look (web/brook-spirit-preview.html, only on the dev server: the build
@@ -12,7 +12,8 @@ import { BrookSpirit, loadBrookSpirit, type SpiritLook } from '../world/brookSpi
  * tone mapping, colour grade and bloom; sliders and keys drive its inputs. No rules, no attacks.
  *
  * URL options: ?open= &shield= &anger= &fade= (0..1)  ?reach=1  ?night=1  ?q=low|high  ?dist=<m>  ?yaw=<rad>
- *              ?pitch=<rad>  ?move=1  ?hud=0
+ *              ?pitch=<rad> (negative: looking up at it)  ?move=1  ?hud=0  ?light=0|1 (its point light; by default
+ *              only on a graphics card, world/brookSpirit.ts spiritLightFits)
  * In the console (and for tools in the dev folder): spirit.set({open: 1}), spirit.hurt(), spirit.view(dist, yaw,
  * pitch), spirit.bench(frames), spirit.show(false) (the creature hidden, for a with-and-without measurement).
  */
@@ -87,9 +88,9 @@ function woodland(): void {
   const autumn = ['#6b5a2a', '#7c5a26', '#5b5f30', '#8a6a2c', '#4e5a34'].map((h) => new THREE.Color(h));
   let n = 0;
   while (n < 46) {
-    const x = (rnd() - 0.5) * 70;
-    const z = (rnd() - 0.5) * 70;
-    if (Math.hypot(x, z) < 7 || Math.abs(z - 6) < 2) continue;
+    const x = (rnd() - 0.5) * 90;
+    const z = (rnd() - 0.5) * 90;
+    if (Math.hypot(x, z) < 17 || Math.abs(z - 6) < 2) continue;
     const h = 8 + rnd() * 7;
     trunks.setMatrixAt(n, m.compose(new THREE.Vector3(x, 0, z), q.identity(), new THREE.Vector3(1 + rnd() * 0.5, h, 1 + rnd() * 0.5)));
     const r = 2.2 + rnd() * 1.6;
@@ -141,11 +142,11 @@ function resize(): void {
 addEventListener('resize', resize);
 
 // ---- The camera: orbits the creature; drag, wheel, pinch.
-const HOVER = 3.4;
+const HOVER = 4.0; // the middle of its body above the ground (m)
 const view = { dist: num('dist', 7), yaw: num('yaw', 0.35), pitch: num('pitch', 0.12) };
 function placeCamera(): void {
   const c = spirit ? spirit.group.position : new THREE.Vector3(0, HOVER, 0);
-  const at = new THREE.Vector3(c.x, Math.max(1.6, c.y - 0.4), c.z);
+  const at = new THREE.Vector3(c.x, Math.max(1.6, c.y - 0.6), c.z);
   camera.position.set(at.x + Math.sin(view.yaw) * Math.cos(view.pitch) * view.dist, at.y + Math.sin(view.pitch) * view.dist, at.z + Math.cos(view.yaw) * Math.cos(view.pitch) * view.dist);
   camera.position.y = Math.max(0.4, camera.position.y);
   camera.lookAt(at);
@@ -162,7 +163,7 @@ canvas.addEventListener('pointermove', (e) => {
   if (!p) return;
   if (pointers.size === 1) {
     view.yaw -= (e.clientX - p.x) * 0.006;
-    view.pitch = THREE.MathUtils.clamp(view.pitch + (e.clientY - p.y) * 0.004, -0.3, 1.3);
+    view.pitch = THREE.MathUtils.clamp(view.pitch + (e.clientY - p.y) * 0.004, -0.6, 1.3);
   } else if (pointers.size === 2) {
     const [a, b] = [...pointers.values()];
     const before = Math.hypot(a.x - b.x, a.y - b.y);
@@ -208,7 +209,7 @@ const press: Record<string, () => void> = {
     look = look === 'low' ? 'high' : 'low';
     applyLook();
   },
-  near: () => (view.dist = 4),
+  near: () => Object.assign(view, { dist: 4, pitch: -0.4 }), // looking up at it, as a player under it does
   far: () => (view.dist = 25),
 };
 for (const [id, fn] of Object.entries(press)) document.getElementById(id)!.addEventListener('click', fn);
@@ -246,7 +247,7 @@ function step(dt: number): void {
       g.position.set(x, HOVER, z);
     } else g.position.set(0, HOVER, 0);
     // The reach: a spot on the ground in front of it, moving a little.
-    reachAt.set(Math.sin(t * 0.6) * 1.5, 0.3, 4.5).applyAxisAngle(new THREE.Vector3(0, 1, 0), g.rotation.y).add(new THREE.Vector3(g.position.x, 0, g.position.z));
+    reachAt.set(Math.sin(t * 0.6) * 2, 0.5, 7).applyAxisAngle(new THREE.Vector3(0, 1, 0), g.rotation.y).add(new THREE.Vector3(g.position.x, 0, g.position.z));
     spirit.open = inputs.open;
     spirit.shield = inputs.shield;
     spirit.anger = inputs.anger;
@@ -283,7 +284,9 @@ loadBrookSpirit().then((model) => {
     stats.textContent = 'The model did not load (npm run dev in web/, and public/models/brook-spirit.glb).';
     return;
   }
-  spirit = new BrookSpirit(model, look);
+  // Its light only on a graphics card (?light=0 or 1 to choose).
+  spirit = new BrookSpirit(model, look, params.has('light') ? params.get('light') === '1' : spiritLightFits(renderer));
+  spirit.ground = 0;
   spirit.group.position.set(0, HOVER, 0);
   scene.add(spirit.group);
   // A few seconds on, so the mist is in place before the first picture.
