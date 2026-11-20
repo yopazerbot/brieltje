@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { followLiveShadow } from './figureShadows';
 
 /**
  * Where the sun's real-time shadow map lies (graphics.ts shadowReach).
@@ -164,6 +165,7 @@ export class SunShadow {
     if (renderer) this.drawFarApart(renderer);
     this.middle.copy(home);
     this.farMiddle.copy(home);
+    followLiveShadow(this.uniforms); // the figures' soft shadows give way to the real ones where the maps reach
     const f = this.far;
     f.name = 'sun far shadow';
     f.castShadow = true;

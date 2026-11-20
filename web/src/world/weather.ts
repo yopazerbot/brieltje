@@ -10,6 +10,7 @@ import { environment, loadSky, type SkyLook } from './environment';
 import { groundSkySun } from './groundShade';
 import type { IndoorLight } from './indoorLight';
 import { moodShown } from './mood';
+import { setFigureSun } from './figureShadows';
 import { Rain } from './rain';
 import { Snow } from './snow';
 import { snowCover } from './snowCover';
@@ -523,6 +524,8 @@ export class Weather {
     const sunOf = (m: Look, s: SkyLook) => (m.sky === 'sunny' ? s.sun * m.skyGain : 0);
     const skySun = sunOf(la, sa) + (sunOf(lb, sb) - sunOf(la, sa)) * p.k;
     groundSkySun.value = fill > 0 ? Math.min(1, (0.9 * Math.PI * skySun * l.fill) / fill) : 0;
+    // The figures' soft shadows (world/figureShadows.ts): as dark as the light a shadow takes away on open ground.
+    setFigureSun(this.sunDir, this.groundFill > 0 ? (this.groundFill - fill + fill * groundSkySun.value) / this.groundFill : 0);
     // Snow lying throws light back up: the hemisphere's lower half paler.
     if (this.lying > 0) l.hemiGround.lerp(SNOW_GROUND, this.lying * 0.7);
     const on = l.sun > 0.001;

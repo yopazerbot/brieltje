@@ -4,6 +4,7 @@ import { mood } from './mood';
 import type { World } from './collision';
 import type { Obstacle } from './traffic';
 import { sound } from '../sound';
+import { figureShadowMesh } from './figureShadows';
 import { noShoot } from '../../shared/zones.mjs';
 import { buildVillagers, dice, rebuildHub, villagerPose, VILLAGER_DOWN_S, type VillagerDef, type VillagerPaths, type VillagerPose, type VillagerSet } from '../../shared/villagers.mjs';
 
@@ -318,26 +319,9 @@ diffuseColor.rgb = texelFetch(uPal, ivec2(int(vSlot + 0.5), int(vRow + 0.5)), 0)
   return m;
 }
 
-/** A soft dark round patch under each, one draw for all (as world/zombies.ts). */
+/** Each one's soft shadow, lying away from the sun (world/figureShadows.ts), one draw for all; its height in the y scale. */
 function shadowPatches(n: number): THREE.InstancedMesh {
-  const c = document.createElement('canvas');
-  c.width = c.height = 64;
-  const g = c.getContext('2d')!;
-  const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
-  grad.addColorStop(0, 'rgba(255,255,255,1)');
-  grad.addColorStop(0.45, 'rgba(255,255,255,0.7)');
-  grad.addColorStop(1, 'rgba(255,255,255,0)');
-  g.fillStyle = grad;
-  g.fillRect(0, 0, 64, 64);
-  const mat = new THREE.MeshBasicMaterial({ color: '#000000', alphaMap: new THREE.CanvasTexture(c), transparent: true, opacity: 0.3, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
-  const mesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), mat, n);
-  mesh.count = 0;
-  mesh.frustumCulled = false;
-  mesh.renderOrder = 1;
-  mesh.userData.ignoreRay = true;
-  mesh.userData.noAO = true;
-  mesh.raycast = () => {};
-  return mesh;
+  return figureShadowMesh(n, 0.3);
 }
 
 const _m = new THREE.Matrix4();
@@ -1379,10 +1363,11 @@ export class Villagers {
       k.anim.setXYZW(i, rA, rB, mix, v.pal);
       k.look.setXYZW(i, fade, v.flags, 0, 0);
       const d = Math.hypot(v.x - eye.x, v.z - eye.z);
-      if (d < 60 && patches < 96 && !down) {
+      if (d < 140 && patches < 96 && !down) {
         const r = (v.kind === DOG ? 0.55 : v.kind === BIKE ? 0.9 : v.kind === CHILD ? 0.6 : 0.75) * v.scale * Math.min(1, fade * 1.4);
         const ground = v.sit ? v.ground : v.y;
-        _m.compose(_v.set(v.x, ground + 0.03, v.z), _q.setFromAxisAngle(UP, v.yaw), _s.set(v.kind === BIKE ? r * 0.7 : r, 1, v.kind === BIKE ? r * 1.6 : r));
+        const tall = (v.kind === DOG ? 0.55 : v.kind === CHILD ? 1.2 : v.sit ? 1.25 : 1.75) * v.scale; // the shadow's length (world/figureShadows.ts)
+        _m.compose(_v.set(v.x, ground + 0.03, v.z), _q.setFromAxisAngle(UP, v.yaw), _s.set(v.kind === BIKE ? r * 0.7 : r, tall, v.kind === BIKE ? r * 1.6 : r));
         this.patches.setMatrixAt(patches++, _m);
       }
       // The dog's lead: from the walker's right hand to the collar, sagging.
@@ -1421,9 +1406,9 @@ export class Villagers {
       k.anim.setXYZW(i, rA, rB, mix, e.pal);
       const fade = Math.min(e.fade, this.shown);
       k.look.setXYZW(i, fade, e.flags, 0, 0);
-      if (patches < 96 && Math.hypot(e.x - eye.x, e.z - eye.z) < 60 && e.clip !== 'Sit') {
+      if (patches < 96 && Math.hypot(e.x - eye.x, e.z - eye.z) < 140 && e.clip !== 'Sit') {
         const r = (e.kind === CHILD ? 0.6 : 0.75) * e.scale * Math.min(1, fade * 1.4);
-        _m.compose(_v.set(e.x, e.y + 0.03, e.z), _q.setFromAxisAngle(UP, e.yaw), _s.set(r, 1, r));
+        _m.compose(_v.set(e.x, e.y + 0.03, e.z), _q.setFromAxisAngle(UP, e.yaw), _s.set(r, (e.kind === CHILD ? 1.2 : 1.75) * e.scale, r));
         this.patches.setMatrixAt(patches++, _m);
       }
     }

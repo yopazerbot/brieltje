@@ -8,6 +8,7 @@ import { paintball } from '../paintball';
 import { daylight } from './daylight';
 import { hitBoxMaterial } from './hitBox';
 import { figureSplat, PAINT_SPLAT_GLSL, paintSheet, splatLook } from './paintOn';
+import { figureShadowMesh } from './figureShadows';
 import { HEAD_UP, PART_BONES, PARTS, Ragdoll, segmentOf, SEGS, type RagdollWorld } from './ragdoll';
 
 /**
@@ -450,28 +451,12 @@ function flump(at: THREE.Vector3): void {
 }
 
 /**
- * A soft dark patch on the ground under each zombie (as under the players' figures: net/avatars.ts),
- * all in one instanced draw. The zombies cast no real-time shadow: skinned again in the sun's shadow
+ * A soft shadow on the ground under each zombie, lying away from the sun (world/figureShadows.ts), all in one
+ * instanced draw; its height in the y scale. The zombies cast no real-time shadow: skinned again in the sun's shadow
  * pass, thirty of them cost about 1.7 ms on Low.
  */
 function shadowPatches(n: number): THREE.InstancedMesh {
-  const c = document.createElement('canvas');
-  c.width = c.height = 64;
-  const g = c.getContext('2d')!;
-  const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
-  grad.addColorStop(0, 'rgba(255,255,255,1)');
-  grad.addColorStop(0.45, 'rgba(255,255,255,0.7)');
-  grad.addColorStop(1, 'rgba(255,255,255,0)');
-  g.fillStyle = grad;
-  g.fillRect(0, 0, 64, 64);
-  const mat = new THREE.MeshBasicMaterial({ color: '#000000', alphaMap: new THREE.CanvasTexture(c), transparent: true, opacity: 0.34, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
-  const mesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), mat, n);
-  mesh.count = 0;
-  mesh.frustumCulled = false; // spread over the area: one draw, a few pixels each
-  mesh.renderOrder = 1;
-  mesh.userData.ignoreRay = true;
-  mesh.raycast = () => {};
-  return mesh;
+  return figureShadowMesh(n, 0.34);
 }
 
 const _m = new THREE.Matrix4();
@@ -1289,11 +1274,12 @@ export class Zombies {
       z.body.visible = z.head.visible = !z.downAt; // a fallen one takes no more shots
       if (!z.downAt) this.placeHits(z, k, _m);
       // Its patch on the ground, near enough to see; wider for the big one, fading with it.
-      if (far < 60 && patches < MAX * 2) {
+      if (far < 140 && patches < MAX * 2) {
         const r = (z.kind === BIG ? 1.9 : 0.95) * (z.downAt ? 1.25 : 1) * Math.min(1, z.fade * 1.4);
+        const tall = z.downAt ? 0.3 : z.kind === BIG ? 2.6 : 1.8; // the shadow's length (world/figureShadows.ts)
         // Under a ragdoll: where its body is, as low as its lowest part (on a step: the step).
-        if (rag) _n.makeScale(r, 1, r).setPosition(cx, Math.min(cy, rag.body.lowest()) + 0.03, cz);
-        else _n.makeScale(r, 1, r).setPosition(z.x, z.y + 0.03, z.z);
+        if (rag) _n.makeScale(r, tall, r).setPosition(cx, Math.min(cy, rag.body.lowest()) + 0.03, cz);
+        else _n.makeScale(r, tall, r).setPosition(z.x, z.y + 0.03, z.z);
         this.patches.setMatrixAt(patches++, _n);
       }
     }

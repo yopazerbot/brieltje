@@ -7,6 +7,7 @@ import { netClock, Track } from './track';
 import { gunsReady } from '../weapon';
 import { muzzleFlash } from '../world/effects';
 import { hitBoxMaterial } from '../world/hitBox';
+import { figureShadowMesh } from '../world/figureShadows';
 import { buildSwat, hasSwat, SEAT_HIP, swatReady, type Body, type Outfit as SwatOutfit } from './swat';
 import { onLang, playerName, t } from '../i18n';
 
@@ -292,28 +293,12 @@ function buildFigure(name: string, color: string, o: Outfit): Body {
 }
 
 /**
- * A soft dark patch on the ground under each figure: away from the house the sun's real-time
- * shadow isn't worked out, and without it a figure seems to float. One draw for all of them.
+ * A soft shadow on the ground under each figure, lying away from the sun (world/figureShadows.ts): beyond the sun's
+ * real-time shadow maps a figure would otherwise seem to float. Inside them the figure throws its real shadow and only
+ * the patch under its feet stays. One draw for all of them; the height in the y scale.
  */
 function shadowPatches(n: number): THREE.InstancedMesh {
-  const c = document.createElement('canvas');
-  c.width = c.height = 64;
-  const g = c.getContext('2d')!;
-  const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
-  grad.addColorStop(0, 'rgba(255,255,255,1)');
-  grad.addColorStop(0.45, 'rgba(255,255,255,0.7)');
-  grad.addColorStop(1, 'rgba(255,255,255,0)');
-  g.fillStyle = grad;
-  g.fillRect(0, 0, 64, 64);
-  const tex = new THREE.CanvasTexture(c);
-  const mat = new THREE.MeshBasicMaterial({ color: '#000000', alphaMap: tex, transparent: true, opacity: 0.32, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
-  const mesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), mat, n);
-  mesh.count = 0;
-  mesh.frustumCulled = false; // spread over the map: one draw, a few pixels each
-  mesh.renderOrder = 1;
-  mesh.userData.ignoreRay = true;
-  mesh.raycast = () => {};
-  return mesh;
+  return figureShadowMesh(n, 0.32, true);
 }
 
 /** A seat on a horse someone rides: the saddle's point and the way the horse faces (+z at 0). */
@@ -707,9 +692,10 @@ export class Avatars {
       }
       // Their shadow patch, on the ground under them: smaller and fainter the higher they are.
       const air = Math.max(0, y - ground);
-      if (a.root.visible && a.body.root.visible && !seat && air < 2.5 && far < 80 && patches < this.shadows.instanceMatrix.count) {
+      if (a.root.visible && a.body.root.visible && !seat && air < 2.5 && far < 140 && patches < this.shadows.instanceMatrix.count) {
         const s = (alive ? 0.85 : 1.25) * (1 - air / 3.2);
-        this.m.makeScale(s, 1, s).setPosition(a.root.position.x, ground + 0.03, a.root.position.z);
+        const tall = alive ? 1.8 - 0.6 * (a.body.crouched ?? 0) : 0.35; // the shadow's length (world/figureShadows.ts)
+        this.m.makeScale(s, tall, s).setPosition(a.root.position.x, ground + 0.03, a.root.position.z);
         this.shadows.setMatrixAt(patches++, this.m);
       }
       if (alive && !t.d && !seat && !t.flying && a.root.visible) walkers.push(a);
