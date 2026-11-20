@@ -7,6 +7,7 @@
 //   its wood, and the kill feed and his death screen name it. Both see the same creature in the same place, gliding.
 // - The admin's watch page (/admin/watch/, on the server itself) shows it.
 // Then it is beaten: Alice and Bob are both named in the line that says so.
+// --two: Alice and Bob alone (two browser windows: when the graphics chip is wanted elsewhere).
 //
 // From web/ after `npm run build` (a short fight: the server's test-only settings, server/brookSpirit.mjs):
 //   ADMIN_PASSWORD=... SPIRIT_TEST_SCALE=0.2 SPIRIT_TEST_BACK_S=60 PORT=8420 node server.mjs
@@ -18,7 +19,7 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { launch, localOnly, options } from './cdp.mjs';
 
-const o = options({ url: 'http://localhost:5421/', api: 'http://localhost:8420', ports: '9510,9511,9512,9513,9514', out: '', minutes: '8' });
+const o = options({ url: 'http://localhost:5421/', api: 'http://localhost:8420', ports: '9510,9511,9512,9513,9514', out: '', minutes: '8', two: false });
 localOnly(o.url, '--url'); // players join and the admin logs in: a throwaway server on this computer only
 localOnly(o.api);
 const password = process.env.ADMIN_PASSWORD;
@@ -159,16 +160,17 @@ const text = (b, sel) => b.evaluate(`document.querySelector(${JSON.stringify(sel
 try {
   const tag = Math.random().toString(36).slice(2, 6);
   const [cleo, dave, alice, bob] = [
-    await player(ports[0], `Cleo${tag}`, 'explore'),
-    await player(ports[1], `Dave${tag}`, 'action'),
+    o.two ? null : await player(ports[0], `Cleo${tag}`, 'explore'),
+    o.two ? null : await player(ports[1], `Dave${tag}`, 'action'),
     await player(ports[2], `Alice${tag}`, 'action'),
     await player(ports[3], `Bob${tag}`, 'action'),
   ];
-  for (const b of [cleo, alice, bob]) await b.evaluate(DRIVER, false);
-  ok('the welcome carries the spirit', !!(await cleo.evaluate('__ws.welcome', false)));
+  const all = [cleo, alice, bob].filter(Boolean);
+  for (const b of all) await b.evaluate(DRIVER, false);
+  ok('the welcome carries the spirit', !!(await alice.evaluate('__ws.welcome', false)));
   // Cleo first: to Moeyweedreef, into the wood, under it.
   // The trip to Moeyweedreef (once each has landed: no trip in a drop), asked again until the server has them there.
-  for (const [who, b] of [['Cleo', cleo], ['Alice', alice], ['Bob', bob]]) {
+  for (const [who, b] of [['Cleo', cleo], ['Alice', alice], ['Bob', bob]].filter(([, b]) => b)) {
     let there = false;
     for (let i = 0; i < 6 && !there; i++) {
       await b.waitFor('briel.player.chute === null && briel.combat.alive', 60000);
@@ -178,15 +180,17 @@ try {
     }
     ok(`${who} takes the trip to Moeyweedreef`, there);
   }
-  await walk(cleo, -46, 470);
-  await walk(cleo, -62, 482);
-  await walk(cleo, -76, 488);
-  await sleep(5000);
-  const c0 = await view(cleo);
-  ok('in Explore it stays asleep, under it too', c0.mode === 'asleep', JSON.stringify(c0));
-  ok('Explore: the line says it only wakes in Action or Paintball', /only wakes/.test(await text(cleo, '#spirit-line')));
-  if (o.out) await cleo.screenshot(join(o.out, 'mp-cleo-asleep.png'));
-  await walk(cleo, -64, 480);
+  if (cleo) {
+    await walk(cleo, -46, 470);
+    await walk(cleo, -62, 482);
+    await walk(cleo, -76, 488);
+    await sleep(5000);
+    const c0 = await view(cleo);
+    ok('in Explore it stays asleep, under it too', c0.mode === 'asleep', JSON.stringify(c0));
+    ok('Explore: the line says it only wakes in Action or Paintball', /only wakes/.test(await text(cleo, '#spirit-line')));
+    if (o.out) await cleo.screenshot(join(o.out, 'mp-cleo-asleep.png'));
+    await walk(cleo, -64, 480);
+  }
   // Alice and Bob walk in and wake it.
   await walk(alice, -46, 470);
   await walk(bob, -47, 472);
@@ -211,20 +215,22 @@ try {
   const glide = await alice.evaluate('(() => { let m = 0; for (let i = 1; i < __glide.length; i++) m = Math.max(m, Math.hypot(__glide[i][0] - __glide[i - 1][0], __glide[i][1] - __glide[i - 1][1])); return { frames: __glide.length, maxStep: m }; })()', false);
   ok('it glides (no jump between two frames but a rise elsewhere)', glide.maxStep < 0.6 || glide.frames < 10, JSON.stringify(glide));
   if (o.out) await alice.screenshot(join(o.out, 'mp-alice-fight.png'));
-  // The admin's watch page, on the server itself.
-  const w = await launch({ port: ports[4], width: 1280, height: 720 });
-  browsers.push(w);
-  console.log('watch browser PID:', w.pid);
-  await w.send('Page.addScriptToEvaluateOnNewDocument', { source: SOCKET });
-  await w.send('Page.navigate', { url: `${o.api}/` });
-  await w.sleep(3000);
-  const login = await w.evaluate(`fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: 'admin', password: ${JSON.stringify(password)} }) }).then((r) => r.status)`, true);
-  ok('the admin logs in', login === 200, String(login));
-  await w.send('Page.navigate', { url: `${o.api}/admin/watch/` });
-  await w.sleep(25000);
-  const frames = await w.evaluate('[...document.querySelectorAll("iframe")].map((f) => { try { const s = f.contentWindow.__ws; const v = f.contentWindow.briel?.spirit?.state().view; return s ? { welcome: !!s.welcome, sp: s.in.sp ?? 0, mode: v?.mode ?? null, in: s.in, src: f.src } : null; } catch { return "closed"; } })', false);
-  ok('the watch view gets the spirit and its moves during the fight', frames.some((f) => f && f.welcome && f.sp > 5), JSON.stringify(frames));
-  if (o.out) await w.screenshot(join(o.out, 'mp-watch.png'));
+  if (!o.two) {
+    // The admin's watch page, on the server itself.
+    const w = await launch({ port: ports[4], width: 1280, height: 720 });
+    browsers.push(w);
+    console.log('watch browser PID:', w.pid);
+    await w.send('Page.addScriptToEvaluateOnNewDocument', { source: SOCKET });
+    await w.send('Page.navigate', { url: `${o.api}/` });
+    await w.sleep(3000);
+    const login = await w.evaluate(`fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: 'admin', password: ${JSON.stringify(password)} }) }).then((r) => r.status)`, true);
+    ok('the admin logs in', login === 200, String(login));
+    await w.send('Page.navigate', { url: `${o.api}/admin/watch/` });
+    await w.sleep(25000);
+    const frames = await w.evaluate('[...document.querySelectorAll("iframe")].map((f) => { try { const s = f.contentWindow.__ws; const v = f.contentWindow.briel?.spirit?.state().view; return s ? { welcome: !!s.welcome, sp: s.in.sp ?? 0, mode: v?.mode ?? null, in: s.in, src: f.src } : null; } catch { return "closed"; } })', false);
+    ok('the watch view gets the spirit and its moves during the fight', frames.some((f) => f && f.welcome && f.sp > 5), JSON.stringify(frames));
+    if (o.out) await w.screenshot(join(o.out, 'mp-watch.png'));
+  }
   // Bob stands his ground until it downs him.
   let downed = false;
   for (let t = 0; t < 240 && !downed; t++) {
@@ -261,11 +267,13 @@ try {
     ok(`${who} sent hits`, (await b.evaluate('__ws.out.sphit ?? 0', false)) > 0, String(await b.evaluate('__ws.out.sphit ?? 0', false)));
   }
   if (o.out) await alice.screenshot(join(o.out, 'mp-alice-beaten.png'));
+  if (!o.two) {
   const cleoEnd = await cleo.evaluate('({ hp: briel.combat.hp, alive: briel.combat.alive, hurt: __ws.in.hurt ?? 0, kills: __ws.kills.filter((k) => k.victim.startsWith("Cleo")).length })', false);
   ok('Cleo in Explore was never hurt', cleoEnd.alive && cleoEnd.kills === 0 && cleoEnd.hurt === 0, JSON.stringify(cleoEnd));
   const far = await dave.evaluate('({ sp: __ws.in.sp ?? 0, spe: __ws.in.spe ?? 0, dist: briel.spirit.state().dist })', false);
   const near = await alice.evaluate('({ sp: __ws.in.sp ?? 0, spe: __ws.in.spe ?? 0 })', false);
   ok('Dave, far away, gets only its mode changes', far.sp > 0 && far.sp < 12 && near.sp > 10 * far.sp, `far ${JSON.stringify(far)}, near ${JSON.stringify(near)}`);
+  }
 } catch (e) {
   ok('the run', false, e.message);
 } finally {

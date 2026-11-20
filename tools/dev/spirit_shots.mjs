@@ -18,7 +18,7 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { launch, options, startGame } from './cdp.mjs';
 
-const o = options({ url: 'http://localhost:5200/', port: '9500', out: '', night: false, quality: 'high', phone: false, swiftshader: false, size: '1600x900', quick: false, minutes: '20', together: false, sound: false, hits: false, tells: false, moods: '', bench: false, frames: '120', runs: '4' });
+const o = options({ url: 'http://localhost:5200/', port: '9500', out: '', night: false, quality: 'high', phone: false, swiftshader: false, size: '1600x900', quick: false, minutes: '20', together: false, sound: false, hits: false, tells: false, moods: '', appear: false, bench: false, frames: '120', runs: '4' });
 const [width, height] = o.size.split('x').map(Number);
 if (o.out) mkdirSync(o.out, { recursive: true });
 const b = await launch({ port: Number(o.port), width, height, swiftshader: o.swiftshader });
@@ -142,25 +142,62 @@ async function picture(name, what) {
     const B = briel, st = B.spirit.state(), s = st.sim, P = B.player;
     const what = ${JSON.stringify(what)};
     const ground = (x, z) => B.world.groundAt(x, z, -4, 0).y;
-    let fx = s.x, fy = s.y, fz = s.z;
-    let side = false;
-    if (what === 'tell' && s.aim) { fx = (s.x + s.aim.x) / 2; fz = (s.z + s.aim.z) / 2; fy = ground(fx, fz) + 1.0; side = true; }
-    if (what === 'pool' && s.pools.length) { fx = s.pools[0].x; fz = s.pools[0].z; fy = ground(fx, fz) + 0.6; }
-    if (what === 'lights') { const l = st.lights.find(Boolean); if (l) [fx, fy, fz] = l; }
-    if (what === 'drop' && st.drop) { fx = st.drop.x; fy = st.drop.y + 0.3; fz = st.drop.z; }
-    // From behind and a little beside you, so you, it and the tell are in one picture.
-    // From where you stand when you are in the grove, else from its middle's side.
-    const inside = Math.hypot(P.x + 68, P.z - 488) < 24;
-    let dx = (inside ? P.x : -68) - fx, dz = (inside ? P.z : 488) - fz; let d = Math.hypot(dx, dz);
-    if (d < 2) { dx = fx - s.x; dz = fz - s.z; d = Math.hypot(dx, dz) || 1; dx /= d; dz /= d; d = 4; } else { dx /= d; dz /= d; }
-    // A light: from inside the grove, its trunk behind it.
-    if (what === 'lights') { const gx = -68 - fx, gz = 488 - fz, gl = Math.hypot(gx, gz) || 1; dx = gx / gl; dz = gz / gl; }
-    if (side) { const ax = s.aim.x - s.x, az = s.aim.z - s.z, al = Math.hypot(ax, az) || 1; dx = -az / al; dz = ax / al; if (Math.hypot(fx + dx * 12 + 68, fz + dz * 12 - 488) > 26) { dx = -dx; dz = -dz; } }
-    const r = what === 'drop' ? 5 : what === 'lights' ? Math.min(12, Math.max(7, d)) : Math.max(11, Math.min(16, d + 3));
-    const vx = fx + dx * r - dz * 2, vz = fz + dz * r + dx * 2;
-    const feet = ground(vx, vz), eye = feet + 1.6;
-    const ex = fx - vx, ey = fy - eye, ez = fz - vz;
-    B.teleport(vx, vz, feet, Math.atan2(-ex, -ez), Math.atan2(ey, Math.hypot(ex, ez)));
+    const trunks = B.spirit.fight.trunks;
+    // Seen from where a player stands: on the ground, inside the grove, nothing but air between the eye and the subject.
+    const clear = (ax, az, bx, bz) => trunks.every((t) => {
+      const dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz || 1, u = Math.max(0, Math.min(1, ((t.x - ax) * dx + (t.z - az) * dz) / l2));
+      return Math.hypot(ax + dx * u - t.x, az + dz * u - t.z) > t.r + 0.9;
+    });
+    const heart = st.heart ? { x: st.heart[0], y: st.heart[1], z: st.heart[2] } : { x: s.x, y: s.y, z: s.z };
+    // The subject (what must be in the picture), where the eye goes from it (dir, distance) and what it looks at.
+    let sub = heart, dir = Math.atan2(-68 - s.x, 488 - s.z), dist = 10, look = heart;
+    const on = (x, z, up) => ({ x, y: ground(x, z) + up, z });
+    if ((what === 'tell' || what === 'pool') && (s.aim || s.pools.length)) {
+      const t = what === 'pool' && s.pools.length ? on(s.pools[0].x, s.pools[0].z, 0.4) : s.act === 'sweep' ? on((s.aim.fx + s.aim.x) / 2, (s.aim.fz + s.aim.z) / 2, 0.4) : on(s.aim.x, s.aim.z, 0.4);
+      const len = Math.hypot(t.x - heart.x, t.z - heart.z);
+      if (s.act === 'sweep' && what !== 'pool') {
+        // The sweep: from the side of its lane, the lane and the tendrils coming down onto it in one picture.
+        const mx = (t.x + heart.x) / 2, mz = (t.z + heart.z) / 2;
+        sub = { x: mx, y: t.y, z: mz };
+        const perp = Math.atan2(t.x - heart.x, t.z - heart.z) + Math.PI / 2;
+        dir = Math.hypot(mx + Math.sin(perp) * 9 + 68, mz + Math.cos(perp) * 9 - 488) < Math.hypot(mx - Math.sin(perp) * 9 + 68, mz - Math.cos(perp) * 9 - 488) ? perp : perp + Math.PI;
+        dist = Math.min(12, Math.max(8, len * 0.62));
+        look = { x: t.x * 0.5 + heart.x * 0.5, y: t.y * 0.45 + heart.y * 0.55, z: t.z * 0.5 + heart.z * 0.5 };
+      } else {
+        // A ring or a pool: from just beyond it, it on the ground in front and the creature behind, at most 15 m off.
+        sub = heart;
+        dir = Math.atan2(t.x - heart.x, t.z - heart.z);
+        dist = Math.min(15, len + 4);
+        look = { x: t.x * 0.6 + heart.x * 0.4, y: t.y * 0.35 + heart.y * 0.65, z: t.z * 0.6 + heart.z * 0.4 };
+      }
+    }
+    if (what === 'lights') {
+      const l = st.lights.find(Boolean);
+      if (l) { sub = look = { x: l[0], y: l[1], z: l[2] }; dir = Math.atan2(-68 - l[0], 488 - l[2]); dist = 8; }
+    }
+    if (what === 'drop' && st.drop) { sub = look = on(st.drop.x, st.drop.z, 0.4); dir = Math.atan2(-68 - st.drop.x, 488 - st.drop.z); dist = 4.5; }
+    let best = null;
+    for (const da of [0, 0.35, -0.35, 0.7, -0.7, 1.05, -1.05, 1.4, -1.4, 1.8, -1.8, 2.3, -2.3, 3.0]) {
+      for (const dd of [dist, dist * 1.25, dist * 0.8, dist * 1.5]) {
+        const x = sub.x + Math.sin(dir + da) * dd, z = sub.z + Math.cos(dir + da) * dd;
+        if (Math.hypot(x + 68, z - 488) > 25 || !trunks.every((t) => Math.hypot(t.x - x, t.z - z) > t.r + 0.8)) continue;
+        if (!clear(x, z, sub.x, sub.z) || !clear(x, z, look.x, look.z) || !clear(x, z, heart.x, heart.z)) continue;
+        // Its whole body in sight, not only its middle: both its sides too.
+        const px = -(heart.z - z), pz = heart.x - x, pl = Math.hypot(px, pz) || 1;
+        if (what !== 'drop' && what !== 'lights' && (!clear(x, z, heart.x + (px / pl) * 2.2, heart.z + (pz / pl) * 2.2) || !clear(x, z, heart.x - (px / pl) * 2.2, heart.z - (pz / pl) * 2.2))) continue;
+        // Nothing solid (any tree's trunk, not only the ring's) between the eye and it.
+        const eye = { x, y: ground(x, z) + 1.6, z };
+        if (B.world.blocked(eye, heart) || B.world.blocked(eye, { x: look.x, y: Math.max(look.y, eye.y), z: look.z })) continue;
+        best = { x, z };
+        break;
+      }
+      if (best) break;
+    }
+    window.__framed = best ? 'clear' : 'fallback';
+    best ??= { x: sub.x + Math.sin(dir) * dist, z: sub.z + Math.cos(dir) * dist };
+    const feet = ground(best.x, best.z), eye = feet + 1.6;
+    const ex = look.x - best.x, ey = look.y - eye, ez = look.z - best.z;
+    B.teleport(best.x, best.z, feet, Math.atan2(-ex, -ez), Math.atan2(ey, Math.hypot(ex, ez)));
   })()`, false);
   const moods = o.night ? ['sunny', 'night'] : [null];
   for (const mood of moods) {
@@ -170,9 +207,57 @@ async function picture(name, what) {
     } else await b.sleep(700);
     const file = join(o.out, `${name}${mood === 'night' ? '-night' : ''}.png`);
     await b.screenshot(file);
-    log('  picture', file);
+    log('  picture', file, await b.evaluate('window.__framed', false));
   }
   await b.evaluate(`briel.teleport(${back.x}, ${back.z}, ${back.feet}, ${back.yaw}, ${back.pitch}); briel.spirit.hold(false)`, false);
+}
+
+/**
+ * The stutter when it first appears: frame times (requestAnimationFrame) and the shader programs three has built, as you
+ * come from far off to where it is made (MAKE, out of sight) and then to where it shows (SHOW), on foot, as a player does.
+ */
+async function appear() {
+  await startGame(b, o.url, { noAsk: true });
+  await b.evaluate(`briel.three.applyQuality(${JSON.stringify(o.quality.split(',')[0])}); briel.three.holdQuality(true)`, false);
+  log('at the start:', JSON.stringify(await b.evaluate('({ dist: Math.round(briel.spirit.state().dist), made: !!briel.spirit.fight.look, programs: briel.three.renderer.info.programs.length })', false)));
+  await b.evaluate('briel.teleport(10, 0, briel.player.feet, 0, 0)', false); // by the house, about 490 m off
+  await b.sleep(6000);
+  await b.evaluate(`(() => { window.__fr = []; let last = performance.now(); (function f(t) { __fr.push([t, t - last]); last = t; requestAnimationFrame(f); })(last); })()`, false);
+  const phase = async (name, z) => {
+    await b.evaluate('window.__progs = new Set(briel.three.renderer.info.programs.map((p) => p.id))', false);
+    const before = await b.evaluate('({ dist: Math.round(briel.spirit.state().dist), programs: briel.three.renderer.info.programs.length, at: performance.now(), look: !!briel.spirit.fight.look, shown: !!briel.spirit.fight.look?.group.visible })', false);
+    if (z !== null) await b.evaluate(`(() => { const f = briel.world.groundAt(-68, ${z}, 40, 0).y; briel.teleport(-68, ${z}, f, 0, 0.08); })()`, false);
+    await b.sleep(7000);
+    const r = await b.evaluate(`(() => { const t0 = ${before.at}; const f = __fr.filter(([t]) => t > t0); const ms = f.map(([, d]) => d).sort((a, b) => b - a);
+      return { programs: briel.three.renderer.info.programs.length, frames: f.length, worst: ms.slice(0, 3).map((x) => +x.toFixed(1)), median: +ms[Math.floor(ms.length / 2)].toFixed(1), look: !!briel.spirit.fight.look, shown: !!briel.spirit.fight.look?.group.visible }; })()`, false);
+    const dist = await b.evaluate('Math.round(briel.spirit.state().dist)', false);
+    const added = await b.evaluate('briel.three.renderer.info.programs.filter((p) => !__progs.has(p.id)).map((p) => p.name + " " + (p.cacheKey ?? "").slice(0, 60))', false);
+    if (added.length) log('   new programs:', JSON.stringify(added));
+    log(`${name} (${dist} m): programs ${before.programs} -> ${r.programs}; worst frames ${r.worst.join(', ')} ms, median ${r.median} ms (${r.frames} frames); made ${r.look}, shown ${r.shown}`);
+  };
+  await phase('steady, far off', null);
+  // Where the time goes when it is made: the model's fetch and parse, the look's making, the shaders' compile (each
+  // step on its own, timed in the page, with the longest frame while it ran).
+  const steps = await b.evaluate(`(async () => {
+    const m = await import('/src/world/brookSpirit.ts');
+    const cam = briel.spirit.fight.host.camera;
+    const R = briel.three.renderer, S = briel.three.scene;
+    const out = {};
+    const time = async (name, fn) => { const t0 = performance.now(); const r = await fn(); out[name] = { ms: Math.round(performance.now() - t0), worstFrame: Math.round(Math.max(0, ...__fr.filter(([t]) => t > t0).map(([, d]) => d))) }; return r; };
+    const model = await time('load', () => m.loadBrookSpirit(undefined, R));
+    const look = await time('make', () => new m.BrookSpirit(model, 'high', m.spiritLightFits(R)));
+    look.group.position.set(-68, -5, 520); S.add(look.group); look.group.updateMatrixWorld(true);
+    const p0 = R.info.programs.length;
+    await time('compile', () => R.compileAsync(look.group, cam, S).catch((e) => String(e)));
+    out.programs = R.info.programs.length - p0;
+    await new Promise((r) => setTimeout(r, 1500));
+    S.remove(look.group); look.dispose();
+    return out;
+  })()`, true);
+  log('the making, step by step:', JSON.stringify(steps));
+  await phase('to 380 m (made, compiled out of sight)', 488 - 380);
+  await phase('to 240 m (it shows)', 488 - 240);
+  await phase('to 30 m (in front of it)', 488 - 30);
 }
 
 /** A phone: the touch fire button, tapped while aiming at the open heart, hurts it (the fight held meanwhile). */
@@ -198,8 +283,12 @@ async function tapHeart() {
   await b.evaluate('__bot.on = true; briel.spirit.hold(false)', false);
 }
 
+/** For the pictures: the 'click to look around' hint (a headless page never holds the mouse) out of the way. */
+const NO_HINT = "(() => { const s = document.createElement('style'); s.textContent = '#capture-hint { display: none !important; }'; document.head.append(s); })()";
+
 async function fight() {
   await startGame(b, o.url, { phone: o.phone, noAsk: true });
+  if (o.out) await b.evaluate(NO_HINT, false);
   await b.evaluate(`briel.three.applyQuality(${JSON.stringify(o.quality.split(',')[0])}); briel.three.holdQuality(true)`, false);
   if (o.night) await b.evaluate("briel.three.weather.setSolo('sunny')", false);
   await b.evaluate('briel.teleport(-52, 476, -8.7, Math.atan2(-(-80.2 + 52), -(488 - 476)), 0.05)', false);
@@ -220,6 +309,7 @@ async function fight() {
     ['05-bolt-flying', (s) => s.bolts > 0 && s.act !== 'bolt', 'it'],
     ['06-heart-open', (s) => s.act === 'open' && s.p > 0.25 && s.p < 0.6, 'it'],
     ['07-shell-lights', (s) => s.lights >= 3 && s.act !== 'idle', 'lights'],
+    ['07b-shell', (s) => s.lights >= 2 && s.act !== 'idle', 'it'],
     ['08-light-out', (s) => s.lightOut, 'lights'],
     ['09-burst', (s) => s.act === 'stun' && s.p < 0.06, 'it'],
     ['10-sinking', (s) => s.act === 'sink' && s.p > 0.5, 'it'],
@@ -443,6 +533,7 @@ try {
   else if (o.sound) await sounds();
   else if (o.bench) await bench();
   else if (o.tells) await tells();
+  else if (o.appear) await appear();
   else await fight();
   const errors = b.logs.filter((l) => /^(error|exception)/.test(l));
   if (errors.length) log('page errors:\n' + errors.slice(0, 12).join('\n'));
