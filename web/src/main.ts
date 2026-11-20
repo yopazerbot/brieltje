@@ -163,6 +163,7 @@ import { buildRoadDetail, buildRoadDetailSoon, roadPaint, withRoadDetail } from 
 import { villagePlots } from './world/villagePlots';
 import { RoadLife } from './world/roadLife';
 import { looseProps, type Mover } from './world/looseProps';
+import { RotorWash } from './world/rotorWash';
 import { Crash } from './world/crash';
 import { TyreSpray } from './world/tyreSpray';
 import { clearOpenGround, cutOut, fitStreetModel, loadStreetModel } from './world/streetModel';
@@ -884,6 +885,7 @@ glass.locked = (i) => {
 };
 const effects = new Effects(scene, new Decals(scene), (x, z, y) => world.groundAt(x, z, y, 0).y);
 looseProps.attach(scene, world, effects.particles); // the street's bins, bikes, letterboxes and posts that cars knock over (world/looseProps.ts)
+const rotorWash = new RotorWash(world, effects.particles, effects.splashes, looseProps); // the helicopters' downwash (world/rotorWash.ts)
 const crash = new Crash(effects.particles);
 Car.onCrash = (hit) => crash.hit(hit); // sparks, dust or leaves, and a crunch, by what a car hit (world/crash.ts)
 Car.fx = crash.carFx(effects.splashes); // leaves in a hedge, the water a car throws, steam from a crumpled bonnet
@@ -4305,6 +4307,7 @@ renderer.setAnimationLoop((now: number) => {
   for (const c of cars) c.update(dt, driving && c === car, camera.position);
   carPeople.update(dt, cars, driving || riding ? { car, passenger: riding } : null, myColour(), camera); // seated as the cars are drawn
   helis.update(dt, camera, !menu.open && combat.alive); // the helicopters and, flying, their instruments
+  rotorWash.update(dt, helis.machines, camera.position, !phone && quality !== 'low'); // their downwash (world/rotorWash.ts): on Low and phones the dust only
   heliPeople.update(dt, helis.machines, helis.heli ? { heli: helis.heli, seat: helis.seat ?? 0 } : null, myColour(), camera); // seated as the machines are drawn
   vehicleWear.update(dt, camera.position, driving || riding ? { k: 'car', id: car.id } : helis.heli ? { k: 'heli', id: helis.heli.spec.id } : null); // smoke, fire, wrecks, your vehicle's health
   const cycling = driving || riding ? null : bikes.ridden;
@@ -5201,6 +5204,8 @@ if (import.meta.env.DEV) {
       driving: () => driving,
       /** The helicopters (src/heliPilot.ts): helis.dev.put('church', 1), helis.dev.deck(), helis.dev.state(). */
       helis,
+      /** Their downwash (world/rotorWash.ts): rotorWash.state() */
+      rotorWash,
       /** Back at outside spawn point `i`, as after a fall (a check for the helicopter's set-down and return). */
       respawn: (i = 0) => respawnAt(OUTSIDE_SPAWNS[i] ?? OUTSIDE_SPAWNS[0]),
       /** Your arrow's way on the minimap (null: on foot) and the plan's turn last drawn. */

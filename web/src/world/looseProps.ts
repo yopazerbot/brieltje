@@ -559,6 +559,47 @@ export class LooseProps {
     }
   }
 
+  /**
+   * A helicopter's rotor wash this frame (world/rotorWash.ts): within `radius` m of (x, z) on the ground at `y`, the air
+   * blowing outward at up to `jet` m/s times `strength`. A post rocks in the gusts; a bin or a chair the wind can move
+   * (the drag on its side against what it weighs) is pushed, high on its side, so it rocks, tips or rolls away.
+   */
+  wash(x: number, z: number, y: number, radius: number, strength: number, jet: number, dt: number): void {
+    if (!(dt > 0) || !this.kinds.size) return;
+    for (const p of this.near(x, z, radius, this.pending)) {
+      const [px, pz, y0, y1] = this.where(p);
+      if (y0 > y + 4 || y1 < y - 1) continue;
+      const r = Math.hypot(px - x, pz - z);
+      const f = r / radius;
+      if (f >= 1) continue;
+      // The wall jet: little straight under the hub, strongest about a fifth to two fifths out, gone at the rim; gusting.
+      const gust = 0.7 + 0.3 * Math.sin(this.time * 7 + px * 0.9 + pz * 1.3);
+      const v = jet * strength * Math.min(1, f / 0.2) * (f < 0.4 ? 1 : 1 - ((f - 0.4) / 0.6) ** 1.5) * gust;
+      const nx = r > 0.05 ? (px - x) / r : 1;
+      const nz = r > 0.05 ? (pz - z) / r : 0;
+      const kind = p.kind;
+      // Drag on its side: half the air's density times the speed squared, its side's area, a drag of about 1.
+      const area = 4 * Math.max(kind.half[0], kind.half[2]) * kind.half[1] * p.sy;
+      const force = 0.6 * v * v * area;
+      if (kind.spec.mode === 'pole' && !p.body) {
+        if (v < 6) continue;
+        // Rocks in the gusts, at most a little past what a walker gives it.
+        if ((p.pole && !p.pole.asleep) || Math.random() < dt * 3) {
+          if (!this.wake(p)) continue;
+          p.pole!.push(nx, nz, Math.min(0.5, force * 0.002) * dt * 6);
+        }
+        continue;
+      }
+      const mass = kind.spec.mass;
+      // Held by its weight until the push beats a little of it (it would only slide a hair).
+      if (force < mass * 9.8 * 0.18) continue;
+      if (!this.wake(p)) continue;
+      const b = p.body!;
+      const j = force * dt;
+      b.impulse([nx * j, 0, nz * j], [b.p[0] - nx * 0.05, y0 + (y1 - y0) * 0.75, b.p[2] - nz * 0.05]);
+    }
+  }
+
   /** A shot hit `on` at `point` coming along `-normal`: a post rings and sways a little, a bin rocks. */
   shot(point: THREE.Vector3, normal: THREE.Vector3, on: THREE.Object3D): void {
     if (!on.name.startsWith('loose-')) return;

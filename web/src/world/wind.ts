@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { snowOn } from './snowCover';
+import { washOn } from './washShader';
 
 /**
  * A gentle wind through the tree crowns and the leafy lumps on the hedges, worked out in their
@@ -162,6 +163,7 @@ export function sway(material: THREE.MeshStandardMaterial, lean: number, flutter
       );
     }
     snowOn(shader); // snow on the crowns and the hedges' tops (world/snowCover.ts)
+    washOn(shader); // a helicopter's rotor wash shakes them (world/washShader.ts)
   };
   const key = material.customProgramCacheKey.bind(material);
   material.customProgramCacheKey = () => `${key()}|sway${lean}${turning ? '|autumn' : ''}`;

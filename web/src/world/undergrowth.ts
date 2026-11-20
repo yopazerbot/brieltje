@@ -7,6 +7,7 @@ import { leafLight, leafy } from './leaves';
 import { bushCards } from './cardTrees';
 import { CUT, leafAtlas, watchCards } from './leafCards';
 import { reflectionSkips } from './reflections';
+import { WASH_GLSL, washUniforms } from './washShader';
 
 /**
  * The woods' undergrowth round where you are: ferns (most of them turned bracken-brown at the start of
@@ -411,10 +412,12 @@ export class Undergrowth {
       shader.uniforms.windStrength = wind.strength;
       Object.assign(shader.uniforms, { windDir: wind.dir, windSpeed: wind.speed });
       if (shade) Object.assign(shader.uniforms, { ugShade: shade.groundShade, ugShadeAll: shade.groundShadeAll, ugArea: shade.groundArea, ugAreaAll: shade.groundAreaAll });
+      if (sway) Object.assign(shader.uniforms, washUniforms);
       shader.vertexShader = shader.vertexShader
         .replace(
           '#include <common>',
           `#include <common>
+          ${sway ? WASH_GLSL : ''}
           uniform float ugReach;
           uniform float windTime;
           uniform float windStrength;
@@ -430,6 +433,7 @@ export class Undergrowth {
           // Grown in towards the edge of the reach: nothing pops in or out.
           transformed *= smoothstep(ugReach, ugReach * 0.72, distance(cameraPosition, ugRoot));
           ${sway ? `transformed.xz += windDir * sin(windTime * 1.6 + ugRoot.x * 0.4 + ugRoot.z * 0.3) * ${sway.toFixed(3)} * transformed.y * windStrength * windSpeed;` : ''}
+          ${sway ? `transformed.xz += washAt(ugRoot.xz).xy * ${(sway * 8).toFixed(3)} * transformed.y; // a helicopter's rotor wash (world/rotorWash.ts)` : ''}
           vUgLight = vec2(1.0);
           ${shade
             ? `{

@@ -3,6 +3,7 @@ import { mood } from './mood';
 import { terrain } from './terrain';
 import { wind } from './wind';
 import { reflectionSkips } from './reflections';
+import { WASH_GLSL, washUniforms } from './washShader';
 import type { GroundShadeUniforms } from './undergrowth';
 import FC from '../../shared/football.json';
 
@@ -284,6 +285,7 @@ const scattered = (one: THREE.BufferGeometry, count: number, kind: 'tuft' | 'lea
         windTime: wind.time, windStrength: wind.strength, windDir: wind.dir, windSpeed: wind.speed,
         ugShade: shade.groundShade, ugShadeAll: shade.groundShadeAll, ugArea: shade.groundArea, ugAreaAll: shade.groundAreaAll,
       });
+      Object.assign(shader.uniforms, washUniforms); // a helicopter's rotor wash (world/rotorWash.ts)
       shader.vertexShader = shader.vertexShader
         .replace(
           '#include <common>',
@@ -318,7 +320,8 @@ const scattered = (one: THREE.BufferGeometry, count: number, kind: 'tuft' | 'lea
           uniform vec3 ugArea;
           uniform vec3 ugAreaAll;
           varying vec2 vGtLight;
-          varying vec3 vGtTint;`,
+          varying vec3 vGtTint;
+          ${WASH_GLSL}`,
         )
         // Lit as the ground is: every blade's normal straight up.
         .replace('#include <beginnormal_vertex>', 'vec3 objectNormal = vec3(0.0, 1.0, 0.0);')
@@ -374,11 +377,17 @@ ${blades ? `          float gtWild = clamp(1.0 - gs.a * 2.0, 0.0, 1.0);
           // The wind: the tips lean with it, each blade in its own time.
           float gtSway = sin(windTime * 2.1 + gtRoot.x * 0.9 + gtRoot.y * 0.7) * 0.5 + sin(windTime * 3.7 + gtRoot.x * 2.3) * 0.25;
           transformed.xz += windDir * gtSway * 0.35 * transformed.y * position.y * windStrength * windSpeed;
+          // A helicopter's rotor wash: the blades lie flat outward, fluttering; straight under it, any way (world/rotorWash.ts).
+          vec3 gtWash = washAt(gtRoot);
+          transformed.xz += (gtWash.xy * 1.5 + gtTurn(vec2(0.8, 0.0), gtPlace.z) * gtWash.z) * transformed.y * position.y;
+          transformed.y *= 1.0 - 0.6 * min(1.0, length(gtWash.xy) + 0.6 * gtWash.z) * position.y;
           transformed += vec3(gtRoot.x, gtY + gtBase, gtRoot.y);
           // Its colour: the ground's own, yellower or greener with the ground's slow variation, drier in rough grass,
           // each patch a little its own, lighter on a garden's light stripe as the ground is.
           vGtTint = mix(vec3(1.06, 1.0, 0.78), vec3(0.95, 1.02, 1.1), gs.b) * mix(vec3(1.0), vec3(1.25, 1.12, 0.7), gtWild * gtMake.y)
             * (0.92 + 0.16 * gtMake.z) * mix(vec3(1.0), vec3(1.15, 1.13, 1.08), gtStripe);
+          // Pressed flat by a rotor's wash, the blades show their paler sides: a shimmering ring (world/rotorWash.ts).
+          vGtTint *= 1.0 + 0.45 * min(1.0, length(gtWash.xy));
 ` : tufts ? `          float gtWild = clamp(1.0 - gs.a * 2.0, 0.0, 1.0);
           float gtMown = clamp(gs.a * 2.0 - 1.0, 0.0, 1.0);
           // How tall: a mown lawn a few centimetres, plain grass a hand, rough grass to the shin.
@@ -398,6 +407,10 @@ ${blades ? `          float gtWild = clamp(1.0 - gs.a * 2.0, 0.0, 1.0);
           // The wind: the tips lean with it, each tuft in its own time.
           float gtSway = sin(windTime * 2.1 + gtRoot.x * 0.9 + gtRoot.y * 0.7) * 0.5 + sin(windTime * 3.7 + gtRoot.x * 2.3) * 0.25;
           transformed.xz += windDir * gtSway * 0.35 * transformed.y * position.y * windStrength * windSpeed;
+          // A helicopter's rotor wash: the tufts lie flat outward (world/rotorWash.ts).
+          vec3 gtWash = washAt(gtRoot);
+          transformed.xz += (gtWash.xy * 1.5 + vec2(gtC, gtS) * 0.8 * gtWash.z) * transformed.y * position.y;
+          transformed.y *= 1.0 - 0.6 * min(1.0, length(gtWash.xy) + 0.6 * gtWash.z) * position.y;
           transformed += vec3(gtRoot.x, gtY + gtBase, gtRoot.y);
           // Its colour: yellower or greener with the ground's slow variation, drier in rough grass, each its own.
           vGtTint = mix(vec3(1.06, 1.0, 0.78), vec3(0.95, 1.02, 1.1), gs.b) * mix(vec3(1.0), vec3(1.25, 1.12, 0.7), gtWild * gtMake.y)
@@ -413,6 +426,10 @@ ${blades ? `          float gtWild = clamp(1.0 - gs.a * 2.0, 0.0, 1.0);
           transformed.y += transformed.x * (gtMake.z - 0.5) * 0.5;
           float gtOn = gtCovered > 0.5 ? max(gtOver.g - 0.5, 0.0) : 0.0;
           transformed += vec3(gtRoot.x, gtY + gtBase + gtOn + 0.012 + 0.01 * gtMake.w, gtRoot.y);
+          // A helicopter's rotor wash: the fallen leaves skitter outward and flip in the gusts (world/rotorWash.ts).
+          vec3 gtWash = washAt(gtRoot);
+          transformed.xz += gtWash.xy * (0.5 + 0.4 * gtMake.z);
+          transformed.y += 0.04 * length(gtWash.xy) * (0.5 + 0.5 * sin(washTime * 13.0 + gtMake.w * 40.0));
           // Yellow, orange or brown.
           vGtTint = gtMake.y < 0.35 ? vec3(0.5, 0.34, 0.03) : gtMake.y < 0.65 ? vec3(0.42, 0.16, 0.025) : vec3(0.16, 0.085, 0.03);
           vGtTint *= 0.8 + 0.4 * gtMake.z;`}`,

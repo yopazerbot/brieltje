@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { sound } from '../sound';
 import { COVER_GLSL, coverUniforms, type CoverMap } from './coverMap';
+import { WASH_GLSL, washUniforms } from './washShader';
 import { windAt } from './wind';
 
 /**
@@ -61,6 +62,7 @@ const vertexShader = /* glsl */ `
   uniform vec3 streakSlow;
   varying float vAlpha;
   ${COVER_GLSL}
+  ${WASH_GLSL}
   vec3 inBox(vec3 p) {
     vec3 corner = eye - box * 0.5;
     return corner + mod(p - corner, box);
@@ -68,6 +70,7 @@ const vertexShader = /* glsl */ `
   void main() {
     // The drop's head, falling, wrapped into the box round the eye (so it keeps its place in the world).
     vec3 p = inBox(seed * box + move);
+    p.xz += washRain(p); // a helicopter's rotor wash drives the drops under it outward (world/washShader.ts)
     vec4 c = coverOver(p.xz);
     // Not under what is over it (unknown cells: none indoors), and not in or under a tree's crown.
     float show = c.a > 0.5 ? step(c.r, p.y) * step(c.g, p.y) : 1.0 - coverAt.w;
@@ -76,6 +79,7 @@ const vertexShader = /* glsl */ `
     // Some drops fall slowly instead where they are under a crown: shaken from the leaves, larger, slower.
     if (fract(seed.x * 91.7 + seed.z * 13.3) < ${UNDER.toFixed(2)}) {
       vec3 q = inBox(seed.zxy * box + moveSlow);
+      q.xz += washRain(q);
       vec4 d = coverOver(q.xz);
       if (d.a > 0.5 && q.y < d.g && q.y > d.r) {
         p = q;
@@ -85,6 +89,7 @@ const vertexShader = /* glsl */ `
       }
     }
     vec3 world = p + s * tail;
+    world.xz += washRain(world) - washRain(p); // the tail higher, pushed less: the streak slants outward
     // Fade out towards the box's sides and top, so drops don't pop in and out at its edges.
     vec2 off = abs(world.xz - eye.xz) / (box.xz * 0.5);
     float edge = 1.0 - smoothstep(0.65, 1.0, max(off.x, off.y));
@@ -186,6 +191,7 @@ export class Rain {
     color: { value: new THREE.Color(0.55, 0.6, 0.66) },
     opacity: { value: 0 },
     ...this.cover,
+    ...washUniforms,
   };
   private splashUniforms = {
     eye: this.uniforms.eye, time: { value: 0 }, amount: { value: 0 }, scale: { value: 800 },

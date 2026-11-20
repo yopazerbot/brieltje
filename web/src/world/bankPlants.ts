@@ -5,6 +5,7 @@ import type { DipSpec } from './houseData';
 import { leafLight } from './leaves';
 import { reflectionSkips } from './reflections';
 import type { GroundShadeUniforms } from './undergrowth';
+import { WASH_GLSL, washUniforms } from './washShader';
 import { waterLevel } from './water';
 import { wind } from './wind';
 import { FIELDS, insideRings, KINDS, layout, settle, VARIANTS, type Layout, type Ring } from './bankPlantsPlan';
@@ -163,10 +164,12 @@ export class BankPlants {
       shader.uniforms.windStrength = wind.strength;
       Object.assign(shader.uniforms, { windDir: wind.dir, windSpeed: wind.speed });
       if (shade) Object.assign(shader.uniforms, { bpShade: shade.groundShade, bpShadeAll: shade.groundShadeAll, bpArea: shade.groundArea, bpAreaAll: shade.groundAreaAll });
+      Object.assign(shader.uniforms, washUniforms); // a helicopter's rotor wash (world/rotorWash.ts)
       shader.vertexShader = shader.vertexShader
         .replace(
           '#include <common>',
           `#include <common>
+          ${WASH_GLSL}
           uniform float bpReach;
           uniform float windTime;
           uniform float windStrength;
@@ -187,6 +190,10 @@ export class BankPlants {
             float lean = (0.55 + 0.45 * sin(windTime * 1.7 + bpRoot.x * 0.5 + bpRoot.z * 0.37)) * gust * h * h
               + 0.18 * h * h * h * sin(windTime * 4.3 + bpRoot.x * 1.3 - bpRoot.z * 0.7);
             vec3 w = vec3(dir.x, 0.0, dir.y) * lean * ${SWAY[kind].toFixed(3)} * windStrength;
+            // A helicopter's rotor wash: bent outward, the tops the most (world/rotorWash.ts).
+            vec3 bpWash = washAt(bpRoot.xz);
+            w += vec3(bpWash.x, 0.0, bpWash.y) * h * h * ${(HEIGHT[kind] * 0.7).toFixed(3)};
+            transformed.y -= (length(bpWash.xy) + 0.5 * bpWash.z) * h * h * ${(HEIGHT[kind] * 0.25).toFixed(3)};
             vec3 c0 = instanceMatrix[0].xyz;
             vec3 c2 = instanceMatrix[2].xyz;
             transformed.x += dot(w, c0) / dot(c0, c0);

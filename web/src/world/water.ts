@@ -4,6 +4,7 @@ import type { Ground } from './collision';
 import type { DipSpec } from './houseData';
 import { mood } from './mood';
 import { terrain } from './terrain';
+import { washWaterOn } from './washShader';
 import { wind } from './wind';
 
 /**
@@ -205,6 +206,7 @@ export function waterMaterial(): THREE.MeshStandardMaterial {
           #include <opaque_fragment>
         #endif`,
       );
+    washWaterOn(shader); // a helicopter's rotor wash: rings, chop and spray under it (world/washShader.ts)
   };
   material = m;
   return m;
