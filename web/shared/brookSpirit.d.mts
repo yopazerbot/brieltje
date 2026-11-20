@@ -38,12 +38,22 @@ export interface SpiritData {
   gap: number;
   /** m/s along a link */
   drift: number;
-  /** The share of full health a window, and the stun after a burst, may take; s the heart still takes hits after a window */
-  cap: { window: number; stun: number; grace: number };
-  /** Lights lit by the first and the second shell, each light's health, s of the stun, s the shell takes to fade */
-  shell: { lights: number[]; lightHp: number; stun: number; fade: number };
-  /** s sinking, s gone, s the rise's tell; no fighter within `clear` m of where it rises */
-  sink: { down: number; gone: number; rise: number; clear: number };
+  /**
+   * The most a window (and mending) may take: `window` health for one fighter, `per` more for each further one counted
+   * (slower than full health grows: it stops crowds and sharpshooters); the stun after a burst `stun` times that; s the
+   * heart still takes hits after a window
+   */
+  cap: { window: number; per: number; stun: number; grace: number };
+  /**
+   * By shell (the first, the second): lights lit, each light's health for one fighter, and more for each further one
+   * counted; s of the stun after a burst; s the shell takes to fade
+   */
+  shell: { lights: number[]; lightHp: number[]; lightPer: number[]; stun: number; fade: number };
+  /**
+   * s sinking, s gone, s the rise's tell; no fighter within `clear` m of where it rises, unless every point has one:
+   * then after `wait` s more under it rises where they are farthest
+   */
+  sink: { down: number; gone: number; rise: number; clear: number; wait: number };
   /** Mending: after `noFighter` s without one or `noDamage` s unhurt (outside a shell); `rate` of full health a second; reset after `reset` s alone; the heart's openness */
   mend: { noFighter: number; noDamage: number; rate: number; reset: number; open: number };
   attacks: {
@@ -166,7 +176,8 @@ export type SpiritEvent =
   | { type: 'burst'; ms: number }
   | { type: 'phase'; phase: number }
   | { type: 'sink'; x: number; z: number }
-  | { type: 'rise'; x: number; z: number; ms: number }
+  /** `forced`: every point had a fighter close by, so after waiting it rose where they were farthest */
+  | { type: 'rise'; x: number; z: number; ms: number; forced?: boolean }
   | { type: 'mend' }
   | { type: 'reset' }
   /** `names`: at most beaten.names, most damage first; `by`: all who hurt it (the launcher's first claim); `drop`: the hover point nearest */
@@ -280,6 +291,8 @@ export const ACTS: SpiritAct[];
 export const REST: -1;
 
 export function lightsOf(data: SpiritData): Spot3[];
+/** The most one window may take now, for the fighters counted. */
+export function windowCap(s: SpiritState): number;
 export function clearLine(ax: number, az: number, bx: number, bz: number, trunks: SpiritTrunk[]): boolean;
 export function newSpirit(data: SpiritData): SpiritState;
 /** One step: `now` ms, `dt` s, `rand` the dice. Returns what happened; the caller applies the hits. */

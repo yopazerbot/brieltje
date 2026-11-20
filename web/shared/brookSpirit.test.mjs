@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   ACTS, MODES, REST, actLength, blastSpirit, clearLine, hurtSpirit, lightsOf, newSpirit, readSpirit, spiritLook,
-  spiritPart, spiritView, spiritWire, stepSpirit,
+  spiritPart, spiritView, spiritWire, stepSpirit, windowCap,
 } from './brookSpirit.mjs';
 import { loadBounds } from './bounds.mjs';
 import { trunkRadius } from './trees.mjs';
@@ -241,7 +241,8 @@ test('a bolt that lands on you hurts most in the middle, 30 % at the edge', () =
   w2.until((e) => e.type === 'tell', [me]);
   const b2 = w2.until((e) => e.type === 'bolt', [me]);
   const h2 = w2.until((e) => e.type === 'hit', [fighter('a', me.x, me.z + 2.9)], b2.ms + 200);
-  assert.ok(h2.damage < 14 && h2.damage >= Math.round(35 * 0.3), `${h2.damage} at the edge`);
+  const most = data.attacks.bolt.damage;
+  assert.ok(h2.damage < most * 0.4 && h2.damage >= Math.round(most * 0.3), `${h2.damage} at the edge`);
 });
 
 test('a sweep\'s strip is fixed when its tell starts, a step aside dodges it, and a trunk between spares you', () => {
@@ -259,7 +260,7 @@ test('a sweep\'s strip is fixed when its tell starts, a step aside dodges it, an
   assert.deepEqual(sweep.to, { x: tell.x, z: tell.z });
   assert.deepEqual(sweep.hits, ['A'], 'B behind the trunk is spared');
   assert.equal(w.log.find((e) => e.type === 'hit').damage, data.attacks.sweep.damage[0]);
-  // Next time A steps 1.5 m aside during the tell (walking pace does it in the 1.1 s): spared, though the spirit could follow.
+  // Next time A steps 1.5 m aside during the tell: spared, though the spirit could follow.
   const w2 = world({ trunks: [] });
   const t2 = w2.until((e) => e.type === 'tell', [A]);
   assert.equal(t2.kind, 'sweep');
@@ -278,9 +279,9 @@ test('a bolt needs a clear line when its tell starts: behind a trunk it casts po
   w.run(1000, [me]);
   assert.equal(w.s.act, 'drift', 'no bolt through the trunk: it drifts away');
   const first = w.until((e) => e.type === 'tell', [me], 20000);
-  assert.equal(first.kind, 'bolt');
-  assert.notEqual(w.s.node, REST, 'from somewhere it sees past the trunk');
-  assert.ok(clearLine(w.s.x, w.s.z, me.x, me.z, [trunk]));
+  assert.notEqual(w.s.node, REST, 'it attacks from somewhere else');
+  if (first.kind === 'bolt') assert.ok(clearLine(w.s.x, w.s.z, me.x, me.z, [trunk]), 'a bolt from where it sees past the trunk');
+  else assert.equal(first.kind, 'sweep', 'or a sweep, close by');
   // Phase 2, the same: pools instead (they ignore the trunks).
   const w2 = world({ trunks: [trunk] });
   w2.step([me]);
@@ -290,13 +291,13 @@ test('a bolt needs a clear line when its tell starts: behind a trunk it casts po
   assert.deepEqual([tell.x, tell.z], [me.x, me.z]);
   // Every bolt in whole fights had a clear line from where the spirit was to its target when its tell began.
   for (let seed = 1; seed <= 4; seed++) {
-    const r = scriptedFight(seed, 2);
+    const r = fight(seed, mixed(2));
     assert.ok(r.boltTells > 0);
     assert.equal(r.boltsThroughTrunks, 0, `seed ${seed}`);
   }
 });
 
-test('pools: from phase 2, 3.5 m, 8 every half second inside, 6 at most, and they fade after 6 s', () => {
+test('pools: from phase 2, 2.5 m, 8 every half second inside, 6 at most, and they fade after 6 s', () => {
   const w = world({ trunks: [] });
   // Woken, then 40 m from the spirit at its rest: too far for a bolt, so pools.
   w.step([fighter('a', -66, 488)]);
@@ -305,13 +306,13 @@ test('pools: from phase 2, 3.5 m, 8 every half second inside, 6 at most, and the
   const tell = w.until((e) => e.type === 'tell', [me], 3000);
   assert.equal(tell.kind, 'pool');
   // The tell fixes it: walk away, and come back into it once it is there.
-  const pool = w.until((e) => e.type === 'pool', [fighter('a', me.x + 6, me.z)], 2000);
+  const pool = w.until((e) => e.type === 'pool', [fighter('a', me.x + 6, me.z)], 3000);
   assert.deepEqual([pool.x, pool.z], [me.x, me.z]);
-  const inside = fighter('a', me.x - 3, me.z);
+  const inside = fighter('a', me.x - 2, me.z);
   const hits = w.run(2000, [inside]).filter((e) => e.type === 'hit');
   assert.equal(hits.length, 4, 'four stings in 2 s');
   assert.ok(hits.every((h) => h.damage === 8 && h.kind === 'pool'));
-  assert.equal(w.run(1500, [fighter('a', me.x - 3.6, me.z)]).filter((e) => e.type === 'hit' && e.kind === 'pool' && Math.hypot(e.x - pool.x, e.z - pool.z) < 0.01).length, 0, 'outside it: nothing');
+  assert.equal(w.run(1500, [fighter('a', me.x - data.attacks.pools.radius - 0.1, me.z)]).filter((e) => e.type === 'hit' && e.kind === 'pool' && Math.hypot(e.x - pool.x, e.z - pool.z) < 0.01).length, 0, 'outside it: nothing');
   w.run(4000, [me]);
   assert.ok(!w.s.pools.some((p) => p.x === pool.x && p.z === pool.z && p.from === pool.now), 'gone after 6 s');
   // Never more than 6, wherever you stand.
@@ -326,9 +327,9 @@ test('pools: from phase 2, 3.5 m, 8 every half second inside, 6 at most, and the
   assert.ok(most <= data.attacks.pools.most, `${most} pools at once`);
 });
 
-test('it never rises within 8 m of a fighter, and stays under while every point has one close by', () => {
+test('it never rises within 8 m of a fighter while a point is free, and waits under a while when none is', () => {
   for (let seed = 1; seed <= 6; seed++) {
-    const r = scriptedFight(seed, 3);
+    const r = fight(seed, mixed(3));
     assert.ok(r.rises > 0, `seed ${seed} rose somewhere`);
     assert.equal(r.risesNear, 0, `seed ${seed}`);
   }
@@ -343,20 +344,36 @@ test('it never rises within 8 m of a fighter, and stays under while every point 
   assert.deepEqual([rise.x, rise.z], [data.hover[2][0], data.hover[2][1]]);
   // Every point taken: it waits under, then rises where one has gone.
   const all = data.hover.map(([x, z], i) => fighter(`f${i}`, x + 2, z));
-  w.s.act = 'under';
-  w.s.until = w.now;
-  w.s.node = 2;
-  assert.equal(w.run(3000, all).filter((e) => e.type === 'rise').length, 0);
+  const under = () => {
+    w.s.act = 'under';
+    w.s.since = w.now - data.sink.gone * 1000;
+    w.s.until = w.now;
+    w.s.node = 2;
+  };
+  under();
+  assert.equal(w.run(2000, all).filter((e) => e.type === 'rise').length, 0);
   assert.equal(w.s.act, 'under');
-  const back = w.until((e) => e.type === 'rise', all.filter((f) => f.name !== 'f4'), 1000);
+  const back = w.until((e) => e.type === 'rise', all.filter((f) => f.name !== 'f4'), 500);
   assert.deepEqual([back.x, back.z], [data.hover[4][0], data.hover[4][1]]);
+  assert.ok(!back.forced);
+  // A crowd that stays on every point cannot hold it under for good: after sink.wait it rises where they are farthest
+  // (point 6 here: its fighter stands 5 m off), its tell as long as ever.
+  const crowd = all.map((f, i) => (i === 6 ? { ...f, x: f.x + 3 } : f));
+  under();
+  const t0 = w.now;
+  const forced = w.until((e) => e.type === 'rise', crowd, 10000);
+  assert.ok(forced.forced);
+  assert.ok(forced.now - t0 >= data.sink.wait * 1000 - STEP, `waited ${forced.now - t0} ms`);
+  assert.deepEqual([forced.x, forced.z], [data.hover[6][0], data.hover[6][1]]);
+  assert.equal(forced.ms, data.sink.rise * 1000);
 });
 
 test('one window never takes more than its share, the stun after a burst a little more', () => {
   const w = world({ trunks: [] });
   const me = fighter('a', -66, 488);
   w.until((e) => e.type === 'open', [me]);
-  const share = Math.round(data.cap.window * w.s.max);
+  const share = windowCap(w.s);
+  assert.equal(share, data.cap.window, 'for one fighter');
   let dealt = 0;
   for (let k = 0; k < 40; k++) dealt += w.hurt('a', 0, 100).dealt;
   assert.equal(dealt, share, `${dealt} of ${share}`);
@@ -371,17 +388,17 @@ test('one window never takes more than its share, the stun after a burst a littl
   assert.equal(w.hurt('a', 0, 26).dealt, 26, 'within the grace');
   w.run(200, [me]);
   assert.equal(w.hurt('a', 0, 26).why, 'shut', 'after it');
-  // The stun after the first burst: 15 %.
+  // The stun after the first burst: a little more.
   const w2 = world({ trunks: [] });
   w2.until((e) => e.type === 'open', [me]);
   w2.s.hp = Math.round(0.67 * w2.s.max);
   w2.hurt('a', 0, 100);
   assert.equal(w2.s.shell, 0);
-  for (const i of w2.s.draw[0]) w2.hurt('a', i + 1, 100);
+  for (const i of w2.s.draw[0]) w2.hurt('a', i + 1, 500);
   assert.equal(w2.s.act, 'stun');
   const before = w2.s.hp;
   for (let k = 0; k < 40; k++) w2.hurt('a', 0, 100);
-  assert.equal(before - w2.s.hp, Math.round(data.cap.stun * w2.s.max));
+  assert.equal(before - w2.s.hp, Math.round(data.cap.stun * windowCap(w2.s)));
 });
 
 test('health stops at 66 % and 33 % until the lights are out; then the shell bursts and the next phase begins', () => {
@@ -402,12 +419,13 @@ test('health stops at 66 % and 33 % until the lights are out; then the shell bur
   assert.ok(during.some((e) => e.type === 'tell'));
   assert.ok(!during.some((e) => e.type === 'open'));
   assert.equal(w.s.hp, Math.round(0.66 * w.s.max));
-  // Each light takes 60.
+  // Each light takes the first shell's light health (one fighter).
+  const L = data.shell.lightHp[0];
   const [l0, l1, l2] = shell.lights;
   assert.equal(w.hurt('a', l0 + 1, 26).dealt, 26);
-  assert.equal(w.hurt('a', l0 + 1, 100).dealt, 34);
-  assert.equal(w.hurt('a', l1 + 1, 60).events[0].type, 'out');
-  const last = w.hurt('a', l2 + 1, 60);
+  assert.equal(w.hurt('a', l0 + 1, 500).dealt, L - 26);
+  assert.equal(w.hurt('a', l1 + 1, L).events[0].type, 'out');
+  const last = w.hurt('a', l2 + 1, L);
   assert.deepEqual(last.events.map((e) => e.type), ['out', 'burst', 'phase']);
   assert.equal(w.s.phase, 2);
   assert.equal(w.s.act, 'stun');
@@ -416,7 +434,9 @@ test('health stops at 66 % and 33 % until the lights are out; then the shell bur
   w.s.hp = Math.round(0.34 * w.s.max);
   const r2 = w.hurt('a', 0, 200);
   assert.equal(w.s.hp, Math.round(0.33 * w.s.max));
-  assert.equal(r2.events.find((e) => e.type === 'shell').lights.length, 5);
+  const second = r2.events.find((e) => e.type === 'shell').lights;
+  assert.equal(second.length, 5);
+  assert.equal(w.s.lights[second[0]].hp, data.shell.lightHp[1], 'the second shell has its own light health');
 });
 
 test('lights that are out never light again: the second shell lights the other five', () => {
@@ -426,11 +446,11 @@ test('lights that are out never light again: the second shell lights the other f
     w.until((e) => e.type === 'open', [me]);
     w.s.hp = Math.round(0.67 * w.s.max);
     const first = w.hurt('a', 0, 100).events.find((e) => e.type === 'shell').lights;
-    w.hurt('a', first[0] + 1, 60);
+    w.hurt('a', first[0] + 1, 500);
     w.run(60000, [me]);
     assert.ok(!w.s.lights[first[0]].lit, 'still out a minute later');
-    assert.equal(w.hurt('a', first[0] + 1, 60).why, 'out');
-    for (const i of first.slice(1)) w.hurt('a', i + 1, 60);
+    assert.equal(w.hurt('a', first[0] + 1, 500).why, 'out');
+    for (const i of first.slice(1)) w.hurt('a', i + 1, 500);
     w.s.hp = Math.round(0.34 * w.s.max);
     w.s.act = 'open';
     w.s.until = w.now + 4000;
@@ -444,36 +464,39 @@ test('its full health follows the fighters counted, only ever upwards', () => {
   const w = world({ trunks: [] });
   const a = fighter('a', -66, 488);
   const b = fighter('b', -64, 490);
+  const { base, per } = data.health;
   w.step([a]);
-  assert.equal(w.s.max, 2400);
+  assert.equal(w.s.max, base);
   w.step([a, b]);
-  assert.equal(w.s.max, 3800);
+  assert.equal(w.s.max, base + per);
   w.step([a]);
   w.run(1000, [a]);
-  assert.equal(w.s.max, 3800, 'b leaving takes nothing off');
+  assert.equal(w.s.max, base + per, 'b leaving takes nothing off');
   w.step([a, b]);
-  assert.equal(w.s.max, 3800, 'nor does b coming back count twice');
+  assert.equal(w.s.max, base + per, 'nor does b coming back count twice');
   const many = Array.from({ length: 12 }, (_, i) => fighter(`p${i}`, -66 + (i % 4), 488 + Math.floor(i / 4)));
   w.step(many);
-  assert.equal(w.s.max, 2400 + 1400 * 7, 'at most 8 counted: 12 200');
+  assert.equal(w.s.max, base + per * 7, 'at most 8 counted');
+  assert.equal(windowCap(w.s), data.cap.window + data.cap.per * 7, 'the window grows more slowly');
+  assert.ok(windowCap(w.s) / w.s.max < data.cap.window / base);
   // Health keeps its share when it grows.
   const w2 = world({ trunks: [] });
   w2.until((e) => e.type === 'open', [a]);
   w2.hurt('a', 0, 240);
   w2.step([a, b]);
-  assert.equal(w2.s.hp, Math.round((2160 / 2400) * 3800));
+  assert.equal(w2.s.hp, Math.round(((base - 240) / base) * (base + per)));
 });
 
 test('alone for 8 s it goes back over the brook and mends; a heart hit stops it; 45 s alone and it is new and asleep', () => {
   const w = world({ trunks: [] });
   const me = fighter('a', -66, 488);
   w.until((e) => e.type === 'open', [me]);
-  w.hurt('a', 0, 200);
+  w.hurt('a', 0, windowCap(w.s));
   const hp = w.s.hp;
   // Nobody for 8 s: mending.
   const mend = w.until((e) => e.type === 'mend', [], 9000);
   assert.ok(mend && mend.now - w.log.find((e) => e.type === 'open').now >= 8000);
-  // Along the links (only one reaches the rest): up to half a minute.
+  // Along the links (two reach the rest).
   for (let t = 0; t < 30000 && w.s.act === 'drift'; t += STEP) w.step([]);
   assert.deepEqual([w.s.x, w.s.z], [data.rest.x, data.rest.z], 'over the brook');
   w.run(500, []);
@@ -492,14 +515,14 @@ test('alone for 8 s it goes back over the brook and mends; a heart hit stops it;
   assert.ok(reset);
   assert.equal(w.s.mode, 'asleep');
   assert.equal(w.s.hp, w.s.max);
-  assert.equal(w.s.max, 2400);
+  assert.equal(w.s.max, data.health.base);
   assert.ok(w.s.lights.every((l) => !l.lit && !l.used));
-  // Mended full while a fighter only watches (no damage for 25 s): reset too.
+  // Mended full while a fighter only watches (no damage for mend.noDamage s): reset too.
   const w2 = world({ trunks: [] });
   w2.until((e) => e.type === 'open', [me]);
   w2.hurt('a', 0, 100);
-  const m2 = w2.until((e) => e.type === 'mend', [me], 30000);
-  assert.ok(m2.now - w2.log.find((e) => e.type === 'open').now >= 25000, 'after 25 s without damage');
+  const m2 = w2.until((e) => e.type === 'mend', [me], data.mend.noDamage * 1000 + 5000);
+  assert.ok(m2.now - w2.log.find((e) => e.type === 'open').now >= data.mend.noDamage * 1000, 'after that long without damage');
   assert.ok(w2.until((e) => e.type === 'reset', [me], 60000), 'full health: as new');
 });
 
@@ -525,7 +548,7 @@ test('beaten, it comes apart harmless and gathers again after the return time', 
   const back = w.until((e) => e.type === 'back', [me], 1000);
   assert.ok(back);
   assert.equal(w.s.mode, 'asleep');
-  assert.equal(w.s.hp, 2400);
+  assert.equal(w.s.hp, data.health.base);
   assert.ok(w.until((e) => e.type === 'wake', [me], 200), 'and wakes again');
 });
 
@@ -544,7 +567,7 @@ test('hurtSpirit and blastSpirit refuse bad input, never throw, and hold the win
   assert.equal(hurtSpirit(w.s, 'a', 0, 26, NaN).dealt, 0);
   assert.equal(hurtSpirit(null, 'a', 0, 26, w.now).dealt, 0);
   assert.equal(hurtSpirit(w.s, 'a', 2, 26, w.now).why, 'out', 'a light that is not lit counts nothing');
-  assert.equal(hurtSpirit(w.s, 'a', 0, 1e12, w.now).dealt, Math.round(data.cap.window * w.s.max), 'a huge hit takes the share, no more');
+  assert.equal(hurtSpirit(w.s, 'a', 0, 1e12, w.now).dealt, Math.min(data.heart.most, windowCap(w.s)), 'a huge hit takes the share, no more');
   // Blasts.
   const w2 = world({ trunks: [] });
   w2.until((e) => e.type === 'open', [me]);
@@ -623,19 +646,134 @@ test('the look: the heart opens in 0.3 s, the shell shuts, it fades sinking and 
   assert.ok(pulse.hurt > 0 && pulse.hurt < 1);
 });
 
-// ---- The same for the same inputs and dice
+// ---- Every attack can be walked out of
 
-test('the same inputs and dice give the same fight', () => {
-  const a = scriptedFight(11, 2, { keep: true });
-  const b = scriptedFight(11, 2, { keep: true });
-  assert.ok(a.log.length > 100);
-  assert.equal(JSON.stringify(a.log), JSON.stringify(b.log));
-  assert.equal(JSON.stringify(a.wire), JSON.stringify(b.wire));
-  const c = scriptedFight(12, 2, { keep: true });
-  assert.notEqual(JSON.stringify(a.log), JSON.stringify(c.log), 'other dice, another fight');
+/**
+ * A fighter who reacts after 0.5 s and only walks (1.4 m/s, as on a touch screen), straight along `dir` (x, z), from
+ * `from`; the spirit's dice `seed`. Returns the world and where the fighter is at time `t`.
+ */
+function walker(from, react = 500, speed = 1.4) {
+  let start = null;
+  let dir = null;
+  return {
+    go(now, d) {
+      start = now + react;
+      dir = d;
+    },
+    at(now) {
+      if (start === null || now <= start) return { ...from };
+      const k = (speed * (now - start)) / 1000;
+      return { ...from, x: from.x + dir.x * k, z: from.z + dir.z * k };
+    },
+  };
+}
+
+const MARGIN = 0.4;
+
+test('every sweep can be walked out of, reacting after 0.5 s, with 0.4 m to spare', () => {
+  for (let phase = 1; phase <= 3; phase++) {
+    const w = world({ trunks: [] });
+    const from = fighter('a', data.rest.x + 6, data.rest.z);
+    const me = walker(from);
+    w.step([from]);
+    w.s.phase = phase;
+    let tell = null;
+    let sweep = null;
+    for (let t = 0; t < 10000 && !sweep; t += STEP) {
+      const ev = w.step([me.at(w.now)]);
+      const e = ev.find((q) => q.type === 'tell');
+      if (e && !tell) {
+        assert.equal(e.kind, 'sweep');
+        tell = e;
+        // Sideways to the strip.
+        const ex = e.x - e.fx;
+        const ez = e.z - e.fz;
+        const len = Math.hypot(ex, ez);
+        me.go(e.now, { x: ez / len, z: -ex / len });
+      }
+      sweep = ev.find((q) => q.type === 'sweep') ?? null;
+    }
+    assert.ok(sweep, `phase ${phase}: a sweep`);
+    assert.deepEqual(sweep.hits, [], `phase ${phase}: walked out`);
+    const p = me.at(sweep.now);
+    const ex = tell.x - tell.fx;
+    const ez = tell.z - tell.fz;
+    const side = Math.abs((p.x - tell.fx) * ez - (p.z - tell.fz) * ex) / Math.hypot(ex, ez);
+    assert.ok(side - data.attacks.sweep.half >= MARGIN, `phase ${phase}: ${(side - data.attacks.sweep.half).toFixed(2)} m to spare`);
+  }
+});
+
+test('every bolt can be walked out of at its nearest range, reacting after 0.5 s, with 0.4 m to spare', () => {
+  // The nearest a bolt is cast at (no sweep here to take its place); every bolt of a volley in turn.
+  const d = structuredClone(data);
+  d.attacks.sweep.range = 0;
+  for (let phase = 1; phase <= 3; phase++) {
+    const w = world({ trunks: [], d });
+    const from = fighter('a', data.rest.x + data.attacks.bolt.min, data.rest.z);
+    const me = walker(from);
+    w.step([from]);
+    w.s.phase = phase;
+    const landings = [];
+    let bolts = 0;
+    for (let t = 0; t < 20000 && bolts < data.attacks.bolt.volley[phase - 1]; t += STEP) {
+      const ev = w.step([me.at(w.now)]);
+      for (const e of ev) {
+        if (e.type === 'tell' && !landings.length) me.go(e.now, { x: 0, z: 1 }); // across its line
+        if (e.type === 'bolt') {
+          bolts++;
+          landings.push({ to: e.to, at: e.now + e.ms });
+        }
+        assert.notEqual(e.type, 'hit', `phase ${phase}: never hit`);
+      }
+    }
+    assert.equal(bolts, data.attacks.bolt.volley[phase - 1], `phase ${phase}: the whole volley`);
+    for (const l of landings) {
+      const p = me.at(l.at);
+      const gap = Math.hypot(p.x - l.to.x, p.z - l.to.z) - data.attacks.bolt.radius;
+      assert.ok(gap >= MARGIN, `phase ${phase}: ${gap.toFixed(2)} m to spare`);
+    }
+    assert.equal(w.run(4000, () => [me.at(w.now)]).filter((e) => e.type === 'hit').length, 0);
+  }
+});
+
+test('every pool can be walked out of before it spreads, reacting after 0.5 s, with 0.4 m to spare', () => {
+  for (let phase = 2; phase <= 3; phase++) {
+    const w = world({ trunks: [] });
+    w.step([fighter('a', -66, 488)]);
+    w.s.phase = phase;
+    const from = fighter('a', data.rest.x + 40, data.rest.z); // too far for a bolt
+    const me = walker(from);
+    let pool = null;
+    for (let t = 0; t < 10000 && !pool; t += STEP) {
+      const ev = w.step([me.at(w.now)]);
+      const tell = ev.find((e) => e.type === 'tell');
+      if (tell) {
+        assert.equal(tell.kind, 'pool');
+        me.go(tell.now, { x: 0, z: 1 });
+      }
+      pool = ev.find((e) => e.type === 'pool') ?? null;
+    }
+    assert.ok(pool);
+    const p = me.at(pool.now);
+    const gap = Math.hypot(p.x - pool.x, p.z - pool.z) - data.attacks.pools.radius;
+    assert.ok(gap >= MARGIN, `phase ${phase}: ${gap.toFixed(2)} m to spare`);
+  }
 });
 
 // ---- Whole fights
+
+/**
+ * The scripted players. `aim`: the share of shots that hit (per pellet, less for a wide gun far off); `react`: s to
+ * react to a tell it notices; `notice`: the share of tells it notices (it misses some while it shoots or looks for a
+ * light); `sprint`: how often it sprints to dodge, else walks; `find`: s to find and turn to each light; `seeOpen`: s to
+ * see the heart open.
+ */
+const AVERAGE = { aim: 0.45, react: [0.25, 0.55], notice: 0.8, sprint: 0.7, find: [3, 6], seeOpen: [0.3, 0.7] };
+const SHARP = { aim: 0.8, react: [0.15, 0.3], notice: 0.95, sprint: 0.9, find: [1.5, 3], seeOpen: [0.15, 0.3] };
+/** n players, average and sharp by turns. */
+const mixed = (n) => Array.from({ length: n }, (_, i) => (i % 2 ? SHARP : AVERAGE));
+/** The lights' hit radius the players aim at (the heart's is heart.r). */
+const LIGHT_R = 0.35;
 
 /** How far (x, z) is from the nearest link (the rest's too). */
 function offLink(x, z) {
@@ -653,86 +791,83 @@ function offLink(x, z) {
   return best;
 }
 
-test('it drifts only along the links, a burst in the middle of a drift too', () => {
-  for (let seed = 1; seed <= 6; seed++) {
-    const r = scriptedFight(seed, 1 + (seed % 3));
-    assert.ok(r.drifting > 100, `seed ${seed} drifted`);
-    assert.equal(r.offLinks, 0, `seed ${seed}`);
+/** The nearest spot to `p`, `near` to `far` m from light `l` inside the leash, that sees it past the trunks. */
+function spotFor(l, p, near, far) {
+  let best = null;
+  for (let r = near; r <= far; r += (far - near) / 2) {
+    for (let k = 0; k < 24; k++) {
+      const a = (k / 24) * Math.PI * 2;
+      const x = l.x + Math.sin(a) * r;
+      const z = l.z + Math.cos(a) * r;
+      if (Math.hypot(x - G.x, z - G.z) > G.leash - 2 || !clearLine(x, z, l.x, l.z, TRUNKS)) continue;
+      const dist = Math.hypot(x - p.x, z - p.z);
+      if (!best || dist < best.d) best = { x, z, d: dist };
+    }
   }
-  // Its shell bursting while it drifts: after the stun it sinks rather than drift from where it is.
-  const w = world({ trunks: [] });
-  const me = fighter('a', -66, 488);
-  w.until((e) => e.type === 'open', [me]);
-  w.s.hp = Math.round(0.67 * w.s.max);
-  w.hurt('a', 0, 100);
-  // Half way from hover point 0 to 3.
-  const [ax, az] = data.hover[0];
-  const [bx, bz] = data.hover[3];
-  Object.assign(w.s, { act: 'drift', node: null, path: [3], x: (ax + bx) / 2, z: (az + bz) / 2 });
-  for (const i of w.s.draw[0]) w.hurt('a', i + 1, 60);
-  assert.equal(w.s.act, 'stun');
-  let drifted = false;
-  const sink = w.until((e) => e.type === 'sink', (x) => {
-    drifted ||= x.s.act === 'drift';
-    return [me];
-  }, 15000);
-  assert.ok(sink, 'it sinks after the stun');
-  assert.ok(!drifted, 'without drifting from the middle of the link');
-});
+  return best ?? { x: G.x, z: G.z };
+}
 
 /**
- * A simple scripted player (or several) with the rifle's numbers: walks in from the lane, keeps 12 to 16 m from the
- * spirit where it sees past the trunks, dodges the tells it sees (a reaction of 0.25 to 0.55 s, sprinting 7 times
- * in 10), shoots the heart when it is open or mending and the lights in a shell, hitting `aim` of its shots, reloads,
- * and when downed comes back after 3 s at the wake spot.
+ * A whole fight by scripted players (`kinds`: AVERAGE, SHARP) with gun `gun` (shared/weapons.json): they walk in from the
+ * lane, keep 12 to 16 m from the spirit where they see past the trunks (8 to 10.5 with the shotgun), dodge the tells
+ * they notice, step out of pools, shoot the heart when they see it open (or mending) and the lights in a shell (each
+ * found after a while, from a spot that sees it), reload, and when downed come back after 3 s at the wake spot. The
+ * gun's spread is in screen units (weapon.ts): tan(36 degrees) radians each at the 72 degree view.
  */
-function scriptedFight(seed, n = 1, { aim = 0.45, keep = false, limit = 15 * 60000 } = {}) {
+function fight(seed, kinds, { gun = 'rifle', keep = false, limit = 20 * 60000 } = {}) {
   const w = world({ seed });
   const s = w.s;
   const mine = dice(seed * 7919 + 13);
-  const rifle = weapons.rifle;
-  const players = Array.from({ length: n }, (_, i) => ({ name: `p${i}`, x: -46 - i, y: G.y, z: 480 + i * 2, hp: 100, alive: true, back: 0, ammo: rifle.mag, reload: 0, next: 0, dodge: null, downs: 0 }));
-  const out = { boltTells: 0, boltsThroughTrunks: 0, rises: 0, risesNear: 0, drifting: 0, offLinks: 0, downs: 0, marks: {}, log: [], wire: [] };
+  const W = weapons[gun];
+  const range = gun === 'shotgun' ? [8, 10.5] : [12, 16];
+  const spots = gun === 'shotgun' ? [5, 8] : [8, 16];
+  const reach = gun === 'shotgun' ? 9 : 20;
+  const players = kinds.map((k, i) => ({ ...k, name: `p${i}`, x: -46 - i, y: G.y, z: 480 + i * 2, hp: 100, alive: true, back: 0, ammo: W.mag, reload: 0, next: 0, dodge: null, downs: 0, light: -1, lightAt: 0 }));
+  const out = { boltTells: 0, boltsThroughTrunks: 0, rises: 0, risesNear: 0, forced: 0, drifting: 0, offLinks: 0, windows: 0, capped: 0, marks: {}, log: [], wire: [] };
   const mark = (k) => (out.marks[k] ??= w.now);
+  const pools = data.attacks.pools;
   const handle = (e, alive) => {
     if (keep) out.log.push({ ...e, now: w.now });
     if (e.type === 'wake') mark('wake');
     if (e.type === 'shell') mark(`shell${s.shell}`);
     if (e.type === 'burst') mark(`burst${s.phase - 1}`);
     if (e.type === 'beaten') mark('beaten');
+    if (e.type === 'open') out.windows++;
+    if (e.type === 'cap') out.capped++;
     if (e.type === 'tell' && e.kind === 'bolt') {
       out.boltTells++;
       if (!clearLine(s.x, s.z, e.x, e.z, TRUNKS)) out.boltsThroughTrunks++;
     }
     if (e.type === 'rise') {
       out.rises++;
-      if (alive.some((f) => Math.hypot(f.x - e.x, f.z - e.z) <= data.sink.clear)) out.risesNear++;
+      if (e.forced) out.forced++;
+      else if (alive.some((f) => Math.hypot(f.x - e.x, f.z - e.z) <= data.sink.clear)) out.risesNear++;
     }
     if (e.type === 'hit') {
       const p = players.find((q) => q.name === e.name);
       if (p && p.alive) {
         p.hp -= e.damage;
-        if (p.hp <= 0) Object.assign(p, { alive: false, back: w.now + data.down.back * 1000, dodge: null, downs: p.downs + 1 });
+        if (p.hp <= 0) Object.assign(p, { alive: false, back: w.now + data.down.back * 1000, dodge: null, downs: p.downs + 1, light: -1 });
       }
     }
     if (e.type === 'tell') {
       for (const p of players) {
-        if (!p.alive) continue;
-        const react = 250 + mine() * 300;
-        const v = mine() < 0.7 ? 3.5 : 1.4;
-        if (e.kind === 'bolt' && Math.hypot(p.x - e.x, p.z - e.z) < 3) {
+        if (!p.alive || mine() > p.notice) continue;
+        const react = (p.react[0] + mine() * (p.react[1] - p.react[0])) * 1000;
+        const v = mine() < p.sprint ? 3.5 : 1.4;
+        if (e.kind === 'bolt' && Math.hypot(p.x - e.x, p.z - e.z) < data.attacks.bolt.radius + 0.5) {
           const a = Math.atan2(p.x - s.x, p.z - s.z) + (Math.PI / 2) * (mine() < 0.5 ? 1 : -1);
-          p.dodge = { at: w.now + react, x: p.x + Math.sin(a) * 5, z: p.z + Math.cos(a) * 5, v, until: w.now + react + 3000 };
+          p.dodge = { at: w.now + react, x: p.x + Math.sin(a) * 5, z: p.z + Math.cos(a) * 5, v, until: w.now + react + 4000 };
         } else if (e.kind === 'sweep') {
           const ex = e.x - e.fx;
           const ez = e.z - e.fz;
           const len = Math.hypot(ex, ez);
           const side = ((p.x - e.fx) * ez - (p.z - e.fz) * ex) / len;
           const sg = side >= 0 ? 1 : -1;
-          if (Math.abs(side) < 2) p.dodge = { at: w.now + react, x: p.x + (ez / len) * 2.8 * sg, z: p.z - (ex / len) * 2.8 * sg, v, until: w.now + react + 2000 };
-        } else if (e.kind === 'pool' && Math.hypot(p.x - e.x, p.z - e.z) < 3.5) {
+          if (Math.abs(side) < data.attacks.sweep.half + 1) p.dodge = { at: w.now + react, x: p.x + (ez / len) * 2.6 * sg, z: p.z - (ex / len) * 2.6 * sg, v, until: w.now + react + 3000 };
+        } else if (e.kind === 'pool' && Math.hypot(p.x - e.x, p.z - e.z) < pools.radius + 0.5) {
           const a = Math.atan2(p.x - e.x, p.z - e.z) + (mine() - 0.5);
-          p.dodge = { at: w.now + react, x: e.x + Math.sin(a) * 5.5, z: e.z + Math.cos(a) * 5.5, v, until: w.now + react + 3000 };
+          p.dodge = { at: w.now + react, x: e.x + Math.sin(a) * (pools.radius + 2), z: e.z + Math.cos(a) * (pools.radius + 2), v, until: w.now + react + 4000 };
         }
       }
     }
@@ -760,23 +895,35 @@ function scriptedFight(seed, n = 1, { aim = 0.45, keep = false, limit = 15 * 600
         v = p.dodge.v;
         if (Math.hypot(goal.x - p.x, goal.z - p.z) < 0.2) p.dodge = null;
       } else if (!p.dodge) {
-        const lit = s.lights.filter((l) => l.lit).sort((a, b) => Math.hypot(a.x - p.x, a.z - p.z) - Math.hypot(b.x - p.x, b.z - p.z));
+        const lit = s.lights.map((l, i) => ({ l, i })).filter((q) => q.l.lit);
         if (lit.length) {
-          const l = lit[0];
-          if (Math.hypot(l.x - p.x, l.z - p.z) > 12 || !clearLine(p.x, p.z, l.x, l.z, TRUNKS)) goal = { x: (l.x + G.x) / 2, z: (l.z + G.z) / 2 };
+          if (p.light < 0 || !s.lights[p.light].lit) {
+            lit.sort((a, b) => Math.hypot(a.l.x - p.x, a.l.z - p.z) - Math.hypot(b.l.x - p.x, b.l.z - p.z));
+            p.light = lit[0].i;
+            p.lightAt = w.now + (p.find[0] + mine() * (p.find[1] - p.find[0])) * 1000;
+          }
+          const l = s.lights[p.light];
+          if (Math.hypot(l.x - p.x, l.z - p.z) > reach || !clearLine(p.x, p.z, l.x, l.z, TRUNKS)) goal = spotFor(l, p, ...spots);
         } else if (look.fade < 1) {
           const a = Math.atan2(p.x - s.x, p.z - s.z);
           const dist = Math.hypot(p.x - s.x, p.z - s.z);
-          if (dist < 12 || dist > 16 || !clearLine(p.x, p.z, s.x, s.z, TRUNKS)) {
-            for (const da of [0, 0.4, -0.4, 0.8, -0.8, 1.2, -1.2, 1.6, -1.6]) {
-              const x = s.x + Math.sin(a + da) * 14;
-              const z = s.z + Math.cos(a + da) * 14;
+          if (dist < range[0] || dist > range[1] || !clearLine(p.x, p.z, s.x, s.z, TRUNKS)) {
+            for (const da of [0, 0.4, -0.4, 0.8, -0.8, 1.2, -1.2, 1.6, -1.6, 2.0, -2.0]) {
+              const r = (range[0] + range[1]) / 2;
+              const x = s.x + Math.sin(a + da) * r;
+              const z = s.z + Math.cos(a + da) * r;
               if (Math.hypot(x - G.x, z - G.z) < G.leash - 3 && clearLine(x, z, s.x, s.z, TRUNKS)) {
                 goal = { x, z };
                 break;
               }
             }
           }
+        }
+        if (!goal && Math.hypot(p.x - G.x, p.z - G.z) > G.leash - 4) goal = { x: G.x, z: G.z };
+        const inPool = s.pools.find((q) => Math.hypot(p.x - q.x, p.z - q.z) < pools.radius);
+        if (inPool) {
+          const a = Math.atan2(p.x - inPool.x, p.z - inPool.z);
+          goal = { x: inPool.x + Math.sin(a) * (pools.radius + 1.5), z: inPool.z + Math.cos(a) * (pools.radius + 1.5) };
         }
         if (goal && Math.hypot(goal.x - p.x, goal.z - p.z) > 4) v = 3.5;
       }
@@ -793,40 +940,116 @@ function scriptedFight(seed, n = 1, { aim = 0.45, keep = false, limit = 15 * 600
       if (w.now < p.reload || w.now < p.next) continue;
       let part = null;
       let at = null;
-      if ((look.open >= 0.99 || s.mode === 'mend') && spiritPart(s, 0, w.now)) [part, at] = [0, s];
-      else {
-        const i = s.lights.findIndex((l) => l.lit && Math.hypot(l.x - p.x, l.z - p.z) < 40 && clearLine(p.x, p.z, l.x, l.z, TRUNKS));
-        if (i >= 0) [part, at] = [i + 1, s.lights[i]];
-      }
+      let r = data.heart.r;
+      const heart = spiritPart(s, 0, w.now);
+      const seen = s.mode === 'mend' || ((s.act === 'open' || s.act === 'stun') && w.now - s.since >= (p.seeOpen[0] + mine() * (p.seeOpen[1] - p.seeOpen[0])) * 1000);
+      if (heart && seen) [part, at] = [0, heart];
+      else if (p.light >= 0 && s.lights[p.light].lit && w.now >= p.lightAt) [part, at, r] = [p.light + 1, s.lights[p.light], LIGHT_R];
       if (part === null) continue;
-      p.next = w.now + rifle.delay * 1000;
-      if (--p.ammo <= 0) [p.ammo, p.reload] = [rifle.mag, w.now + rifle.reload * 1000];
-      if (!clearLine(p.x, p.z, at.x, at.z, TRUNKS) || mine() >= aim) continue;
-      for (const e of w.hurt(p.name, part, rifle.body).events) handle(e, alive);
+      const dist = Math.hypot(at.x - p.x, at.z - p.z);
+      if (dist > 30 || !clearLine(p.x, p.z, at.x, at.z, TRUNKS)) continue;
+      p.next = w.now + W.delay * 1000;
+      if (--p.ammo <= 0) [p.ammo, p.reload] = [W.mag, w.now + W.reload * 1000];
+      const each = p.aim * Math.min(1, (r / Math.max(1e-6, W.spread * Math.tan(Math.PI / 5) * dist)) ** 2);
+      let n = 0;
+      for (let k = 0; k < W.pellets; k++) if (mine() < each) n++;
+      if (n) for (const e of w.hurt(p.name, part, n * W.body).events) handle(e, alive);
     }
   }
-  out.downs = players.reduce((k, p) => k + p.downs, 0);
-  out.ms = out.marks.beaten === undefined ? Infinity : out.marks.beaten - out.marks.wake;
+  const m = out.marks;
+  out.ms = m.beaten === undefined ? Infinity : m.beaten - m.wake;
+  out.shells = [(m.burst1 - m.shell0) / 1000, (m.burst2 - m.shell1) / 1000];
+  out.downs = players.map((p) => p.downs);
   return out;
 }
 
-test('a whole fight for one fighter with the rifle: beatable, in 2 to 8 minutes', (t) => {
-  const times = [];
-  for (let seed = 1; seed <= 10; seed++) {
-    const r = scriptedFight(seed, 1);
-    assert.ok(Number.isFinite(r.ms), `seed ${seed}: beaten`);
-    const m = r.marks;
-    const min = (a, b) => ((m[b] - m[a]) / 60000).toFixed(2);
-    t.diagnostic(`seed ${seed}: ${(r.ms / 60000).toFixed(2)} min (phase 1 ${min('wake', 'shell0')}, shell ${min('shell0', 'burst1')}, phase 2 ${min('burst1', 'shell1')}, shell ${min('shell1', 'burst2')}, phase 3 ${min('burst2', 'beaten')}), downed ${r.downs} times`);
-    times.push(r.ms);
-    assert.ok(r.ms >= 2 * 60000 && r.ms <= 8 * 60000, `seed ${seed}: ${(r.ms / 60000).toFixed(2)} min`);
-  }
+test('the same inputs and dice give the same fight', () => {
+  const a = fight(11, mixed(2), { keep: true });
+  const b = fight(11, mixed(2), { keep: true });
+  assert.ok(a.log.length > 100);
+  assert.equal(JSON.stringify(a.log), JSON.stringify(b.log));
+  assert.equal(JSON.stringify(a.wire), JSON.stringify(b.wire));
+  const c = fight(12, mixed(2), { keep: true });
+  assert.notEqual(JSON.stringify(a.log), JSON.stringify(c.log), 'other dice, another fight');
 });
 
-test('a group of four fights it through too, and full health grew with them', (t) => {
-  for (let seed = 1; seed <= 3; seed++) {
-    const r = scriptedFight(seed, 4, { aim: 0.6 });
-    assert.ok(Number.isFinite(r.ms), `seed ${seed}: beaten`);
-    t.diagnostic(`four fighters, seed ${seed}: ${(r.ms / 60000).toFixed(2)} min, downed ${r.downs} times`);
+test('it drifts only along the links, a burst in the middle of a drift too', () => {
+  for (let seed = 1; seed <= 6; seed++) {
+    const r = fight(seed, mixed(1 + (seed % 3)));
+    assert.ok(r.drifting > 100, `seed ${seed} drifted`);
+    assert.equal(r.offLinks, 0, `seed ${seed}`);
   }
+  // Its shell bursting while it drifts: after the stun it sinks rather than drift from where it is.
+  const w = world({ trunks: [] });
+  const me = fighter('a', -66, 488);
+  w.until((e) => e.type === 'open', [me]);
+  w.s.hp = Math.round(0.67 * w.s.max);
+  w.hurt('a', 0, 100);
+  // Half way from hover point 0 to 3.
+  const [ax, az] = data.hover[0];
+  const [bx, bz] = data.hover[3];
+  Object.assign(w.s, { act: 'drift', node: null, path: [3], x: (ax + bx) / 2, z: (az + bz) / 2 });
+  for (const i of w.s.draw[0]) w.hurt('a', i + 1, 500);
+  assert.equal(w.s.act, 'stun');
+  let drifted = false;
+  const sink = w.until((e) => e.type === 'sink', (x) => {
+    drifted ||= x.s.act === 'drift';
+    return [me];
+  }, 15000);
+  assert.ok(sink, 'it sinks after the stun');
+  assert.ok(!drifted, 'without drifting from the middle of the link');
+});
+
+/** Fights for seeds 1 to n, with a line each in the test's output. */
+function fights(t, label, n, kinds, opts) {
+  const all = [];
+  for (let seed = 1; seed <= n; seed++) {
+    const r = fight(seed, kinds, opts);
+    t.diagnostic(`${label}, seed ${seed}: ${(r.ms / 60000).toFixed(2)} min, shells ${r.shells.map((v) => v.toFixed(0)).join(' and ')} s, windows ${r.windows} (${r.capped} capped), downed ${r.downs.join(',')}`);
+    all.push(r);
+  }
+  return all;
+}
+const minutes = (r) => r.ms / 60000;
+const capShare = (rs) => rs.reduce((k, r) => k + r.capped, 0) / rs.reduce((k, r) => k + r.windows, 0);
+
+test('one average player with the rifle: 4 to 6 minutes, downed 1 to 4 times, rarely stopped by the window\'s cap', (t) => {
+  const rs = fights(t, 'average', 12, [AVERAGE]);
+  for (const r of rs) {
+    assert.ok(minutes(r) >= 4 && minutes(r) <= 6, `${minutes(r).toFixed(2)} min`);
+    assert.ok(r.downs[0] >= 1 && r.downs[0] <= 4, `downed ${r.downs[0]} times`);
+    for (const shell of r.shells) assert.ok(shell >= 15 && shell <= 60, `a shell of ${shell} s`);
+  }
+  assert.ok(capShare(rs) < 0.25, `${(capShare(rs) * 100).toFixed(0)} % of windows capped`);
+});
+
+test('one sharp player with the rifle: at least 3 minutes, and the cap stops some of its windows', (t) => {
+  const rs = fights(t, 'sharp', 12, [SHARP]);
+  for (const r of rs) {
+    assert.ok(minutes(r) >= 3 && minutes(r) <= 6, `${minutes(r).toFixed(2)} min`);
+    assert.ok(r.downs[0] <= 4);
+    assert.ok(r.shells[0] >= 10 && r.shells[1] >= 10, `shells ${r.shells.join(', ')} s`);
+  }
+  const share = capShare(rs);
+  assert.ok(share > 0.2 && share < 0.9, `${(share * 100).toFixed(0)} % of windows capped`);
+});
+
+test('groups of 2, 4 and 8 take 3 to 6 minutes, none clearly quicker, and the cap usually stops a crowd', (t) => {
+  const means = [];
+  for (const n of [2, 4, 8]) {
+    const rs = fights(t, `${n} players`, 10, mixed(n));
+    for (const r of rs) {
+      assert.ok(minutes(r) >= 3 && minutes(r) <= 6, `${n} players: ${minutes(r).toFixed(2)} min`);
+      for (const shell of r.shells) assert.ok(shell >= 12, `${n} players: a shell of ${shell} s`);
+    }
+    if (n >= 4) assert.ok(capShare(rs) > 0.6, `${n} players: ${(capShare(rs) * 100).toFixed(0)} % capped`);
+    means.push(rs.reduce((k, r) => k + minutes(r), 0) / rs.length);
+  }
+  assert.ok(Math.max(...means) / Math.min(...means) < 1.3, `means ${means.map((m) => m.toFixed(2)).join(', ')} min`);
+});
+
+test('one average player with the pistol or the shotgun beats it too, more slowly with the shotgun', (t) => {
+  const pistol = fights(t, 'average with the pistol', 10, [AVERAGE], { gun: 'pistol' });
+  const shotgun = fights(t, 'average with the shotgun', 10, [AVERAGE], { gun: 'shotgun' });
+  for (const r of [...pistol, ...shotgun]) assert.ok(Number.isFinite(r.ms) && minutes(r) <= 15, `${minutes(r).toFixed(2)} min`);
 });

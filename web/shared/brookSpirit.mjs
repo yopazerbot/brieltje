@@ -107,6 +107,12 @@ export function clearLine(ax, az, bx, bz, trunks) {
 /** Full health for `count` fighters. */
 const fullFor = (d, count) => d.health.base + d.health.per * (Math.max(1, Math.min(d.health.most, count)) - 1);
 
+/**
+ * The most one window may take: about what one sharp shooter deals in it, growing more slowly with the fighters
+ * counted than full health does, so it stops crowds and sharpshooters while health carries the fight's length.
+ */
+export const windowCap = (s) => s.d.cap.window + s.d.cap.per * (Math.max(1, Math.min(s.d.health.most, s.seen.size)) - 1);
+
 /** The spirit as new, asleep over the brook. `data`: shared/brookSpirit.json. */
 export function newSpirit(data) {
   const s = { d: data, lights: lightsOf(data).map((p) => ({ ...p, hp: 0, lit: false, used: false })), now: 0 };
@@ -462,7 +468,7 @@ function after(s, F, now, rand, T, ev) {
     s.left = d.phases.attacks[phaseOf(s)];
     go(s, 'idle', now, d.phases.pause[phaseOf(s)]);
   } else {
-    s.budget = Math.round(d.cap.window * s.max);
+    s.budget = windowCap(s);
     go(s, 'open', now, d.phases.window[phaseOf(s)]);
     ev.push({ type: 'open', ms: Math.round(d.phases.window[phaseOf(s)] * 1000) });
   }
@@ -515,6 +521,18 @@ function pickRise(s, F, rand, wanted) {
   return ok.length ? ok[roll(rand, ok.length)] : null;
 }
 
+/** Of `wanted`, the point whose nearest fighter is farthest away (the first of equals). */
+function farthest(s, F, wanted) {
+  let best = null;
+  let bd = -1;
+  for (const n of wanted) {
+    const p = nodeAt(s.d, n);
+    const near = F.reduce((m, f) => Math.min(m, Math.hypot(f.x - p.x, f.z - p.z)), Infinity);
+    if (near > bd) [best, bd] = [n, near];
+  }
+  return best;
+}
+
 function stepSink(s, F, now, rand, ev) {
   const d = s.d;
   if (now < s.until) return;
@@ -524,19 +542,25 @@ function stepSink(s, F, now, rand, ev) {
   }
   if (s.act === 'under') {
     let n;
-    if (s.mode === 'mend') {
-      n = pickRise(s, F, rand, [REST]);
-      if (n === null) n = pickRise(s, F, rand, d.hover.map((_, i) => i).filter((i) => route(d, i, REST)));
-    } else n = pickRise(s, F, rand, d.hover.map((_, i) => i).filter((i) => i !== s.node));
-    if (n === null) {
-      s.until = now + 250; // every point has a fighter close by: it stays under and looks again
-      return;
+    const wanted = s.mode === 'mend' ? d.hover.map((_, i) => i).filter((i) => route(d, i, REST)) : d.hover.map((_, i) => i).filter((i) => i !== s.node);
+    if (s.mode === 'mend') n = pickRise(s, F, rand, [REST]) ?? pickRise(s, F, rand, wanted);
+    else n = pickRise(s, F, rand, wanted);
+    // Every point has a fighter close by: it stays under and looks again, but not for ever (a crowd spread over the
+    // grove would hold it under and the fight would stall): after `sink.wait` s it rises where they are farthest, its
+    // rise's tell as long as ever.
+    const forced = n === null;
+    if (forced) {
+      if (now - s.since < (d.sink.gone + d.sink.wait) * 1000) {
+        s.until = now + 250;
+        return;
+      }
+      n = farthest(s, F, s.mode === 'mend' ? [REST, ...wanted] : wanted);
     }
     const p = nodeAt(d, n);
     Object.assign(s, { x: p.x, y: p.y, z: p.z, node: n, path: [] });
     faceNearest(s, F);
     go(s, 'rise', now, d.sink.rise);
-    ev.push({ type: 'rise', x: r2(p.x), z: r2(p.z), ms: Math.round(d.sink.rise * 1000) });
+    ev.push({ type: 'rise', x: r2(p.x), z: r2(p.z), ms: Math.round(d.sink.rise * 1000), ...(forced ? { forced: true } : {}) });
     return;
   }
   // Risen.
@@ -553,7 +577,7 @@ function startMend(s, F, now, rand, ev) {
   s.aim = null;
   s.volley = 0;
   s.target = null;
-  s.budget = Math.round(d.cap.window * s.max);
+  s.budget = windowCap(s);
   s.graceUntil = 0;
   ev.push({ type: 'mend' });
   const from = s.node ?? s.path[0];
@@ -651,7 +675,10 @@ function startShell(s, now, ev) {
   s.shell = s.shells;
   const lit = (s.draw[s.shells] ?? []).filter((i) => !s.lights[i].used);
   s.shells++;
-  for (const i of lit) Object.assign(s.lights[i], { lit: true, used: true, hp: d.shell.lightHp });
+  // Each light as tough as the fighters counted make it: a group cannot clear the shell in a breath.
+  const k = s.shell;
+  const hp = d.shell.lightHp[k] + d.shell.lightPer[k] * (Math.max(1, Math.min(d.health.most, s.seen.size)) - 1);
+  for (const i of lit) Object.assign(s.lights[i], { lit: true, used: true, hp });
   s.budget = 0;
   s.graceUntil = 0;
   ev.push({ type: 'shell', lights: lit });
@@ -671,7 +698,7 @@ function burst(s, now, ev) {
   s.windows = 0;
   s.aim = null;
   s.volley = 0;
-  s.budget = Math.round(d.cap.stun * s.max);
+  s.budget = Math.round(d.cap.stun * windowCap(s));
   if (s.mode === 'mend') s.mode = 'fight';
   s.path = []; // burst between two points: no node, so it sinks next (never drifts off a link)
   go(s, 'stun', now, d.shell.stun);
