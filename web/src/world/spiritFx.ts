@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { SpiritData, SpiritView } from '../../shared/brookSpirit.mjs';
 import { actLength } from '../../shared/brookSpirit.mjs';
+import { PARTICLE, particleSheet } from './sprites';
 
 /**
  * The Brook Spirit's fight drawn in the world (world/spiritFight.ts drives it): its tells, its pools, the lights
@@ -108,6 +109,89 @@ export class Motes {
   }
 }
 
+const PUFF_VERT = /* glsl */ `
+attribute vec4 iPos;
+attribute vec4 iCol;
+attribute vec2 iRot;
+varying vec2 vUv;
+varying vec4 vCol;
+void main() {
+  vCol = iCol;
+  vec4 mv = modelViewMatrix * vec4(iPos.xyz, 1.0);
+  vCol.a *= smoothstep(0.6, 2.6, -mv.z);
+  float cs = cos(iRot.x);
+  float sn = sin(iRot.x);
+  vec2 c = position.xy * iPos.w;
+  mv.xy += vec2(cs * c.x - sn * c.y, sn * c.x + cs * c.y);
+  gl_Position = projectionMatrix * mv;
+  vec2 cell = vec2(mod(iRot.y, 2.0), 1.0 - floor(iRot.y / 2.0));
+  vUv = (position.xy + 0.5 + cell) * 0.5;
+}`;
+const PUFF_FRAG = /* glsl */ `
+uniform sampler2D map;
+varying vec2 vUv;
+varying vec4 vCol;
+void main() {
+  vec4 t = texture2D(map, vUv);
+  gl_FragColor = vec4(vCol.rgb * (0.55 + 0.45 * t.rgb), t.a * vCol.a);
+}`;
+
+/** Soft puffs and wisps of mist from the game's own sprite sheet (world/sprites.ts), one instanced draw, blended as mist. */
+class Puffs {
+  readonly mesh: THREE.Mesh;
+  private readonly geo = new THREE.InstancedBufferGeometry();
+  private readonly pos: THREE.InstancedBufferAttribute;
+  private readonly col: THREE.InstancedBufferAttribute;
+  private readonly rot: THREE.InstancedBufferAttribute;
+  private n = 0;
+
+  constructor(private readonly capacity: number) {
+    const quad = new THREE.PlaneGeometry(1, 1);
+    this.geo.index = quad.index;
+    this.geo.setAttribute('position', quad.getAttribute('position'));
+    this.pos = new THREE.InstancedBufferAttribute(new Float32Array(capacity * 4), 4).setUsage(THREE.DynamicDrawUsage);
+    this.col = new THREE.InstancedBufferAttribute(new Float32Array(capacity * 4), 4).setUsage(THREE.DynamicDrawUsage);
+    this.rot = new THREE.InstancedBufferAttribute(new Float32Array(capacity * 2), 2).setUsage(THREE.DynamicDrawUsage);
+    this.geo.setAttribute('iPos', this.pos);
+    this.geo.setAttribute('iCol', this.col);
+    this.geo.setAttribute('iRot', this.rot);
+    this.geo.instanceCount = 0;
+    const mat = new THREE.ShaderMaterial({ vertexShader: PUFF_VERT, fragmentShader: PUFF_FRAG, uniforms: { map: { value: particleSheet() } }, transparent: true, depthWrite: false });
+    this.mesh = new THREE.Mesh(this.geo, mat);
+    this.mesh.frustumCulled = false;
+    this.mesh.renderOrder = 5;
+    quiet(this.mesh);
+  }
+
+  begin(): void {
+    this.n = 0;
+  }
+
+  /** A puff at (x, y, z), `size` m across, turned `rot`, sheet cell `cell`, colour `c` times `glow` (over 1 glows), opacity `a`. */
+  put(x: number, y: number, z: number, size: number, rot: number, cell: number, c: [number, number, number], glow: number, a: number): void {
+    if (this.n >= this.capacity || a <= 0.004) return;
+    const i = this.n++;
+    (this.pos.array as Float32Array).set([x, y, z, size], i * 4);
+    (this.col.array as Float32Array).set([c[0] * glow, c[1] * glow, c[2] * glow, Math.min(a, 1)], i * 4);
+    (this.rot.array as Float32Array).set([rot, cell], i * 2);
+  }
+
+  end(): void {
+    this.geo.instanceCount = this.n;
+    for (const a of [this.pos, this.col, this.rot]) {
+      a.clearUpdateRanges();
+      a.addUpdateRange(0, this.n * a.itemSize);
+      a.needsUpdate = true;
+    }
+    this.mesh.visible = this.n > 0;
+  }
+
+  dispose(): void {
+    this.geo.dispose();
+    (this.mesh.material as THREE.Material).dispose();
+  }
+}
+
 /** Never in a shot's way, never a ray's work: the fight's hit boxes are its own (world/spiritFight.ts). */
 function quiet(o: THREE.Object3D): void {
   o.userData.ignoreRay = true;
@@ -121,35 +205,43 @@ void main() {
   gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
 }`;
 const LANE_FRAG = /* glsl */ `
+uniform sampler2D uNoise;
 uniform float uP;
 uniform float uFlash;
 uniform float uTime;
+uniform float uLen;
 uniform float uI;
+uniform float uAlpha;
 varying vec2 vUv;
 void main() {
   float u = vUv.x;
   float v = vUv.y;
-  // The mist runs out from the creature along the strip, then the whole lane brightens to the strike.
+  float m = u * uLen;
+  // Mist flowing out from the creature along the strip, in soft drifting patches.
+  float n1 = texture2D(uNoise, vec2(m * 0.16 - uTime * 0.55, v * 0.55 + uTime * 0.05)).r;
+  float n2 = texture2D(uNoise, vec2(m * 0.37 - uTime * 0.9, v * 1.1 - uTime * 0.12)).r;
+  float n = smoothstep(0.3, 0.85, n1 * 0.65 + n2 * 0.35);
   float front = clamp(uP * 1.7, 0.0, 1.0);
-  float fill = smoothstep(front + 0.02, front - 0.1, u);
-  float band = smoothstep(0.0, 0.3, v) * smoothstep(1.0, 0.55, v);
-  float flow = 0.5 + 0.5 * sin(u * 38.0 - uTime * 10.0 + sin(v * 6.0 + uTime * 2.3) * 1.4);
+  float fill = smoothstep(front + 0.02, front - 0.12, u);
+  // Densest at the ground, thinning upward, no edge at its top or its ends.
+  float body = smoothstep(0.04, 0.2, v) * exp(-v * 3.2) * smoothstep(1.0, 0.6, v);
+  float ends = smoothstep(0.0, 0.08, u) * smoothstep(1.0, 0.88, u);
   float strike = smoothstep(0.65, 1.0, uP);
-  float a = fill * band * mix(0.35 + 0.65 * flow, 1.0, strike * 0.7) * (0.3 + 0.9 * uP) * uI;
-  a += band * uFlash * 2.2 * uI;
-  a *= smoothstep(1.0, 0.9, u) * smoothstep(0.0, 0.07, u);
-  gl_FragColor = vec4(vec3(0.72, 0.86, 1.0) * a, 1.0);
+  float a = body * ends * (fill * (0.3 + 0.6 * uP + 0.4 * strike) * (0.12 + 0.88 * n * n) * 1.5 + uFlash * 0.9);
+  vec3 c = vec3(0.78, 0.88, 1.0) * uI * (0.75 + 0.5 * n + 0.8 * strike + 1.2 * uFlash);
+  gl_FragColor = vec4(c, clamp(a * uAlpha, 0.0, 1.0));
 }`;
 
 /** The sweep's lane: two low walls of mist along the strip's edges, one draw. */
 class Lane {
   readonly mesh: THREE.Mesh;
-  private readonly u = { uP: { value: 0 }, uFlash: { value: 0 }, uTime: { value: 0 }, uI: { value: 1 } };
+  private readonly u = { uNoise: { value: null as THREE.Texture | null }, uP: { value: 0 }, uFlash: { value: 0 }, uTime: { value: 0 }, uLen: { value: 11 }, uI: { value: 1 }, uAlpha: { value: 1 } };
   private readonly positions: Float32Array;
   private readonly geo = new THREE.BufferGeometry();
   private key = '';
 
-  constructor(private readonly n = 20) {
+  constructor(noise: THREE.Texture, private readonly n = 20) {
+    this.u.uNoise.value = noise;
     const verts = 2 * (n + 1) * 2;
     this.positions = new Float32Array(verts * 3);
     const uv = new Float32Array(verts * 2);
@@ -164,7 +256,7 @@ class Lane {
     this.geo.setAttribute('position', new THREE.BufferAttribute(this.positions, 3).setUsage(THREE.DynamicDrawUsage));
     this.geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
     this.geo.setIndex(index);
-    const mat = new THREE.ShaderMaterial({ vertexShader: LANE_VERT, fragmentShader: LANE_FRAG, uniforms: this.u, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+    const mat = new THREE.ShaderMaterial({ vertexShader: LANE_VERT, fragmentShader: LANE_FRAG, uniforms: this.u, transparent: true, depthWrite: false, side: THREE.DoubleSide });
     this.mesh = new THREE.Mesh(this.geo, mat);
     this.mesh.frustumCulled = false;
     this.mesh.visible = false;
@@ -178,6 +270,7 @@ class Lane {
     if (key === this.key) return;
     this.key = key;
     const len = Math.hypot(tx - fx, tz - fz) || 1;
+    this.u.uLen.value = len;
     const sx = (-(tz - fz) / len) * half;
     const sz = ((tx - fx) / len) * half;
     const n = this.n;
@@ -189,14 +282,15 @@ class Lane {
         const z = fz + (tz - fz) * f + sz * side;
         const g = ground(x, z);
         const k = (s * (n + 1) + i) * 2 * 3;
-        this.positions.set([x, g + 0.2, z, x, g + 1.3, z], k);
+        this.positions.set([x, g - 0.15, z, x, g + 1.8, z], k);
       }
     }
     const a = this.geo.getAttribute('position') as THREE.BufferAttribute;
     a.needsUpdate = true;
   }
 
-  show(p: number, flash: number, time: number, intensity: number): void {
+  show(p: number, flash: number, time: number, intensity: number, alpha = 1): void {
+    this.u.uAlpha.value = alpha;
     this.u.uP.value = p;
     this.u.uFlash.value = flash;
     this.u.uTime.value = time;
@@ -221,31 +315,41 @@ attribute float iSpeed;
 varying vec2 vUv;
 varying vec4 vTint;
 varying float vSpeed;
+varying float vArc;
+varying float vFacing;
 void main() {
   vUv = uv;
   vTint = iTint;
   vSpeed = iSpeed;
-  vec3 p = vec3(iBand.x + position.x * iBand.z, iBand.w + 0.1 + position.y * 1.25, iBand.y + position.z * iBand.z);
+  vArc = uv.x * 6.2832 * iBand.z;
+  vec3 p = vec3(iBand.x + position.x * iBand.z, iBand.w - 0.15 + position.y * 1.8, iBand.y + position.z * iBand.z);
+  // Seen edge-on the wall would show a hard outline: it thins away there, as mist does.
+  vFacing = abs(dot(normalize(vec3(position.x, 0.0, position.z)), normalize(cameraPosition - p)));
   gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0);
 }`;
 const BAND_FRAG = /* glsl */ `
+uniform sampler2D uNoise;
 uniform float uTime;
 varying vec2 vUv;
 varying vec4 vTint;
 varying float vSpeed;
+varying float vArc;
+varying float vFacing;
 void main() {
   float v = vUv.y;
-  // Brightest from 0.3 to 1.2 m over the ground: above the ferns, under the eye.
-  float band = smoothstep(0.0, 0.2, v) * smoothstep(1.0, 0.55, v);
-  float rise = 0.5 + 0.5 * sin((v * 3.0 - uTime * vSpeed) * 6.2832);
-  float streak = 0.55 + 0.45 * sin(vUv.x * 6.2832 * 28.0 + uTime * 1.7);
-  float a = band * mix(1.0, rise, 0.65) * streak * vTint.a;
-  gl_FragColor = vec4(vTint.rgb * a, 1.0);
+  // Soft patches of mist drifting round and rising through the wall at its own pace: wisps with gaps between them.
+  float n1 = texture2D(uNoise, vec2(vArc * 0.15 + uTime * 0.04, v * 0.5 - uTime * vSpeed * 0.3)).r;
+  float n2 = texture2D(uNoise, vec2(vArc * 0.38 - uTime * 0.07, v * 1.2 - uTime * vSpeed * 0.55)).r;
+  float n = smoothstep(0.3, 0.85, n1 * 0.6 + n2 * 0.4);
+  // Densest just above the ground (it starts under it: no seam there), thinning fast upward, no edge at its top.
+  float body = smoothstep(0.04, 0.22, v) * exp(-v * 3.6) * smoothstep(1.0, 0.55, v);
+  float a = body * (0.08 + 0.92 * n * n) * smoothstep(0.05, 0.6, vFacing) * vTint.a;
+  gl_FragColor = vec4(vTint.rgb * (0.6 + 0.7 * n), clamp(a * 1.6, 0.0, 1.0));
 }`;
 
 /**
- * Upright rings of light standing on the ground (a bolt's reach and the ring closing in, a pool's edge, where it
- * rises, the launcher's ring): bands of faint light with stripes rising through them, all in one instanced draw.
+ * Upright rings of mist standing on the ground (a bolt's reach and the ring closing in, a pool's edge, where it rises):
+ * a low curved wall of soft drifting patches, densest at the ground and thinning upward, all in one instanced draw.
  */
 class Bands {
   readonly mesh: THREE.Mesh;
@@ -253,11 +357,12 @@ class Bands {
   private readonly band: THREE.InstancedBufferAttribute;
   private readonly tint: THREE.InstancedBufferAttribute;
   private readonly speed: THREE.InstancedBufferAttribute;
-  private readonly u = { uTime: { value: 0 } };
+  private readonly u = { uNoise: { value: null as THREE.Texture | null }, uTime: { value: 0 } };
   private n = 0;
 
-  constructor(private readonly capacity = 16) {
-    const cyl = new THREE.CylinderGeometry(1, 1, 1, 56, 1, true).translate(0, 0.5, 0);
+  constructor(noise: THREE.Texture, private readonly capacity = 16) {
+    this.u.uNoise.value = noise;
+    const cyl = new THREE.CylinderGeometry(1, 1, 1, 64, 4, true).translate(0, 0.5, 0);
     this.geo.index = cyl.index;
     this.geo.setAttribute('position', cyl.getAttribute('position'));
     this.geo.setAttribute('uv', cyl.getAttribute('uv'));
@@ -268,7 +373,7 @@ class Bands {
     this.geo.setAttribute('iTint', this.tint);
     this.geo.setAttribute('iSpeed', this.speed);
     this.geo.instanceCount = 0;
-    const mat = new THREE.ShaderMaterial({ vertexShader: BAND_VERT, fragmentShader: BAND_FRAG, uniforms: this.u, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+    const mat = new THREE.ShaderMaterial({ vertexShader: BAND_VERT, fragmentShader: BAND_FRAG, uniforms: this.u, transparent: true, depthWrite: false, side: THREE.DoubleSide });
     this.mesh = new THREE.Mesh(this.geo, mat);
     this.mesh.frustumCulled = false;
     this.mesh.renderOrder = 5;
@@ -280,12 +385,12 @@ class Bands {
     this.u.uTime.value = time;
   }
 
-  /** A ring of `r` m round (x, z) standing on `y`; colour `c` times `a`; its stripes rise at `speed`. */
-  put(x: number, z: number, r: number, y: number, c: [number, number, number], a: number, speed: number): void {
+  /** A ring of `r` m round (x, z) standing on `y`; colour `c` (brighter than 1 glows), opacity `a`; its mist rises at `speed`. */
+  put(x: number, z: number, r: number, y: number, c: [number, number, number], a: number, speed: number, glow = 1): void {
     if (this.n >= this.capacity || a <= 0.003 || r <= 0.05) return;
     const i = this.n++;
     (this.band.array as Float32Array).set([x, z, r, y], i * 4);
-    (this.tint.array as Float32Array).set([c[0], c[1], c[2], Math.min(a * 0.75, 6)], i * 4);
+    (this.tint.array as Float32Array).set([c[0] * glow, c[1] * glow, c[2] * glow, Math.min(a, 1)], i * 4);
     (this.speed.array as Float32Array)[i] = speed;
   }
 
@@ -331,7 +436,7 @@ class MistRing {
   private readonly u = { uNoise: { value: null as THREE.Texture | null }, uOn: { value: 0 }, uTime: { value: 0 }, uColor: { value: new THREE.Color() } };
   on = 0;
 
-  constructor(cx: number, cz: number, r: number, ground: (x: number, z: number) => number) {
+  constructor(cx: number, cz: number, r: number, ground: (x: number, z: number) => number, noise: THREE.Texture) {
     const seg = 72;
     const pos: number[] = [];
     const uv: number[] = [];
@@ -350,7 +455,7 @@ class MistRing {
     geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
     geo.setIndex(index);
     geo.computeBoundingSphere();
-    this.u.uNoise.value = noiseTexture();
+    this.u.uNoise.value = noise;
     const mat = new THREE.ShaderMaterial({ vertexShader: RING_VERT, fragmentShader: RING_FRAG, uniforms: this.u, transparent: true, depthWrite: false, side: THREE.DoubleSide });
     this.mesh = new THREE.Mesh(geo, mat);
     this.mesh.visible = false;
@@ -372,22 +477,27 @@ class MistRing {
   dispose(): void {
     this.mesh.geometry.dispose();
     (this.mesh.material as THREE.Material).dispose();
-    this.u.uNoise.value?.dispose();
+    this.u.uNoise.value?.dispose(); // the noise is shared: the mist goes last (SpiritFx.dispose)
   }
 }
 
-/** A small tiling noise (8-bit, linear filtered: fine on every chip). */
+/** A small tiling noise of soft blobs (value noise, two octaves; 8-bit, linear filtered: fine on every chip). */
 function noiseTexture(): THREE.DataTexture {
   const n = 64;
-  const raw = new Float32Array(n * n).map((_, i) => hash(i * 1.37 + 0.11));
   const data = new Uint8Array(n * n);
-  for (let y = 0; y < n; y++) {
-    for (let x = 0; x < n; x++) {
-      let s = 0;
-      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) s += raw[((y + dy + n) % n) * n + ((x + dx + n) % n)];
-      data[y * n + x] = Math.round((s / 9) * 255);
-    }
-  }
+  const octave = (cells: number, seed: number, x: number, y: number) => {
+    const g = (i: number, j: number) => hash(((i + cells) % cells) * 131.7 + ((j + cells) % cells) * 17.3 + seed);
+    const fx = (x / n) * cells;
+    const fy = (y / n) * cells;
+    const i = Math.floor(fx);
+    const j = Math.floor(fy);
+    const sx = (fx - i) * (fx - i) * (3 - 2 * (fx - i));
+    const sy = (fy - j) * (fy - j) * (3 - 2 * (fy - j));
+    const a = g(i, j) + (g(i + 1, j) - g(i, j)) * sx;
+    const b = g(i, j + 1) + (g(i + 1, j + 1) - g(i, j + 1)) * sx;
+    return a + (b - a) * sy;
+  };
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) data[y * n + x] = Math.round((octave(8, 1.3, x, y) * 0.65 + octave(16, 7.1, x, y) * 0.35) * 255);
   const tex = new THREE.DataTexture(data, n, n, THREE.RedFormat, THREE.UnsignedByteType);
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
   tex.magFilter = tex.minFilter = THREE.LinearFilter;
@@ -561,7 +671,7 @@ interface Ring {
 }
 
 const PALE: [number, number, number] = [0.75, 0.88, 1.0];
-const AMBER: [number, number, number] = [1.0, 0.72, 0.42];
+const AMBER: [number, number, number] = [1.0, 0.82, 0.5];
 const GREEN: [number, number, number] = [0.35, 1.0, 0.45];
 const COLD: [number, number, number] = [LIT.r, LIT.g, LIT.b];
 
@@ -570,8 +680,9 @@ export class SpiritFx {
   readonly group = new THREE.Group();
   readonly lanterns: Lanterns;
   private readonly motes: Motes;
-  private readonly lane = new Lane();
-  private readonly bands = new Bands();
+  private readonly puffs: Puffs;
+  private readonly lane: Lane;
+  private readonly bands: Bands;
   private readonly mist: MistRing;
   private bursts: Burst[] = [];
   private flights: Flight[] = [];
@@ -584,10 +695,14 @@ export class SpiritFx {
   drop: { x: number; y: number; z: number } | null = null;
 
   constructor(private readonly d: SpiritData, lights: { x: number; y: number; z: number }[], private readonly ground: (x: number, z: number) => number) {
-    this.motes = new Motes(1100);
-    this.mist = new MistRing(d.grove.x, d.grove.z, d.grove.r + 2, ground);
+    const noise = noiseTexture();
+    this.motes = new Motes(900);
+    this.puffs = new Puffs(260);
+    this.lane = new Lane(noise);
+    this.bands = new Bands(noise);
+    this.mist = new MistRing(d.grove.x, d.grove.z, d.grove.r + 2, ground, noise);
     this.lanterns = new Lanterns(lights, d.lights.map((l) => l.tree));
-    this.group.add(this.mist.mesh, this.lane.mesh, this.bands.mesh, this.lanterns.group, this.motes.mesh);
+    this.group.add(this.mist.mesh, this.lane.mesh, this.bands.mesh, this.puffs.mesh, this.lanterns.group, this.motes.mesh);
   }
 
   /** A bolt flies from `from` to `to` in `ms` (from now, `time` s). Its ring stays until it lands. */
@@ -630,8 +745,14 @@ export class SpiritFx {
   update(dt: number, v: SpiritView | null, now: number, time: number, heart: THREE.Vector3, near: boolean, day: number): void {
     const m = this.motes;
     m.begin();
+    this.puffs.begin();
     this.bands.begin(time);
     const k = 0.8 + 0.9 * day; // additive light washes out in the sun: brighter by day
+    // The tells are mist: pale and fairly thick by day, thinner and glowing (bloom) at night.
+    const gl = 1 + 1.6 * (1 - day);
+    const ma = 0.55 + 0.3 * day;
+    this.gl = gl;
+    this.ma = ma;
     const few = this.low ? 0.55 : 1;
     const d = this.d;
     const awake = !!v && (v.mode === 'fight' || v.mode === 'mend');
@@ -650,6 +771,7 @@ export class SpiritFx {
     if (!v || !near) {
       this.lane.hide();
       m.end();
+      this.puffs.end();
       this.bands.end();
       return;
     }
@@ -663,12 +785,12 @@ export class SpiritFx {
     // The sweep: the lane, filling then striking; a flash as it lands.
     if (awake && v.act === 'sweep') {
       this.lane.place(v.x, v.z, v.tx, v.tz, d.attacks.sweep.half, this.ground);
-      this.lane.show(p, 0, time, k * 0.7);
-      this.streamLane(v, p, time, k * few);
+      this.lane.show(p, 0, time, gl, ma);
+      this.streamLane(v, p, time, few);
     } else {
       if (this.lastAct === 'sweep') this.laneFlash = 1;
       this.laneFlash = Math.max(0, this.laneFlash - dt * 3);
-      if (this.laneFlash > 0) this.lane.show(0, this.laneFlash, time, k * 0.7);
+      if (this.laneFlash > 0) this.lane.show(0, this.laneFlash, time, gl, ma);
       else this.lane.hide();
     }
 
@@ -692,13 +814,20 @@ export class SpiritFx {
     if (awake && v.act === 'pool') {
       const r0 = d.attacks.pools.radius;
       const py = this.ground(v.tx, v.tz);
-      for (let i = 0; i < 26 * few; i++) {
-        const f = (time * 0.7 + hash(i * 2.3)) % 1;
-        const a = hash(i * 9.1) * Math.PI * 2 + f * 3;
-        const r = r0 * (1 - f * 0.85);
-        m.put(v.tx + Math.cos(a) * r, py + 0.3 + 0.9 * hash(i * 4.4), v.tz + Math.sin(a) * r, 0.2, GREEN[0], GREEN[1], GREEN[2], (0.25 + 0.75 * p) * 0.9 * k);
+      // Mist drawn in, spiralling, to where it will spread; its edge already faintly there.
+      for (let i = 0; i < 12 * few; i++) {
+        const f = (time * 0.45 + hash(i * 2.3)) % 1;
+        const a = hash(i * 9.1) * Math.PI * 2 + f * 2.5;
+        const r = r0 * (1.15 - f * 0.9);
+        this.puffs.put(v.tx + Math.cos(a) * r, py + 0.35 + 0.3 * hash(i * 4.4), v.tz + Math.sin(a) * r, 1.0 + 0.4 * f, a, PARTICLE.wisp, GREEN, gl, (0.15 + 0.45 * p) * Math.sin(f * Math.PI) * ma);
       }
-      this.bands.put(v.tx, v.tz, r0, py, GREEN, 0.3 * p * k, 0.25);
+      for (let i = 0; i < 10 * few; i++) {
+        const f = (time * 0.7 + hash(i * 6.1)) % 1;
+        const a = hash(i * 3.3) * Math.PI * 2 + f * 3;
+        const r = r0 * (1 - f * 0.85);
+        m.put(v.tx + Math.cos(a) * r, py + 0.25 + 0.8 * hash(i * 4.4), v.tz + Math.sin(a) * r, 0.11, GREEN[0], GREEN[1], GREEN[2], (0.3 + 0.7 * p) * k);
+      }
+      this.bands.put(v.tx, v.tz, r0, py, GREEN, 0.35 * p * ma, 0.3, gl);
     }
     for (const pool of v.pools) this.drawPool(pool.x, pool.z, pool.ms - (now - v.at), time, k, few);
 
@@ -709,9 +838,16 @@ export class SpiritFx {
         const f = (time * (up ? 0.8 : -0.8) + hash(i * 1.7) + 10) % 1;
         const a = hash(i * 6.3) * Math.PI * 2 + f * 5;
         const r = 0.6 + 0.6 * (1 - f);
-        m.put(gx + Math.cos(a) * r, gy + 0.2 + f * 3.4, gz + Math.sin(a) * r, 0.16, COLD[0], COLD[1], COLD[2], (up ? 0.4 + 1.2 * p : 1.2 * (1 - p)) * (1 - f * 0.6) * k);
+        m.put(gx + Math.cos(a) * r, gy + 0.2 + f * 3.4, gz + Math.sin(a) * r, 0.13, COLD[0], COLD[1], COLD[2], (up ? 0.4 + 1.2 * p : 1.2 * (1 - p)) * (1 - f * 0.6) * k);
       }
-      if (up) this.bands.put(gx, gz, 1.4, gy, COLD, (0.2 + 0.6 * p) * k, 1.6);
+      // Mist welling up from the ground where it comes out, thickest at the foot.
+      for (let i = 0; i < 9 * few; i++) {
+        const f = (time * 0.5 + hash(i * 8.7)) % 1;
+        const a = hash(i * 5.9) * Math.PI * 2 + time * 0.4;
+        const w = up ? 0.3 + 0.7 * p : 1 - p;
+        this.puffs.put(gx + Math.cos(a) * (0.5 + f * 0.6), gy + 0.3 + f * 1.8, gz + Math.sin(a) * (0.5 + f * 0.6), 1.1 + f * 0.9, a + f, PARTICLE.puff, COLD, gl, 0.5 * (1 - f) * w * ma);
+      }
+      if (up) this.bands.put(gx, gz, 1.4, gy, COLD, (0.25 + 0.5 * p) * ma, 1.4, gl);
     }
 
     // The open heart: sparks circling it, the weak point plain to see.
@@ -747,21 +883,28 @@ export class SpiritFx {
     this.drawBursts(time, k);
     this.lastAct = awake ? v.act : '';
     m.end();
+    this.puffs.end();
     this.bands.end();
   }
 
-  private streamLane(v: SpiritView, p: number, time: number, k: number): void {
+  /** Mist's glow and opacity this frame (by daylight). */
+  private gl = 1;
+  private ma = 0.7;
+
+  /** The sweep's lane: low mist streaming out along it between its walls, faster as it comes. */
+  private streamLane(v: SpiritView, p: number, time: number, few: number): void {
     const half = this.d.attacks.sweep.half;
     const len = Math.hypot(v.tx - v.x, v.tz - v.z) || 1;
     const ux = (v.tx - v.x) / len;
     const uz = (v.tz - v.z) / len;
-    for (let i = 0; i < 18; i++) {
-      const f = (time * (0.6 + 0.9 * p) + hash(i * 4.1)) % 1;
+    for (let i = 0; i < 14 * few; i++) {
+      const f = (time * (0.35 + 0.6 * p) + hash(i * 4.1)) % 1;
       if (f > Math.min(1, p * 1.7)) continue;
-      const s = (hash(i * 8.3) * 2 - 1) * half * 0.8;
+      const s = (hash(i * 8.3) * 2 - 1) * half * 0.6;
       const x = v.x + ux * f * len - uz * s;
       const z = v.z + uz * f * len + ux * s;
-      m2(this.motes, x, this.ground(x, z) + 0.3 + 0.9 * hash(i * 3.3), z, 0.18, PALE, (0.4 + 0.9 * p) * k);
+      const h = hash(i * 3.3);
+      this.puffs.put(x, this.ground(x, z) + 0.25 + 0.5 * h, z, 1.2 + 0.5 * h, i + time * 0.3, PARTICLE.wisp, PALE, this.gl, (0.2 + 0.4 * p) * (1 - h * 0.6) * Math.sin(f * Math.PI) * this.ma);
     }
   }
 
@@ -771,16 +914,24 @@ export class SpiritFx {
     for (const r of this.rings) {
       const p = Math.min(1, Math.max(0, (time - r.t0) / Math.max(0.1, r.t1 - r.t0)));
       const y = this.ground(r.x, r.z);
-      // The outer ring: its whole reach, a band of light with motes rising through it.
-      this.bands.put(r.x, r.z, R, y, AMBER, (0.35 + 0.65 * p) * k, 1.2);
-      const n = Math.round(22 * few);
+      // The outer ring: its whole reach, a low wall of warm mist with puffs and sparks rising off it, thickest at the
+      // ground; it glows more as the bolt comes.
+      const gl = this.gl;
+      const ma = this.ma;
+      this.bands.put(r.x, r.z, R, y, AMBER, (0.45 + 0.35 * p) * ma, 1.0, gl * (1.25 + 0.6 * p));
+      const n = Math.round(14 * few);
       for (let i = 0; i < n; i++) {
-        const a = (i / n) * Math.PI * 2;
-        const f = (time * 0.9 + hash(i * 2.7)) % 1;
-        m2(this.motes, r.x + Math.cos(a) * R, y + 0.3 + 0.9 * f, r.z + Math.sin(a) * R, 0.13, AMBER, (0.6 + 0.8 * p) * (1 - 0.5 * f) * k);
+        const a = ((i + hash(i * 1.7) * 0.6) / n) * Math.PI * 2 + time * 0.08;
+        const f = (time * 0.4 + hash(i * 2.7)) % 1;
+        this.puffs.put(r.x + Math.cos(a) * R, y + 0.25 + f * 1.3, r.z + Math.sin(a) * R, 0.9 + 0.6 * f, a + f * 2, i % 2 ? PARTICLE.wisp : PARTICLE.puff, AMBER, gl, 0.55 * (1 - f) ** 1.5 * (0.6 + 0.4 * p) * ma);
       }
-      // The inner ring closing on the middle as it comes.
-      this.bands.put(r.x, r.z, R * (1 - p), y, AMBER, (0.5 + 0.9 * p) * k, 2.4);
+      for (let i = 0; i < Math.round(10 * few); i++) {
+        const a = hash(i * 7.7) * Math.PI * 2;
+        const f = (time * 0.8 + hash(i * 2.9)) % 1;
+        m2(this.motes, r.x + Math.cos(a) * R, y + 0.2 + 1.2 * f, r.z + Math.sin(a) * R, 0.1, AMBER, (0.6 + 0.8 * p) * (1 - f) * k);
+      }
+      // The inner ring closing on the middle as it comes: where it lands is when it lands.
+      this.bands.put(r.x, r.z, R * (1 - p), y, AMBER, (0.4 + 0.4 * p) * ma, 2.2, gl * (1.4 + p));
     }
   }
 
@@ -811,15 +962,22 @@ export class SpiritFx {
     const on = Math.min(1, age / 0.4) * Math.min(1, msLeft / 600);
     const r0 = this.d.attacks.pools.radius;
     const y = this.ground(x, z);
-    // Slow green fire-mist over its whole circle, and a brighter edge.
-    for (let i = 0; i < 34 * few; i++) {
-      const a = hash(i * 1.9 + x) * Math.PI * 2;
-      const r = Math.sqrt(hash(i * 3.7 + z)) * r0 * 0.92;
-      const f = (time * 0.35 + hash(i * 5.3)) % 1;
-      m2(this.motes, x + Math.cos(a) * r, y + 0.2 + f * 1.0, z + Math.sin(a) * r, 0.45 - 0.2 * f, GREEN, 0.7 * Math.sin(f * Math.PI) * on * k);
+    // Slow green fire-mist over its whole circle, thickest at the ground, licking upward; its edge a low wall of it.
+    const gl = this.gl;
+    const ma = this.ma;
+    for (let i = 0; i < 16 * few; i++) {
+      const a = hash(i * 1.9 + x) * Math.PI * 2 + time * 0.05;
+      const r = Math.sqrt(hash(i * 3.7 + z)) * r0 * 0.85;
+      const f = (time * 0.22 + hash(i * 5.3)) % 1;
+      this.puffs.put(x + Math.cos(a) * r, y + 0.2 + f * 1.0, z + Math.sin(a) * r, 1.3 + 0.5 * f, a + time * 0.15, i % 3 ? PARTICLE.puff : PARTICLE.wisp, GREEN, gl, 0.5 * (1 - f) ** 1.4 * on * ma);
     }
-    this.bands.put(x, z, r0, y, GREEN, 1.0 * on * k, 0.35);
-    this.bands.put(x, z, r0 * 0.55, y, GREEN, 0.45 * on * k, 0.2);
+    for (let i = 0; i < 12 * few; i++) {
+      const a = hash(i * 4.9 + x) * Math.PI * 2;
+      const r = Math.sqrt(hash(i * 2.1 + z)) * r0 * 0.9;
+      const f = (time * 0.45 + hash(i * 8.3)) % 1;
+      m2(this.motes, x + Math.cos(a) * r, y + 0.15 + f * 1.2, z + Math.sin(a) * r, 0.1, GREEN, 0.9 * (1 - f) * on * k);
+    }
+    this.bands.put(x, z, r0, y, GREEN, 0.6 * on * ma, 0.35, gl);
   }
 
   private drawBursts(time: number, k: number): void {
@@ -844,6 +1002,7 @@ export class SpiritFx {
 
   dispose(): void {
     this.motes.dispose();
+    this.puffs.dispose();
     this.bands.dispose();
     this.lane.dispose();
     this.mist.dispose();
