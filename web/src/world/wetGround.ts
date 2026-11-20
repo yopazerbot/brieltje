@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Pass } from 'three/addons/postprocessing/Pass.js';
-import { groundNoise } from './groundNoise';
 import { reflectionLayers, withoutDetail } from './reflections';
+import { shelter, shelterOn } from './shelterMap';
 import { terrain } from './terrain';
 
 /**
@@ -26,6 +26,8 @@ import { terrain } from './terrain';
  * - Rain rings (Medium and up): in each cell of two grids (45 and 30 cm) a drop lands at its own moment, its ring runs
  *   out and fades; the puddle's normal follows the rings, so they bend what it mirrors. Worked out only on puddles,
  *   only while it rains.
+ * - Under a roof (a carport, a porch, a bus shelter, an eave) the ground stays dry, damp where the rain blows in at the
+ *   edge, with no puddles and no rings: world/shelterMap.ts, read from the puddles' own noise texture.
  *
  * Everything bright that is mirrored is kept under what half floats hold (65504): an iPhone stores more as infinity.
  */
@@ -44,7 +46,8 @@ export const wet = {
   mirrorOn: { value: 0 },
   /** 1 on Medium and up: the rings (a branch on a uniform, the same for every pixel) */
   fine: { value: 1 },
-  noise: { value: null as THREE.Texture | null },
+  /** The puddles' noise (world/groundNoise.ts), with the dry spots under the roofs in its other channels (world/shelterMap.ts) */
+  noise: shelter.map,
 };
 
 /** Set by the weather each frame: whether the eye is indoors (no mirror drawn then). */
@@ -55,7 +58,6 @@ uniform float wetAmount;
 uniform float wetRain;
 uniform float wetTime;
 uniform float wetFine;
-uniform sampler2D wetNoise;
 uniform sampler2D wetMirror;
 uniform mat4 wetMirrorMatrix;
 uniform float wetMirrorOn;
@@ -129,6 +131,11 @@ if ( wetAmount > 0.0 ) {
       wetPuddle = smoothstep( wetEdge, wetEdge + 0.045, wetLow );
       wetK = max( wetK, smoothstep( wetEdge - 0.08, wetEdge, wetLow ) ); // a darker rim round each
     }
+    // Under a roof (a carport, a porch, a shelter, an eave) the ground stays dry, damp at the edge the rain blows in
+    // at, with no puddles and no rings (world/shelterMap.ts).
+    float wetOpen = 1.0 - shelterOver( wetAt ).x;
+    wetK *= wetOpen;
+    wetPuddle *= smoothstep( 0.5, 1.0, wetOpen );
     diffuseColor.rgb *= mix( 1.0, ${num(look.dark)}, wetK ) * ( 1.0 - 0.55 * wetPuddle );
     #ifdef STANDARD
       roughnessFactor = mix( roughnessFactor, mix( roughnessFactor, clamp( roughnessFactor * 0.35, 0.1, 0.32 ), ${num(look.gloss)} ), wetK );
@@ -186,7 +193,7 @@ interface Shader {
 export function wetOn(shader: Shader, look: WetLook = {}): void {
   const f = shader.fragmentShader;
   if (shader.uniforms.wetAmount || !f.includes('#include <normal_fragment_maps>') || !f.includes('#include <lights_fragment_end>')) return;
-  wet.noise.value ??= groundNoise();
+  shelterOn(shader); // with the puddles' noise (wetNoise)
   Object.assign(shader.uniforms, {
     wetAmount: wet.amount, wetRain: wet.rain, wetTime: wet.time, wetFine: wet.fine, wetNoise: wet.noise,
     wetMirror: wet.mirror, wetMirrorMatrix: wet.mirrorMatrix, wetMirrorOn: wet.mirrorOn,

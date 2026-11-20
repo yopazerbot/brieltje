@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { sound } from '../sound';
 import { COVER_GLSL, coverUniforms, type CoverMap } from './coverMap';
 import { WASH_GLSL, washUniforms } from './washShader';
+import { slant } from './shelterMap';
 import { windAt } from './wind';
 
 /**
@@ -357,6 +358,7 @@ export class Rain {
       const k = Math.min(CARRY_MAX, w.speed * CARRY) / Math.max(w.speed, 1e-3);
       this.carry.lerp(this.want.set(w.x * k, w.z * k), 1 - Math.exp(-dt * 2));
       const cx = this.carry.x, cz = this.carry.y;
+      slant.rain.set(cx / SPEED, cz / SPEED); // the dry ground under a roof slants with it (world/shelterMap.ts)
       // The fall so far, each way kept within its box's side (the drops are wrapped round the box anyway).
       const m = u.move.value, ms = u.moveSlow.value;
       m.set((m.x + cx * dt) % BOX.x, (m.y - SPEED * dt) % BOX.y, (m.z + cz * dt) % BOX.z);

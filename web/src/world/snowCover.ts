@@ -1,4 +1,5 @@
 import type * as THREE from 'three';
+import { shelterOn } from './shelterMap';
 
 /**
  * Snow lying on the world (world/weather.ts sets how much): the ground, the roofs, the hedges and the tree crowns turn
@@ -66,6 +67,9 @@ if ( snowCover > 0.0 ) {
       ${FLAT_PATCH.replace(/float /g, '')}
     }`
       : steep ? STEEP_PATCH : FLAT_PATCH}
+    // Under a roof (a carport, a porch, a shelter, an eave) it stays bare, but for what drifts in on the windward side
+    // (world/shelterMap.ts); the patches make the edge break up as the first snow does.
+    snowNeed += 1.6 * shelterOver( snowAt ).y;
     float snowK = snowUp * smoothstep( snowNeed, snowNeed + 0.18, snowCover * 1.25 ) * clamp( ${open}, 0.0, 1.0 ) * ${typeof amount === 'string' ? amount : amount.toFixed(2)};
     diffuseColor.rgb = mix( diffuseColor.rgb, vec3( 0.76, 0.79, 0.84 ) * ( 0.93 + 0.07 * snowPatch ), snowK );
     normal = normalize( mix( normal, nonPerturbedNormal, snowK ) );
@@ -87,7 +91,8 @@ export function snowOn(shader: Shader, open = '1.0', amount: number | string = 1
   const f = shader.fragmentShader;
   if (shader.uniforms.snowCover || !f.includes('#include <emissivemap_fragment>') || !f.includes('#include <normal_fragment_begin>')) return;
   shader.uniforms.snowCover = snowCover;
-  shader.fragmentShader = f
+  shelterOn(shader);
+  shader.fragmentShader = shader.fragmentShader
     .replace('#include <common>', `#include <common>\n${PARS}`)
     .replace('#include <emissivemap_fragment>', `${snow(open, amount, steep)}\n#include <emissivemap_fragment>`);
 }

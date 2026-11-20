@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { COVER_GLSL, coverUniforms, type CoverMap } from './coverMap';
+import { slant } from './shelterMap';
 import { windAt } from './wind';
 
 /**
@@ -152,6 +153,7 @@ export class Snow {
     // Carried by the wind at the eye (world/wind.ts), a share of it: flakes drift, they don't fly.
     const w = windAt(eye.x, eye.z);
     this.carry.lerp(this.want.set(w.x * CARRY, w.z * CARRY), 1 - Math.exp(-dt * 0.7));
+    slant.snow.set(this.carry.x / SPEED, this.carry.y / SPEED); // the bare ground under a roof drifts with it (world/shelterMap.ts)
     u.drift.value.set((u.drift.value.x + this.carry.x * dt) % BOX.x, (u.drift.value.y + this.carry.y * dt) % BOX.z);
     u.time.value = (u.time.value + dt) % 10000;
     // Pixels per metre at a metre off, for the usual field of view (72 degrees high).

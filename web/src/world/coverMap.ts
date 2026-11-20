@@ -1,5 +1,8 @@
 import * as THREE from 'three';
 import type { World } from './collision';
+import { ShelterMap } from './shelterMap';
+import { snowCover } from './snowCover';
+import { wet } from './wetGround';
 
 /**
  * What is over the ground round the eye, seen from above, for the rain and the snow (world/rain.ts, world/snow.ts) to
@@ -19,7 +22,9 @@ import type { World } from './collision';
  * in dry weather it costs nothing.
  *
  * It also finds the edges where rain runs off a roof (a drawn roof a metre and more over the cell beside it: eaves,
- * canopies, shelters), for the drips (world/rain.ts).
+ * canopies, shelters), for the drips (world/rain.ts), and which cells are a roof over open ground near the ground's
+ * level (a carport, a porch, a shelter, an eave, a balcony), for the ground under them to stay dry and bare
+ * (world/shelterMap.ts). It keeps following the eye while the ground is wet or white after the rain or the snow.
  *
  * The texture is 32-bit floats read without filtering (nearest), which every WebGL2 device reads, in a vertex shader too.
  */
@@ -35,6 +40,8 @@ const STALE = 8000;
 const EAVE = 1.0;
 /** Metres round the eye for drips, and how many at most. */
 const DRIP_REACH = 13;
+/** Metres: a roof over open ground higher than this over its floor keeps no dry spot (world/shelterMap.ts). */
+const TALL = 5;
 
 /** A tree's crown as the world lists it: its foot, its height and its crown's radius (as world/heli.ts Crown). */
 export interface CoverCrown {
@@ -96,6 +103,9 @@ export class CoverMap {
   /** Per cell: when it was asked (performance.now(), 0 never) and whether its top is a drawn roof (for the drips) */
   private asked = new Float64Array(N * N);
   private roof = new Uint8Array(N * N);
+  /** Per cell: the floor under a roof over open ground, NaN where the cell is not one (world/shelterMap.ts) */
+  private floor = new Float32Array(N * N).fill(NaN);
+  private shelter = new ShelterMap(N, CELL);
   /** The map's corner in whole cells */
   private ci = 0;
   private cj = 0;
@@ -128,7 +138,8 @@ export class CoverMap {
    */
   update(eye: THREE.Vector3, indoors: boolean, active: boolean, now = performance.now()): void {
     this.at.value.w = indoors ? 1 : 0;
-    if (!active) return;
+    // The ground's dry spots under the roofs are wanted while it is wet or white too.
+    if (!active && wet.amount.value < 0.01 && snowCover.value < 0.01) return;
     const ci = Math.floor(eye.x / CELL) - N / 2;
     const cj = Math.floor(eye.z / CELL) - N / 2;
     if (!this.placed || ci !== this.ci || cj !== this.cj) this.shift(ci, cj);
@@ -154,6 +165,7 @@ export class CoverMap {
       this.dripsAt = now;
       this.findDrips(eye);
     }
+    this.shelter.update(this.data, this.floor, this.ci, this.cj, eye, now);
   }
 
   /** The highest thing over (x, z) as the map has it, or null where it has nothing yet. */
@@ -167,16 +179,18 @@ export class CoverMap {
   /** Move the map's corner to cell (ci, cj): what it knew of cells still in it is kept, the rest is to be asked. */
   private shift(ci: number, cj: number): void {
     const di = ci - this.ci, dj = cj - this.cj;
-    const data = this.data, asked = this.asked, roof = this.roof;
+    const data = this.data, asked = this.asked, roof = this.roof, floor = this.floor;
     if (!this.placed || Math.abs(di) >= N || Math.abs(dj) >= N) {
       data.fill(0);
       asked.fill(0);
       roof.fill(0);
+      floor.fill(NaN);
     } else {
-      const old = data.slice(), oldAsked = asked.slice(), oldRoof = roof.slice();
+      const old = data.slice(), oldAsked = asked.slice(), oldRoof = roof.slice(), oldFloor = floor.slice();
       data.fill(0);
       asked.fill(0);
       roof.fill(0);
+      floor.fill(NaN);
       for (let j = 0; j < N; j++) {
         const sj = j + dj;
         if (sj < 0 || sj >= N) continue;
@@ -185,6 +199,7 @@ export class CoverMap {
         data.set(old.subarray((sj * N + i0 + di) * 4, (sj * N + i1 + di) * 4), (j * N + i0) * 4);
         asked.set(oldAsked.subarray(sj * N + i0 + di, sj * N + i1 + di), j * N + i0);
         roof.set(oldRoof.subarray(sj * N + i0 + di, sj * N + i1 + di), j * N + i0);
+        floor.set(oldFloor.subarray(sj * N + i0 + di, sj * N + i1 + di), j * N + i0);
       }
     }
     this.ci = ci;
@@ -233,7 +248,24 @@ export class CoverMap {
       this.dirty = true;
     }
     this.roof[k] = drawn ? 1 : 0;
+    this.floor[k] = this.floorUnder(x, z, y);
     this.asked[k] = now;
+  }
+
+  /**
+   * The floor under a roof over open ground at (x, z), its top at `top`: a carport's, a porch's, a shelter's, an eave's,
+   * a balcony's, with its floor near the ground's level and head room under it. NaN for anything else: the open ground,
+   * a block standing on the ground (a house, a hedge, a wall: solid at a walker's chest height), a house's roof over
+   * its upper floor, a roof more than TALL over its floor (a house's high roof over its thin walls: its rooms). A car
+   * parked under a carport doesn't count as a block.
+   */
+  private floorUnder(x: number, z: number, top: number): number {
+    const under = this.world.groundAt(x, z, top - 0.5, 0).y;
+    if (top - under < 1.4 || top - under > TALL) return NaN;
+    const base = this.world.groundAt(x, z, -1e6, 0).y;
+    if (under - base > 0.8) return NaN;
+    const t = this.world.touching(x, z, under + 1.0, under + 1.2, 0);
+    return t && !t.key ? NaN : under;
   }
 
   /** The trees' crowns by 32 m square (each listed in every square its crown reaches). */
