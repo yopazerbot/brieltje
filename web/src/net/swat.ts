@@ -4,6 +4,7 @@ import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { gunModel, WEAPON_IDS, type WeaponId } from '../weapon';
 import { muzzleFlash } from '../world/effects';
+import { wearPaint } from '../world/paintOn';
 import { GRIPS, gripPose, fitGrip, alignHand } from './grip';
 
 /**
@@ -485,6 +486,7 @@ export function buildSwat(name: string, color: string, outfit: Outfit, hitMateri
       if (!crosses(hitBody, raycaster.ray) && !crosses(hitHead, raycaster.ray)) return;
       skinnedRaycast.call(this, raycaster, intersects);
     };
+    wearPaint(mesh, name, root); // the paint look's splats on the body (world/paintOn.ts)
   }
 
   const mixer = new THREE.AnimationMixer(model);

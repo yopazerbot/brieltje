@@ -343,7 +343,7 @@ export class Effects {
   }
 
   /** Drops of paint thrown off a splat, and a quick spray, `size` the splat's (m). */
-  private splash(point: THREE.Vector3, normal: THREE.Vector3, c: THREE.Color, size: number): void {
+  splash(point: THREE.Vector3, normal: THREE.Vector3, c: THREE.Color, size: number): void {
     const p = this.v.copy(point).addScaledVector(normal, 0.03).clone();
     this.throw(p, normal, 1, 0, 0, (s) => {
       Object.assign(s, { life: 0.2, size0: size * 0.4, size1: size * 1.3, alpha: 0.7, cell: PARTICLE.puff, drag: 6 });

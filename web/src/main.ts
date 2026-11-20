@@ -91,6 +91,8 @@ import { VILLAGER_HIT_MAX, VILLAGER_HIT_MS, VILLAGER_PAINT_S, VILLAGER_SHOT_MAX 
 import { Decals } from './world/decals';
 import { Effects, type Spot } from './world/effects';
 import { teamMatch, VehicleWear } from './world/vehicleWear';
+import { clearPaint, figurePaint, gunOf, gunSplat, paintColour, paintCount, paintFromAt, paintFromShot, type ShotScene } from './world/paintOn';
+import { splatSound } from './world/splats';
 import { GRENADE, Grenades } from './world/grenades';
 import { Pickups } from './world/pickups';
 import { Goals } from './world/goals';
@@ -1437,6 +1439,24 @@ avatars.onStep = (_name, at, speed) => {
   if (wet) effects.splashes.step(at.x, at.z, wet, speed);
 };
 avatars.groundAt = (x, z, y) => world.groundAt(x, z, y + 0.3, 0.6).y;
+// The paint look's paint on the players' figures and the zombies (world/paintOn.ts): in a team match the shooter's team's colour.
+const teamOf = (name: string) => (games.view.kind === 'teams' || games.view.kind === 'flag' ? games.view.teams?.[name] ?? null : null);
+figurePaint.team = (name) => (teamOf(name ?? me?.username ?? '') ? online.get(name ?? me?.username ?? '') ?? null : null);
+const paintScene: ShotScene = {
+  figures: avatars.group, zombies: zombies.hits, blocked: (a, b) => world.blocked(a, b, 0.25),
+  target: (name, by) => avatars.canBeHit(name) && (!teamOf(name) || teamOf(name) !== teamOf(by)),
+  zombie: (id, ray, color, size) => zombies.paint(id, ray, color, size),
+  burst: (point, normal, color) => (effects.splash(point, normal, color, 0.45), splatSound(point)),
+};
+/** Paint from player `by` on `name` (you too), a hit this page only heard of: on the side facing `by`. */
+function paintedBy(name: string, by: string): void {
+  const mine = name === me?.username;
+  const from = avatars.position(by);
+  const at = mine ? new THREE.Vector3(player.x, player.feet, player.z) : avatars.position(name);
+  const yaw = mine ? player.yaw : avatars.view(name)?.yaw;
+  const gun = gunOf(by) ?? 'pistol';
+  if (from && at && yaw !== undefined) paintFromAt(name, from, at, yaw, paintColour(by, new THREE.Color(GUN_PAINT[gun] ?? GUN_PAINT.pistol)), gunSplat(gun));
+}
 // Arriving by parachute (shared/parachute.mjs): everyone's on their figures (world/parachutes.ts), yours filmed
 // from behind while you jump (world/dropView.ts).
 const parachutes = new Parachutes();
@@ -3157,6 +3177,8 @@ net.onMessage = (m: ServerMsg) => {
       const at = avatars.position(m.name);
       const from = at ? at.clone().setY(at.y + 1.4) : new THREE.Vector3(m.x, m.y, m.z);
       weapon.remoteShot(from, m.w as WeaponId);
+      const aim = paintball.on && m.w in GUN_PAINT ? avatars.view(m.name) : null; // their paint on whoever their aim meets (world/paintOn.ts)
+      if (aim) paintFromShot(paintScene, m.name, m.w, from, aim.yaw, aim.pitch);
       life.scare(from);
       const muzzle = avatars.flash(m.name);
       if (muzzle && m.w !== 'laser') effects.muzzleSmoke(muzzle);
@@ -3189,6 +3211,7 @@ net.onMessage = (m: ServerMsg) => {
       rumble(0.8, 0.5, 180);
       if (m.from) combat.hitFrom(Math.atan2(-(m.from.x - player.x), -(m.from.z - player.z)) - player.yaw);
       else if (hitAngle(m.by) !== null) combat.hitFrom(hitAngle(m.by)!);
+      if (paintball.on && me) paintedBy(me.username, m.by); // on your own figure (the parachute's view, a seat)
       break;
     case 'rally':
       tactics.called(m.name, m.x, m.y, m.z);
@@ -3200,6 +3223,7 @@ net.onMessage = (m: ServerMsg) => {
       // A zombie's in plain words ("A zombie caught Robin"); a player's as "killer weapon victim".
       if (m.killer === 'a zombie' || m.killer === 'a big zombie') combat.caught(m.victim, whoName(m.killer));
       else combat.kill(whoName(m.killer), m.victim, m.head, weaponName(m.w));
+      if (paintball.on && (m.victim === me?.username || !paintCount(m.victim))) paintedBy(m.victim, m.killer); // the shot that tagged them shows
       if (m.victim === me?.username) {
         combat.died(whoName(m.killer), m.head);
         rumble(1, 1, 450);
@@ -3326,6 +3350,7 @@ net.onMessage = (m: ServerMsg) => {
       showOnline();
       break;
     case 'respawn':
+      clearPaint(m.name); // a fresh figure is clean
       if (m.name === me?.username) {
         respawnAt(m.spawn, m);
         if (m.drop) beginDrop(undefined, m); // the server chose open ground, by parachute (and where it starts)

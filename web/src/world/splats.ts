@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { anyPaint } from '../paintball';
 import { sound } from '../sound';
+import { figureSplat, paintColour, paintHitBox } from './paintOn';
 import { splatSheet } from './sprites';
 
 /**
@@ -9,7 +10,8 @@ import { splatSheet } from './sprites';
  * at an angle; they stay a while and then fade, all in one instanced draw call (the oldest makes
  * room for the newest, and the fading is worked out on the graphics card, so it costs nothing
  * per frame). On a door or a car the splat is a small mesh of its own on it, so it swings or
- * drives off with it. On players, clowns and strongmen a blob of paint sticks to the body part
+ * drives off with it. On players a splat goes on the figure itself (paintOn.ts) and stays until
+ * they are back in the game; on clowns and strongmen a blob of paint sticks to the body part
  * that was hit, moves with it and shrinks away after a few seconds. No lights, no new shaders:
  * the splats are the standard material with the fade added.
  */
@@ -227,6 +229,8 @@ export class Splats {
    * the head; both are hidden while the player is out, and the blob goes with that).
    */
   stick(point: THREE.Vector3, normal: THREE.Vector3, on: THREE.Object3D, color: THREE.Color, size: number): void {
+    // A player's figure wears it in its own shader (world/paintOn.ts), in your team's colour in a team match, until they're back in the game.
+    if (on.userData.player !== undefined && paintHitBox(on, point, normal, paintColour(null, color), figureSplat(size))) return;
     const key = color.getHexString();
     let mat = this.blobMats.get(key);
     if (!mat) {
