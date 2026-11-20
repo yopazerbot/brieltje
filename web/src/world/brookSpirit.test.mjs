@@ -38,7 +38,8 @@ test('the tendrils: seven arms with their frames, every corner knows its arm and
       const dot = (u, v) => u[0] * v[0] + u[1] * v[1] + u[2] * v[2];
       for (const k of ['dir', 'up', 'side']) assert.ok(Math.abs(len(a[k]) - 1) < 1e-3, `${name}: ${k} of length 1`);
       assert.ok(Math.abs(dot(a.dir, a.up)) < 1e-3 && Math.abs(dot(a.dir, a.side)) < 1e-3 && Math.abs(dot(a.up, a.side)) < 1e-3, `${name}: a square frame`);
-      assert.ok(a.length >= 3 && a.length <= 5, `${name}: 3 to 5 m long (${a.length})`);
+      assert.ok(a.length >= 6 && a.length <= 8, `${name}: 6 to 8 m long (${a.length})`);
+      assert.ok(a.radius >= 0.16 && a.radius <= 0.23, `${name}: about 0.35 to 0.45 m across at the root (${a.radius * 2})`);
     }
     // The two longest at the front (+z), the others shorter.
     const lengths = arms.map((a) => a.length);

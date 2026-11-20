@@ -9,18 +9,19 @@ Our own design: a spirit of the brook valley in November, close to the will-o'-t
 marsh folklore. Its mist is not modelled: the game draws it round these parts (web/src/world/brookSpirit.ts).
 What is modelled:
 
-- Heart: a ribbed lantern, like a winter cherry's husk (Physalis), about 0.4 m across. The game makes it
+- Heart: a ribbed lantern, like a winter cherry's husk (Physalis), about 0.55 m across. The game makes it
   glow; it is what a player aims at.
-- Core: the dark mass the mist hangs on, about 1.5 m across, gnarled like roots and bark, with a round
+- Core: the dark mass the mist hangs on, about 2.3 m across, gnarled like roots and bark, with a round
   opening at the front over the heart. It is a shell with an inside: the rim rolls inward, so the
   opening shows a hollow the heart lights. The game closes the opening in the vertex shader by sliding
   every point towards the front along its own meridian (no bones, no second model).
-- Tendrils: seven long tapering arms, two long ones at the front (4.8 m), two at the sides, three trailing
-  behind, slate on top, pale underneath, with a row of small round nodes along the underside that glow.
+- Tendrils: seven long tapering arms, 6 to 8 m, about 0.4 m across at the root: two long ones at the front,
+  two at the sides, three behind, slate on top, pale underneath, with a row of round nodes along the
+  underside that glow (larger near the root).
 
 The tendrils are modelled STRAIGHT, each along its own axis from its root: the game bends them in the
-vertex shader, along a curve worked out from a few numbers per arm each frame (droop, curl at the tip,
-a wave travelling from the root, a reach towards a point). For that each arm's frame goes along as the
+vertex shader, along a curve worked out from a few numbers per arm each frame (an arch up out of the mist
+and down, a curl at the tip, a wave travelling from the root, a reach towards a point). For that each arm's frame goes along as the
 object's extras (`arms`, JSON, glTF axes): its root, its axis `dir`, its upper side `up`, its length
 and its root's radius. Every corner of a tendril carries:
   TEXCOORD_0 (uv)  = (t, arm): how far along its arm it lies (0 at the root, 1 at the tip), the arm's number
@@ -29,7 +30,7 @@ Where a corner lies across its arm the game reads from its straight position: al
 The core's corners carry TEXCOORD_0 = (inside, 0): 0 on the outside, 1 on the inner wall of the hollow.
 Colours are on the corners (COLOR_0, linear); no image textures.
 
-Near and far: Heart, Core, Tendrils (about 16 000 triangles) and HeartFar, CoreFar, TendrilsFar (about
+Near and far: Heart, Core, Tendrils (about 20 000 triangles) and HeartFar, CoreFar, TendrilsFar (about
 2 000). glTF axes: +y up, the front +z (Blender -Y); the origin is the middle of the body.
 """
 import json
@@ -172,7 +173,7 @@ def noise3(d, seed=0.0):
 def heart(rings, segs):
     """A ribbed lantern: pointed top and bottom, eight soft ribs, 0.38 m wide, 0.5 m tall, at the body's front."""
     verts, cols = [], []
-    W, H, Z0 = 0.19, 0.25, 0.12
+    W, H, Z0 = 0.27, 0.34, 0.18
     for i in range(rings + 1):
         s = i / rings  # 0 at the bottom tip, 1 at the top
         bulge = math.sin(math.pi * s) ** 0.85 * (1 + 0.12 * math.sin(math.pi * s * 0.9))
@@ -190,8 +191,8 @@ def heart(rings, segs):
 
 
 # ---------------------------------------------------------------- the core
-CORE_R = 0.74     # its outer radius (m), before the lumps
-CORE_IN = 0.56    # the hollow's radius
+CORE_R = 1.05     # its outer radius (m), before the lumps
+CORE_IN = 0.8     # the hollow's radius
 LIP = 0.78        # the opening's edge, in radians from the front (open as modelled)
 
 
@@ -256,15 +257,22 @@ def arm_frame(root, d):
 
 
 ARMS = []
-for root, d, length, radius in (
-    ((-0.46, -0.36, 0.30), (-0.30, -0.25, 1.0), 4.8, 0.14),   # 0, 1: the long ones at the front, that reach
-    ((0.46, -0.36, 0.30), (0.30, -0.25, 1.0), 4.8, 0.14),     # (either side of the opening, never across it)
-    ((-0.55, -0.38, 0.02), (-0.85, -0.55, 0.15), 4.0, 0.12),  # 2, 3: at the sides
-    ((0.55, -0.38, 0.02), (0.85, -0.55, 0.15), 4.0, 0.12),
-    ((-0.30, -0.50, -0.38), (-0.35, -0.80, -0.50), 3.3, 0.10),  # 4, 5, 6: trailing behind
-    ((0.30, -0.50, -0.38), (0.35, -0.80, -0.50), 3.3, 0.10),
-    ((0.0, -0.45, -0.50), (0.0, -0.62, -0.80), 3.7, 0.105),
+# Each arm leaves the core sideways, nearly level, round the body (its turn from the front in degrees, +x to the
+# right); the game raises it in an arch out of the mist and lets it curve down and curl (brookSpirit.ts). Lengths
+# and heights differ, so the outline is uneven. The root's radius is about 0.4 m across at the thickest.
+for az, el, y, length, radius in (
+    (-30, 6, -0.30, 8.0, 0.21),    # 0, 1: the long ones at the front, raised to reach (either side of the opening)
+    (30, 6, -0.30, 8.0, 0.21),
+    (-82, 0, -0.18, 7.0, 0.19),    # 2, 3: at the sides
+    (86, -4, -0.36, 6.5, 0.18),
+    (-138, -4, -0.40, 6.0, 0.17),  # 4, 5, 6: behind
+    (142, 2, -0.22, 6.8, 0.18),
+    (180, -8, -0.48, 7.2, 0.18),
 ):
+    a = math.radians(az)
+    e = math.radians(el)
+    root = (math.sin(a) * 0.82, y, math.cos(a) * 0.72)
+    d = (math.sin(a) * math.cos(e), math.sin(e), math.cos(a) * math.cos(e))
     f = arm_frame(root, d)
     f["length"] = length
     f["radius"] = radius
@@ -323,7 +331,7 @@ def tendrils(rings, segs, nodes):
         t = 0.13
         while t < 0.93:
             r = radius_at(arm, t)
-            rn = 0.3 * r + 0.007
+            rn = (0.26 + 0.16 * (1 - t)) * r + 0.008  # larger near the root, to read from afar
             c = add(R, mul(D, L * t), mul(U, -0.8 * r))
             nb = len(verts)
             lat, lon = 4, 6
@@ -348,14 +356,14 @@ def tendrils(rings, segs, nodes):
                         faces.append((a, b, dd))
                     else:
                         faces.append((a, dd, cc, b))
-            t += 0.072 * (1 - 0.35 * t)
+            t += 0.06 * (1 - 0.4 * t)
     return verts, faces, cols, [uv0, uv1]
 
 
 objs = [
-    build("Heart", *heart(16, 20), HEART),
-    build("Core", *core(24, 6, 10, 40), CORE),
-    build("Tendrils", *tendrils(46, 10, True), TENDRIL),
+    build("Heart", *heart(14, 18), HEART),
+    build("Core", *core(22, 6, 9, 36), CORE),
+    build("Tendrils", *tendrils(50, 10, True), TENDRIL),
     build("HeartFar", *heart(6, 8), HEART),
     build("CoreFar", *core(9, 3, 4, 14), CORE),
     build("TendrilsFar", *tendrils(16, 5, False), TENDRIL),
@@ -423,7 +431,7 @@ if PREVIEW:
         tt = max(0.0, min(1.0, along / arm["length"]))
         a, b = dot(rel, arm["side"]), dot(rel, arm["up"])
         front = ai < 2
-        alpha = (lambda s, f=front: (0.15 if f else 0.0) + (0.55 if f else 0.45) * s + (1.9 if f else 1.4) * smooth(0.55, 1, s))
+        alpha = (lambda s, f=front: (-0.9 if f else -0.65) + (1.4 if f else 2.0) * s + 1.2 * smooth(0.55, 1, s))
         beta = (lambda s, k=ai: 0.25 * math.sin(2.5 * s + k) * s)
         q = bent(arm, tt, a, b, alpha, beta)
         q = add(q, mul(arm["dir"], along - tt * arm["length"]))
@@ -438,9 +446,9 @@ if PREVIEW:
     world.node_tree.nodes["Background"].inputs["Strength"].default_value = 0.6
     scene.world = world
     for o in objs:
-        o.location = (0, 0, 3.2)
-    posed.location = (0, 0, 3.2)
-    bpy.ops.mesh.primitive_plane_add(size=30, location=(0, 0, 0))
+        o.location = (0, 0, 4.0)
+    posed.location = (0, 0, 4.0)
+    bpy.ops.mesh.primitive_plane_add(size=40, location=(0, 0, 0))
     bpy.context.active_object.data.materials.append(mat("Ground", "#4a4636", 1.0))
     bpy.ops.object.light_add(type="SUN", location=(0, 0, 8))
     sun = bpy.context.active_object
@@ -451,8 +459,8 @@ if PREVIEW:
     scene.camera = cam
     cam.data.lens = 30
     os.makedirs(PREVIEW, exist_ok=True)
-    for label, at in (("front", (2.0, -8.5, 3.0)), ("side", (8.5, 0.5, 3.4)), ("three", (-6.0, -6.0, 5.0))):
+    for label, at in (("front", (3.0, -14.0, 3.0)), ("side", (14.0, 0.5, 4.0)), ("three", (-10.0, -10.0, 7.0))):
         cam.location = at
-        cam.rotation_euler = (Vector((0, 0, 1.9)) - Vector(at)).to_track_quat("-Z", "Y").to_euler()
+        cam.rotation_euler = (Vector((0, 0, 3.0)) - Vector(at)).to_track_quat("-Z", "Y").to_euler()
         scene.render.filepath = os.path.join(PREVIEW, f"spirit_{label}.png")
         bpy.ops.render.render(write_still=True)
