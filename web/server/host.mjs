@@ -273,7 +273,7 @@ export class Host {
         const text = words.clean(str(b.text, 120));
         const secs = int(b.secs, 3, 60) ?? 8;
         if (!text) return { error: 'Type a message', code: 'empty' };
-        g.broadcast({ t: 'announce', text, ms: secs * 1000 });
+        for (const x of g.hub?.games() ?? [g]) x.broadcast({ t: 'announce', text, ms: secs * 1000 }); // every screen: the Zombies duel's rooms too (server/duel.mjs)
         return { ok: true };
       }
       case 'freeze': {
