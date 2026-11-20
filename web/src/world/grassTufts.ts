@@ -387,7 +387,7 @@ ${blades ? `          float gtWild = clamp(1.0 - gs.a * 2.0, 0.0, 1.0);
           vGtTint = mix(vec3(1.06, 1.0, 0.78), vec3(0.95, 1.02, 1.1), gs.b) * mix(vec3(1.0), vec3(1.25, 1.12, 0.7), gtWild * gtMake.y)
             * (0.92 + 0.16 * gtMake.z) * mix(vec3(1.0), vec3(1.15, 1.13, 1.08), gtStripe);
           // Pressed flat by a rotor's wash, the blades show their paler sides: a shimmering ring (world/rotorWash.ts).
-          vGtTint *= 1.0 + 0.45 * min(1.0, length(gtWash.xy));
+          vGtTint *= 1.0 + 0.9 * min(1.0, length(gtWash.xy) + 0.3 * gtWash.z);
 ` : tufts ? `          float gtWild = clamp(1.0 - gs.a * 2.0, 0.0, 1.0);
           float gtMown = clamp(gs.a * 2.0 - 1.0, 0.0, 1.0);
           // How tall: a mown lawn a few centimetres, plain grass a hand, rough grass to the shin.

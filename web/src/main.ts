@@ -885,7 +885,7 @@ glass.locked = (i) => {
 };
 const effects = new Effects(scene, new Decals(scene), (x, z, y) => world.groundAt(x, z, y, 0).y);
 looseProps.attach(scene, world, effects.particles); // the street's bins, bikes, letterboxes and posts that cars knock over (world/looseProps.ts)
-const rotorWash = new RotorWash(world, effects.particles, effects.splashes, looseProps); // the helicopters' downwash (world/rotorWash.ts)
+const rotorWash = new RotorWash(scene, world, effects.particles, effects.splashes, looseProps); // the helicopters' downwash (world/rotorWash.ts)
 const crash = new Crash(effects.particles);
 Car.onCrash = (hit) => crash.hit(hit); // sparks, dust or leaves, and a crunch, by what a car hit (world/crash.ts)
 Car.fx = crash.carFx(effects.splashes); // leaves in a hedge, the water a car throws, steam from a crumpled bonnet
