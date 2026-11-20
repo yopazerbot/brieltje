@@ -8,6 +8,7 @@ import { Herds, type HerdSpec } from './herds';
 import { house, type Prism } from './houseData';
 import { blockMaterial } from './houseMeshes';
 import { terrain } from './terrain';
+import { waterLevel } from './water';
 import { wind } from './wind';
 
 /**
@@ -128,7 +129,8 @@ export class Countryside {
     this.herds = new Herds(DATA.herds as unknown as HerdSpec[], ground, o.now, (key, ring, y0, y1) => o.world.setMoving(key, ring, y0, y1));
     // Flocks over the big fields to the north-west and the east.
     this.birds = new Birds([[-230, -300], [300, 30]], DATA.crows as [number, number, number][], ground);
-    this.ducks = new Ducks(DATA.ducks as [number, number, number, number, number][]);
+    // On the water as it lies now (world/water.ts: its level follows the land), not as the data's tool worked it out.
+    this.ducks = new Ducks((DATA.ducks as [number, number, number, number, number][]).map(([x, z, room, y, n]) => [x, z, room, waterLevel(x, z) ?? y, n]));
     this.bales = bales(DATA.bales as BaleRow[], ground, o.world);
     this.baleSpots = (DATA.bales as BaleRow[]).map(([x0, z0, x1, z1]) => {
       const x = (x0 + x1) / 2;

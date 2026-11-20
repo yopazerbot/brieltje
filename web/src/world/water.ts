@@ -1,7 +1,9 @@
 import * as THREE from 'three';
+import { bankAt, bankOf, type Bank, type BankPoint } from './bankShape';
 import type { Ground } from './collision';
 import type { DipSpec } from './houseData';
 import { mood } from './mood';
+import { terrain } from './terrain';
 
 /**
  * The ponds' and ditches' water: a dark green mirror of the sky, now ruffled by the wind. Five
@@ -10,14 +12,22 @@ import { mood } from './mood';
  * shimmer; nothing is moved. Gusts drift across it as calmer and rougher patches. Each train fades
  * out where its waves get too small on screen to draw (no glitter in the distance), and the water
  * turns a little less glossy there instead. One material for every pond, its clock set as it is drawn.
+ * In a ditch the same trains lie along it (in metres along and across it, from its banks: world/bankShape.ts)
+ * and are carried downstream at 0.12 to 0.3 m/s; a pond keeps the wind.
+ *
+ * Its colour follows its depth (each point of it knows how deep it is there): silty and lighter where shallow,
+ * its own dark green from about half a metre down, with a thin darker line where it meets the bank. On Medium
+ * and up it is clear over the first centimetres, so the mud under it shows, and as good as opaque by half a
+ * metre, its reflection whole however clear (no read of the scene's depth, no extra pass: the depth comes with
+ * the points). On Low and phones it stays opaque, the mud showing only in its colour.
  *
  * In the rain, on Medium and up, drops dot the water near you with small rings (the same shader: one
  * drop at a time in each half-metre cell, two layers of cells), nothing on Low or on a phone.
  *
- * Also where the water is, for walking into it (player.ts): every pond and ditch keeps its outline at the
- * water line and its level. A ditch is as deep as it is drawn (about half a metre at most); a pond shelves
- * on under its drawn bottom to 1.8 m in the middle, deep enough to swim in. The water is opaque, so the
- * deeper middle needs no drawing.
+ * Also where the water is, for walking into it (player.ts): each pond and ditch with its banks (world/bankShape.ts):
+ * its level and the bed under it read off them point by point. A ditch is as deep as it is drawn (about half a
+ * metre); a pond deepens on past its drawn bed to 1.8 m in the middle, deep enough to swim in (unseen: the water
+ * is dark by then).
  */
 
 // From the south-west, as the wind in the trees (world/wind.ts); in the model's x and z.
@@ -38,23 +48,54 @@ const waves = WAVES.map(([length, angle, slope]) => {
   return `ripple(p, vec2(${(dir.x * k).toFixed(4)}, ${(dir.y * k).toFixed(4)}), ${Math.sqrt(9.81 * k).toFixed(4)}, ${(slope / k).toFixed(5)}, ${(length * 1.7).toFixed(2)}, px, grad, fade);`;
 }).join('\n          ');
 
+// A ditch's ripples: the same trains, but laid along the ditch (in metres along and across it), lower in its shelter,
+// carried down with the flow and hardly moving on their own.
+const flowWaves = WAVES.map(([length, angle, slope]) => {
+  const k = (Math.PI * 2) / length;
+  return `ripple(q, vec2(${(Math.cos(angle) * k).toFixed(4)}, ${(Math.sin(angle) * k).toFixed(4)}), ${(Math.sqrt(9.81 * k) * 0.06).toFixed(4)}, ${((slope * 0.6) / k).toFixed(5)}, ${(length * 1.7).toFixed(2)}, px, grad, fade);`;
+}).join('\n            ');
+
+/** The water's colour where it is shallow: silty, a little lighter and browner than its depth (linear RGB). */
+const SHALLOW = new THREE.Color('#5a5a3c');
+/** On Low, where the water stays opaque: the mud under it, to show where it is shallow. */
+const MUD = new THREE.Color('#4a4030');
+
 let material: THREE.MeshStandardMaterial | null = null;
 const time = { value: 0 };
 /** How hard it rains on the water now (0 to 1), 0 on Low */
 const rain = { value: 0 };
 let detail = true;
 
+/** Clear in the shallows (Medium and up): blended over the bank, its reflection added in full. */
+function clearWater(m: THREE.MeshStandardMaterial, on: boolean): void {
+  m.transparent = on;
+  m.blending = on ? THREE.CustomBlending : THREE.NormalBlending;
+  m.blendSrc = THREE.OneFactor;
+  m.blendDst = THREE.OneMinusSrcAlphaFactor;
+  m.blendSrcAlpha = THREE.OneFactor;
+  m.blendDstAlpha = THREE.OneMinusSrcAlphaFactor;
+  m.defines = on ? { WATER_CLEAR: '' } : {};
+  m.needsUpdate = true;
+}
+
 /** The water's material, shared by every pond. */
 export function waterMaterial(): THREE.MeshStandardMaterial {
   if (material) return material;
   const m = new THREE.MeshStandardMaterial({ color: '#3c4a3e', roughness: 0.06, metalness: 0.15 });
   m.name = 'water';
+  clearWater(m, detail);
   m.onBeforeCompile = (shader) => {
     shader.uniforms.waterTime = time;
     shader.uniforms.waterRain = rain;
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nvarying vec2 vWater;')
-      .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWater = (modelMatrix * vec4(transformed, 1.0)).xz;');
+      .replace(
+        '#include <common>',
+        '#include <common>\nattribute float waterDepth;\nattribute vec4 waterFlow;\nvarying vec2 vWater;\nvarying float vWaterDepth;\nvarying vec4 vWaterFlow;',
+      )
+      .replace(
+        '#include <worldpos_vertex>',
+        '#include <worldpos_vertex>\nvWater = (modelMatrix * vec4(transformed, 1.0)).xz;\nvWaterDepth = waterDepth;\nvWaterFlow = waterFlow;',
+      );
     shader.fragmentShader = shader.fragmentShader
       .replace(
         '#include <common>',
@@ -62,6 +103,9 @@ export function waterMaterial(): THREE.MeshStandardMaterial {
         uniform float waterTime;
         uniform float waterRain;
         varying vec2 vWater;
+        varying float vWaterDepth;
+        varying vec4 vWaterFlow;
+        float waterAlpha = 1.0;
         // One train of waves: adds its slope at p to grad, and how much of it is drawn to fade.
         void ripple(vec2 p, vec2 k, float w, float a, float phase, float px, inout vec2 grad, inout float fade) {
           float keep = clamp(1.0 - px * length(k) * 0.35, 0.0, 1.0); // gone at two pixels a wave
@@ -87,6 +131,27 @@ export function waterMaterial(): THREE.MeshStandardMaterial {
         }`,
       )
       .replace(
+        '#include <color_fragment>',
+        `#include <color_fragment>
+        {
+          // Under the bank: none of it (its edge is where the bank comes out of the water).
+          float d = vWaterDepth;
+          if (d < 0.0) discard;
+          // Silty and lighter where shallow, the body's own colour from about half a metre down.
+          float deep = smoothstep(0.0, 0.5, d);
+          // A thin darker line where it meets the bank: the wet edge.
+          float edge = 1.0 - smoothstep(0.0, 0.035, d);
+          #ifdef WATER_CLEAR
+            // Clear over the first centimetres, so the mud shows through, and as good as opaque by half a metre.
+            diffuseColor.rgb = mix(vec3(${SHALLOW.r.toFixed(4)}, ${SHALLOW.g.toFixed(4)}, ${SHALLOW.b.toFixed(4)}), diffuseColor.rgb, deep);
+            waterAlpha = max(mix(0.08, 1.0, smoothstep(0.01, 0.55, d)), 0.45 * edge);
+          #else
+            diffuseColor.rgb = mix(vec3(${MUD.r.toFixed(4)}, ${MUD.g.toFixed(4)}, ${MUD.b.toFixed(4)}), diffuseColor.rgb, smoothstep(0.0, 0.4, d));
+          #endif
+          diffuseColor.rgb *= 1.0 - 0.3 * edge;
+        }`,
+      )
+      .replace(
         '#include <normal_fragment_maps>',
         `#include <normal_fragment_maps>
         {
@@ -94,7 +159,16 @@ export function waterMaterial(): THREE.MeshStandardMaterial {
           float px = length(fwidth(p));
           vec2 grad = vec2(0.0);
           float fade = 0.0;
-          ${waves}
+          float flow = length(vWaterFlow.zw);
+          if (flow > 0.0) {
+            // A ditch: ripples along it, carried downstream (in metres along and across it, as p is).
+            vec2 down = vWaterFlow.zw / flow;
+            vec2 q = vec2(vWaterFlow.x - flow * waterTime, vWaterFlow.y);
+            ${flowWaves}
+            grad = grad.x * down + grad.y * vec2(-down.y, down.x);
+          } else {
+            ${waves}
+          }
           // Gusts: rougher and calmer patches drifting downwind.
           float gust = 0.55 + 0.45 * sin(dot(p, vec2(${(WIND.x * 0.21).toFixed(3)}, ${(WIND.y * 0.21).toFixed(3)})) - waterTime * 0.5) * sin(p.x * 0.13 - p.y * 0.17 + waterTime * 0.11);
           grad *= gust;
@@ -109,6 +183,15 @@ export function waterMaterial(): THREE.MeshStandardMaterial {
           normal = normalize((viewMatrix * vec4(-grad.x, 1.0, -grad.y, 0.0)).xyz);
           roughnessFactor = mix(0.11, roughnessFactor, fade / ${WAVES.length.toFixed(1)}) + 0.06 * waterRain;
         }`,
+      )
+      .replace(
+        '#include <opaque_fragment>',
+        `#ifdef WATER_CLEAR
+          // What lies under it shows through by its clearness; the sky's and the sun's reflection stays whole.
+          gl_FragColor = vec4(totalDiffuse * waterAlpha + totalSpecular + totalEmissiveRadiance, waterAlpha);
+        #else
+          #include <opaque_fragment>
+        #endif`,
       );
   };
   material = m;
@@ -126,8 +209,12 @@ function raining(): number {
   return (mood.current === 'rain' ? 1 - mood.blend : 0) + (mood.next === 'rain' && mood.next !== mood.current ? mood.blend : 0);
 }
 
-/** Rain rings on the water: on for Medium and up, off on Low and on phones (main.ts applyQuality). */
+/**
+ * Rain rings on the water, and water clear in the shallows: on for Medium and up, off on Low and on phones (main.ts
+ * applyQuality). Without, the water is opaque and the mud under it shows only as its colour.
+ */
 export function setWaterDetail(on: boolean): void {
+  if (material && on !== detail) clearWater(material, on);
   detail = on;
 }
 
@@ -145,6 +232,8 @@ interface Body {
   /** The drawn depth at the flat bottom (m): the bank's 1:1 slope reaches it this far in from the water's edge */
   drawn: number;
   pond: boolean;
+  /** Its banks (world/bankShape.ts): the level and the bed read off them point by point */
+  bank?: Bank;
   minX: number;
   maxX: number;
   minZ: number;
@@ -159,19 +248,24 @@ export interface Wet {
   swimming: boolean;
 }
 
-/** A pond's or ditch's outline at the water line (the rim moved in towards the bottom), and its level. */
+/**
+ * A pond's or ditch's outline at the water line, and its level (the lowest, where a ditch falls along its length).
+ * From its banks (world/bankShape.ts) when it has them.
+ */
 export function waterLine(d: DipSpec, ground: number): { ring: [number, number][]; level: number } | null {
   if (!d.water) return null;
+  const bank = bankOf(d, ground, terrain.height);
+  if (bank) return { ring: bank.line, level: bank.lowLevel };
   const t = d.water / d.depth;
   const ring = d.rim.map(([x, z], i): [number, number] => [x + (d.bottom[i][0] - x) * t, z + (d.bottom[i][1] - z) * t]);
   return { ring, level: ground + (d.low ?? 0) - d.water };
 }
 
-/** A pond or ditch to walk into (world/surroundings.ts waterMesh, as its water is made). */
-export function addWater(d: DipSpec, ring: [number, number][], level: number): void {
-  const xs = ring.map((v) => v[0]);
-  const zs = ring.map((v) => v[1]);
-  bodies.push({ ring, level, drawn: d.depth - (d.water ?? 0), pond: d.name === 'pond', minX: Math.min(...xs), maxX: Math.max(...xs), minZ: Math.min(...zs), maxZ: Math.max(...zs) });
+/** A pond or ditch to walk into (world/banks.ts bankWater, as its water is made), with its banks when it has them. */
+export function addWater(d: DipSpec, ring: [number, number][], level: number, bank?: Bank): void {
+  const xs = bank ? [bank.minX, bank.maxX] : ring.map((v) => v[0]);
+  const zs = bank ? [bank.minZ, bank.maxZ] : ring.map((v) => v[1]);
+  bodies.push({ ring, level, drawn: d.depth - (d.water ?? 0), pond: d.name === 'pond', bank, minX: Math.min(...xs), maxX: Math.max(...xs), minZ: Math.min(...zs), maxZ: Math.max(...zs) });
 }
 
 function insideRing(x: number, z: number, r: [number, number][]): boolean {
@@ -195,14 +289,30 @@ function edgeDistance(x: number, z: number, r: [number, number][]): number {
   return best;
 }
 
+/** The water at a point: its body, its level there, and for one with banks, the bank under it. */
+const here = { level: 0, point: { y: 0, level: 0, inset: 0 } as BankPoint };
+
 function bodyAt(x: number, z: number): Body | null {
-  for (const b of bodies) if (x >= b.minX && x <= b.maxX && z >= b.minZ && z <= b.maxZ && insideRing(x, z, b.ring)) return b;
+  for (const b of bodies) {
+    if (x < b.minX || x > b.maxX || z < b.minZ || z > b.maxZ) continue;
+    if (b.bank) {
+      // In the water where its level is over the bank (the edge of the water is where the bank comes out of it).
+      const p = bankAt(b.bank, x, z, here.point);
+      if (!p || p.level <= p.y) continue;
+      here.level = p.level;
+      return b;
+    }
+    if (insideRing(x, z, b.ring)) {
+      here.level = b.level;
+      return b;
+    }
+  }
   return null;
 }
 
 /** The water's surface at (x, z), or null on dry land. */
 export function waterLevel(x: number, z: number): number | null {
-  return bodyAt(x, z)?.level ?? null;
+  return bodyAt(x, z) ? here.level : null;
 }
 
 /**
@@ -212,12 +322,19 @@ export function waterLevel(x: number, z: number): number | null {
  */
 export function wetGround(x: number, z: number, ground: Ground): Wet | null {
   const b = bodyAt(x, z);
-  if (!b || ground.y > b.level - 0.02) return null;
-  let depth = b.level - ground.y;
-  // A pond shelves on past its drawn bottom (the bank slopes 1:1 down to it, so that far in from the edge).
-  if (b.pond && depth > b.drawn - 0.05) depth = Math.min(POND_DEPTH, Math.max(depth, b.drawn + (edgeDistance(x, z, b.ring) - b.drawn) * SHELVE));
+  const level = here.level;
+  if (!b || ground.y > level - 0.02) return null;
+  let depth = level - ground.y;
+  if (b.bank) {
+    // A pond deepens on past where its drawn bed reaches its full depth (unseen: the water is dark by then).
+    const shelf = here.point.inset - b.bank.shelf;
+    if (b.pond && shelf > 0 && ground.y > here.point.y - 0.05) depth = Math.min(POND_DEPTH, Math.max(depth, b.bank.bedDepth + shelf * SHELVE));
+  } else if (b.pond && depth > b.drawn - 0.05) {
+    // A pond shelves on past its drawn bottom (the bank slopes 1:1 down to it, so that far in from the edge).
+    depth = Math.min(POND_DEPTH, Math.max(depth, b.drawn + (edgeDistance(x, z, b.ring) - b.drawn) * SHELVE));
+  }
   const swimming = depth > FLOAT;
-  ground.y = b.level - Math.min(depth, FLOAT);
+  ground.y = level - Math.min(depth, FLOAT);
   ground.mat = swimming ? 'swim' : 'water';
-  return { level: b.level, depth, swimming };
+  return { level, depth, swimming };
 }

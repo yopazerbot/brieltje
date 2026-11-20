@@ -10,6 +10,7 @@ import { sway } from './wind';
 import { paneGeometry, paneLook, paneMaterial, COVER } from './windows';
 import { brickLook, byteAttribute, frameColour, glazeable, Houses, isBrick, renderable, roofLook } from './facadeLook';
 import { addWater, waterClock, waterLine, waterMaterial } from './water';
+import { bankMesh, bankWater } from './banks';
 import { leafy } from './leaves';
 import { treeCrown, treeTrunk } from './vegetation';
 import { spaceTrees } from './treeSpacing';
@@ -1120,6 +1121,8 @@ function buildSolar(list: NonNullable<Surroundings['solar']>): Piece[] {
 
 /** The water in a pond or ditch: a flat surface where the banks reach its level. */
 export function waterMesh(d: DipSpec, ground: number): THREE.Mesh | null {
+  const banked = bankWater(d, ground); // on its banks, its level following the land (world/banks.ts)
+  if (banked) return banked;
   const line = waterLine(d, ground);
   if (!line) return null;
   addWater(d, line.ring, line.level); // to wade and swim in (world/water.ts)
@@ -1138,6 +1141,8 @@ export function waterMesh(d: DipSpec, ground: number): THREE.Mesh | null {
  * in the lawn's own material with UVs in metres like the grass round it (which has the rim cut out).
  */
 export function dipMesh(d: DipSpec, ground: number, material: THREE.Material): THREE.Mesh {
+  const banked = bankMesh(d, ground, material); // a pond's or ditch's banks (world/banks.ts)
+  if (banked) return banked;
   const low = ground + (d.low ?? 0) - d.depth; // on the relief: below the lowest ground round its rim
   const pos: number[] = [];
   const tri = (a: [number, number, number], b: [number, number, number], c: [number, number, number]) => {

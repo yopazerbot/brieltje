@@ -1,7 +1,11 @@
 import type { Bounds } from '../../shared/bounds.mjs';
-import type { Prism, Ring } from './houseData';
+import { bankAt, bankOf, type Bank, type BankPoint } from './bankShape';
+import type { DipSpec, Prism, Ring } from './houseData';
 import { climb, RoofField } from './roofField';
 import { terrain } from './terrain';
+
+/** A dip as the data has it (houseData.ts DipSpec); a pond or ditch has water, and a name. */
+type DipLike = { rim: [number, number][]; bottom: [number, number][]; depth: number; low?: number; water?: number; name?: string };
 
 interface Solid {
   /** Switched off, e.g. a broken window */
@@ -140,7 +144,8 @@ export class World {
   /** Pane number (Prism.glass) -> block number */
   private panes = new Map<number, number>();
 
-  private dips: { rim: Ring; bottom: Ring; depth: number; low: number; minX: number; maxX: number; minZ: number; maxZ: number }[] = [];
+  private dips: { rim: Ring; bottom: Ring; depth: number; low: number; bank: Bank | null; minX: number; maxX: number; minZ: number; maxZ: number }[] = [];
+  private readonly bankPoint: BankPoint = { y: 0, level: 0, inset: 0 };
 
   /**
    * The edge of the game (shared/bounds.mjs): the outline nobody walks, rides or drives past (main.ts
@@ -369,28 +374,31 @@ export class World {
   }
 
   /** Dips in the ground (the garden's wadi). */
-  setDips(dips: { rim: [number, number][]; bottom: [number, number][]; depth: number; low?: number }[]): void {
+  setDips(dips: DipLike[]): void {
     this.dips = [];
     this.addDips(dips);
   }
 
   /** More dips (the village's ponds). */
-  addDips(dips: { rim: [number, number][]; bottom: [number, number][]; depth: number; low?: number }[]): void {
+  addDips(dips: DipLike[]): void {
     this.dips = this.dips.concat(dips.map((d) => {
       const xs = d.rim.map((v) => v[0]);
       const zs = d.rim.map((v) => v[1]);
-      return { rim: d.rim, bottom: d.bottom, depth: d.depth, low: d.low ?? 0, minX: Math.min(...xs), maxX: Math.max(...xs), minZ: Math.min(...zs), maxZ: Math.max(...zs) };
+      // A pond's or ditch's banks: walked as drawn (world/bankShape.ts).
+      const bank = d.water && d.name ? bankOf(d as DipSpec, this.baseGround, terrain.height) : null;
+      return { rim: d.rim, bottom: d.bottom, depth: d.depth, low: d.low ?? 0, bank, minX: Math.min(...xs), maxX: Math.max(...xs), minZ: Math.min(...zs), maxZ: Math.max(...zs) };
     }));
   }
 
   /**
-   * The bare ground: the relief (flat round the plot), except in a dip: its sides slope 1:1
-   * down to its flat bottom, `depth` below the lowest ground round its rim.
+   * The bare ground: the relief (flat round the plot), except in a dip: a pond's or ditch's banks as drawn, or a dry
+   * dip's sides sloping 1:1 down to its flat bottom, `depth` below the lowest ground round its rim.
    */
   private baseAt(x: number, z: number): number {
     const ground = this.baseGround + terrain.height(x, z);
     for (const d of this.dips) {
       if (x < d.minX || x > d.maxX || z < d.minZ || z > d.maxZ || !inside(x, z, [d.rim])) continue;
+      if (d.bank) return bankAt(d.bank, x, z, this.bankPoint)?.y ?? ground; // just on the rim: the relief
       const bottom = this.baseGround + d.low - d.depth;
       if (inside(x, z, [d.bottom])) return bottom;
       const [cx, cz] = closestOnRings(x, z, [d.rim]);
