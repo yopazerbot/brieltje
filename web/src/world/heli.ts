@@ -7,6 +7,7 @@ import { netClock, Track } from '../net/track';
 import type { CrashHit, Obstacle } from './car';
 import type { World } from './collision';
 import { homeAt, inEndGarden } from '../../shared/homes.mjs';
+import { findLamps, HeliLights } from './heliLights';
 import { HeliSound } from './heliSound';
 import { padNear } from './heliPads';
 import { mood } from './mood';
@@ -160,14 +161,21 @@ const gapLines = new THREE.LineBasicMaterial({ color: '#000000', transparent: tr
 
 type DiscMaterial = THREE.MeshBasicMaterial & { userData: { phase: { value: number } } };
 /**
- * A rotor's blur: a flat ring, see-through, darker towards its tips with four faint sweeps that turn slowly (a few
- * shader lines: radius and angle from the position, no texture). The main disc lies in its local XZ plane, the tail's
- * in its local YZ plane (docs/helicopter/README.md): two programs. `opacity` follows the rotor's speed.
+ * A rotor's blur: a flat ring, see-through, darker towards its tips (a few shader lines: radius and angle from the
+ * position, no texture). On it the blades' smears: each a soft wedge with a sharp leading edge and a trail fading
+ * behind it, as a camera's shutter sees a blade. They turn at a pace the eye can follow (DISC_TURN), never the real
+ * one: at the real 395 rpm four blades would jump a sixth of a turn a frame and seem to stand or run backwards (the
+ * wagon wheel), so the smear sells the speed and nothing strobes at any frame rate or distance. The main disc lies in
+ * its local XZ plane, the tail's in its local YZ plane (docs/helicopter/README.md): two programs. `opacity` follows
+ * the rotor's speed (and a little the distance: a disc far off stays a disc).
  */
 /** The blur discs' colour in daylight; unlit, it is darkened with the light (Heli.update), so at night it is no paler than the sky. */
 const DISC = new THREE.Color('#16181b');
 
-function discMaterial(plane: 'xz' | 'yz', outer: number): DiscMaterial {
+/** rad/s: how fast the blades' smears turn on the disc at full speed (a blade a little over a tenth of the way to the next each frame at 60) */
+const DISC_TURN = 10;
+
+function discMaterial(plane: 'xz' | 'yz', outer: number, blades: number): DiscMaterial {
   const m = new THREE.MeshBasicMaterial({ color: DISC, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide });
   const phase = { value: 0 };
   m.userData.phase = phase;
@@ -181,7 +189,10 @@ function discMaterial(plane: 'xz' | 'yz', outer: number): DiscMaterial {
       .replace('#include <common>', '#include <common>\nvarying vec2 vDisc;\nuniform float discPhase;\nuniform float discOuter;')
       .replace('#include <opaque_fragment>', `float discR = length( vDisc ) / discOuter;
         float discA = atan( vDisc.y, vDisc.x );
-        float sweep = 0.8 + 0.2 * sin( discA * 4.0 + discPhase );
+        // The blades' smears: a sharp leading edge, a trail fading over most of the way to the next blade.
+        float discU = fract( ( discA + discPhase ) * ${(blades / (2 * Math.PI)).toFixed(5)} );
+        float discBlade = smoothstep( 0.0, 0.1, discU ) * exp( - discU * 4.0 );
+        float sweep = 0.5 + 0.85 * discBlade * smoothstep( 0.12, 0.5, discR );
         diffuseColor.a *= ( 0.45 + 0.55 * smoothstep( 0.1, 0.8, discR ) ) * sweep * ( 1.0 - smoothstep( 0.96, 1.0, discR ) );
         diffuseColor.a += 0.3 * opacity * ( smoothstep( 0.88, 0.93, discR ) - smoothstep( 0.96, 1.0, discR ) );
         #include <opaque_fragment>`);
@@ -448,8 +459,10 @@ export class Heli {
   private tail: THREE.Object3D | null = null;
   private disc: THREE.Mesh | null = null;
   private tailDisc: THREE.Mesh | null = null;
-  private discMat = discMaterial('xz', SIZE.rotor.r);
-  private tailMat = discMaterial('yz', SIZE.tailRotor.r);
+  private discMat = discMaterial('xz', SIZE.rotor.r, 4);
+  private tailMat = discMaterial('yz', SIZE.tailRotor.r, 10);
+  /** The lamps' glows and the landing light's pool (world/heliLights.ts), once the model is in */
+  private lights: HeliLights | null = null;
   private paint: Record<string, { fine: THREE.MeshStandardMaterial; plain: THREE.MeshStandardMaterial; stand: THREE.MeshStandardMaterial }> = {};
   private eye = new THREE.Vector3(...(SIZE.eye as [number, number, number]));
   /** The boarding steps on the plan (the model's Step_L and Step_R): x right, z back */
@@ -502,6 +515,13 @@ export class Heli {
     const stand = !!scene.userData.standIn;
     const far = scene.getObjectByName('Far') ?? null;
     if (far) far.removeFromParent();
+    // The lamps' glows (world/heliLights.ts), found on the near model before its parts are merged.
+    const lamps = stand ? [] : findLamps(scene);
+    if (lamps.length) {
+      this.lights = new HeliLights(lamps);
+      this.body.add(this.lights.points);
+      this.group.add(this.lights.pool);
+    }
     // The discs don't belong to the near model: they show with the far copy too.
     this.disc = (scene.getObjectByName('RotorDisc') as THREE.Mesh | undefined) ?? null;
     this.tailDisc = (scene.getObjectByName('TailDisc') as THREE.Mesh | undefined) ?? null;
@@ -1235,17 +1255,24 @@ export class Heli {
     if (this.tail) this.tail.visible = r < BLADES_UNTIL || this.warmOn;
     const blur = smooth(0.45, 0.75, r);
     if (!this.warmOn) {
-      this.discMat.opacity = 0.55 * blur;
-      this.tailMat.opacity = 0.6 * blur;
+      // A little denser far off, so a disc 250 m away still reads as one against the sky.
+      const thick = 1 + 0.35 * smooth(60, 250, away);
+      this.discMat.opacity = 0.42 * blur * thick;
+      this.tailMat.opacity = 0.6 * blur * thick;
       this.discMat.visible = this.tailMat.visible = blur > 0.01;
     }
-    this.discMat.userData.phase.value = (this.discMat.userData.phase.value + dt * 3) % (Math.PI * 2);
+    // The smears turn with the rotor, never faster than the eye follows (DISC_TURN).
+    const turn = Math.max(0, dt) * DISC_TURN * blur;
+    this.discMat.userData.phase.value = (this.discMat.userData.phase.value + turn) % (Math.PI * 2);
+    this.tailMat.userData.phase.value = (this.tailMat.userData.phase.value + turn * 0.6) % (Math.PI * 2);
     // The discs follow the light (they are unlit): at night a faint dark blur, never a pale one against the sky.
     const light = 1 - 0.9 * mood.night;
     this.discMat.color.copy(DISC).multiplyScalar(light);
     this.tailMat.color.copy(DISC).multiplyScalar(light);
     // The lamps glow brighter as it darkens (never over the cars' light bars).
     (SHARED.Lamp as THREE.MeshStandardMaterial).emissiveIntensity = 0.6 + 1.4 * mood.night;
+    // Their glows, the beacon's and the strobe's flashes, the landing light's pool (world/heliLights.ts).
+    if (this.lights && this.group.visible) this.lights.update(dt, mood.night, r, s.ground, this.body, s.floor, !lowDetail, this.warmOn);
     // The shadow on the floor below, bigger and fainter the higher it is.
     const h = Math.max(0, s.y - s.floor);
     const size = 7 + h * 0.12;
