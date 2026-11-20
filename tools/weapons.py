@@ -1047,84 +1047,189 @@ def build_bazooka():
                   (0, 0.765, T), (SX, 0.16, SZ), kit, [right, left])
 
 
+def loft(name, sections, mat, sides=20, power=3.0):
+    """A smooth body through cross-sections along y, closed at both ends: each section (y, zc, hz, hw) a rounded
+    rectangle (a superellipse of `power`) hz high and hw wide (half sizes) round (0, y, zc). A stock, a pad."""
+    bm = bmesh.new()
+    rings = []
+    for y, zc, hz, hw in sections:
+        ring = []
+        for k in range(sides):
+            a = 2 * math.pi * k / sides
+            c, s = math.cos(a), math.sin(a)
+            ring.append(bm.verts.new((hw * math.copysign(abs(c) ** (2 / power), c), y, zc + hz * math.copysign(abs(s) ** (2 / power), s))))
+        rings.append(ring)
+    for a, b in zip(rings, rings[1:]):
+        for k in range(sides):
+            bm.faces.new((a[k], a[(k + 1) % sides], b[(k + 1) % sides], b[k]))
+    bm.faces.new(rings[0])
+    bm.faces.new(list(reversed(rings[-1])))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    return mesh_obj(name, bm, [mat], smooth=True)
+
+
+def rifled(name, t0, t1, r, depth, grooves, twist, mat, at):
+    """A bore seen from inside (faces turned in, as lathe's `inside`), from t0 to t1 along y round `at`: `grooves`
+    lands and grooves `depth` deep, turning by `twist` (radians) over its length: the rifling."""
+    bm = bmesh.new()
+    n = grooves * 2
+    rings = []
+    for t in (t0, (t0 + t1) / 2, t1):
+        turn = twist * (t - t0) / (t1 - t0)
+        ring = []
+        for k in range(n):
+            a = 2 * math.pi * k / n + turn
+            rr = r + (depth if k % 2 else 0.0)
+            ring.append(bm.verts.new((at[0] + rr * math.cos(a), at[1] + t, at[2] + rr * math.sin(a))))
+        rings.append(ring)
+    for a, b in zip(rings, rings[1:]):
+        for k in range(n):
+            bm.faces.new((a[k], a[(k + 1) % n], b[(k + 1) % n], b[k]))
+    return mesh_obj(name, bm, [mat], smooth=False)
+
+
+def arc(cy, cz, r, a0, a1, steps):
+    """Points (y, z) on a circle round (cy, cz) from angle a0 to a1 (degrees; 0 forward along y, 90 up)."""
+    return [(cy + r * math.cos(math.radians(a0 + (a1 - a0) * i / steps)), cz + r * math.sin(math.radians(a0 + (a1 - a0) * i / steps))) for i in range(steps + 1)]
+
+
 def build_launcher():
-    """A break-open single-shot grenade launcher, 0.7 m: a short fat barrel (40 mm bore) that tips down about a
-    hinge under its breech, a thumb latch on the receiver, a pistol grip, a vertical fore grip under the barrel's
-    handguard (on the barrel: it moves with it), a folding leaf sight and a polymer stock. The grip, the trigger
-    and the fore grip are the bazooka's, so its hands fit the same way."""
+    """A break-open single-shot grenade launcher, 0.7 m, our own design on the classic lines: a short fat steel
+    barrel (40 mm bore, rifled) that tips down about a hinge pin under its breech, a rounded break frame with a
+    thumb latch on top, side plates and their screws, a curved trigger guard, an olive handguard with ribs and heat
+    slots and a fore grip shaped for the fingers (on the barrel: it moves with it), a folding leaf sight with range
+    marks and a bead front sight, and a walnut stock with a raised comb, a ribbed rubber pad and a sling swivel.
+    The grip, the trigger and the fore grip sit where the bazooka's do, so its hands fit the same way."""
     W = "launcher"
     B = 0.07  # the barrel's axis over the grip
     HY, HZ = 0.088, B - 0.04  # the hinge pin, under the breech
     DY = -0.05  # the fore grip, this much further back than the bazooka's
     R, BORE = 0.027, 0.020  # the barrel's outside, and its bore
+    FW = 0.0275  # the frame's half width
     body = []
-    # The receiver: behind the breech the standing breech, under it the lug the barrel hinges on.
-    body.append(prism("receiver", [(-0.08, 0.004), (0.04, 0.0), (0.06, 0.012), (0.06, B - 0.052), (0.112, B - 0.05), (0.118, B - 0.042),
-                                   (0.112, B - 0.032), (0.058, B - 0.03), (0.056, B + 0.021), (0.046, B + 0.026), (-0.045, B + 0.026),
-                                   (-0.08, B + 0.016)], 0.028, M["Steel"], 0.003, 2))
-    for s in (-1, 1):  # a plate let into each side
-        body.append(block("plate", s * 0.0283 - 0.0006, s * 0.0283 + 0.0006, -0.065, 0.045, 0.01, B + 0.018, M["Dark"], 0.0005))
-    body.append(block("face", -0.019, 0.019, 0.0555, 0.0575, B - 0.019, B + 0.019, M["Dark"], 0.0004))  # the standing breech's face
-    body.append(sweep("pin", [(-0.0285, HY, HZ), (0.0285, HY, HZ)], [0.0055, 0.0055], M["Dark"], 10, tip=False))
-    # The thumb latch on top, a tab to its right.
-    body.append(block("latch", -0.006, 0.006, -0.01, 0.04, B + 0.025, B + 0.031, M["Dark"], 0.0012))
-    body.append(block("tab", 0.004, 0.02, -0.012, 0.004, B + 0.024, B + 0.034, M["Dark"], 0.0015))
-    # The bazooka's grip and trigger under it.
-    body.append(prism("grip", [(0.005, 0.0), (-0.003, -0.04), (-0.012, -0.095), (-0.05, -0.098), (-0.045, -0.06), (-0.036, -0.02), (-0.035, 0.0)],
-                      0.0145, M["Polymer"], 0.003, 2))
-    body.append(prism("gpanel", [(-0.004, -0.03), (-0.012, -0.088), (-0.044, -0.09), (-0.04, -0.03)], 0.0152, M["Grip"], 0.0006))
-    body.append(trigger_guard("guard", 0.005, 0.055, 0.0, -0.03, 0.006))
-    body.append(trigger("trigger", 0.022, -0.002, -0.02))
-    # The stock: a straight comb under the sight line, a rubber pad at the butt, wider towards it.
-    stock = [(-0.078, B + 0.014), (-0.115, B - 0.01), (-0.3, B - 0.016), (-0.305, B - 0.016), (-0.31, -0.07), (-0.3, -0.073), (-0.2, -0.05),
-             (-0.12, -0.03), (-0.08, -0.01), (-0.06, 0.003)]
-    body.append(prism("stock", stock, lambda y: 0.017 if y > -0.13 else 0.017 + (-0.13 - y) * 0.022, M["Polymer"], 0.004, 2))
-    body.append(prism("pad", [(-0.305, B - 0.015), (-0.322, B - 0.015), (-0.327, -0.074), (-0.31, -0.071)], 0.0215, M["Grip"], 0.003, 2))
-    body.append(block("sling", -0.0195, 0.0195, -0.255, -0.24, -0.063, -0.056, M["Dark"], 0.001))
-    # The barrel (it moves: it tips down about the pin): the tube, its bore open at the breech and the muzzle,
-    # a band at the muzzle, a handguard over its middle with the fore grip under it, and the sights on top.
-    # Each ring is wound to face the way it is seen (outside out, the bore in), so none is turned by guesswork.
-    barrel = [lathe("tube", [(0.372, R), (0.058, R)], M["Steel"], 20, at=(0, 0, B), caps=(False, False), inside=True),
-              lathe("bore", [(0.058, BORE), (0.392, BORE)], M["Dark"], 20, at=(0, 0, B), caps=(False, False), inside=True),
-              lathe("breech", [(0.058, R), (0.058, BORE)], M["Steel"], 20, at=(0, 0, B), caps=(False, False), inside=True, smooth=False),
-              lathe("band", [(0.392, 0.0285), (0.374, 0.0285), (0.372, R)], M["Steel"], 20, at=(0, 0, B), caps=(False, False), inside=True, smooth=False),
-              lathe("crown", [(0.392, BORE), (0.392, 0.0285)], M["Steel"], 20, at=(0, 0, B), caps=(False, False), inside=True, smooth=False)]
-    barrel.append(lathe("guard", [(0.125, 0.029), (0.13, 0.0335), (0.31, 0.0335), (0.315, 0.029)], M["Olive"], 8, at=(0, 0, B), turn=math.pi / 8, smooth=False))
-    for y in (0.16, 0.2, 0.24, 0.28):
-        barrel.append(block("rib", -0.012, 0.012, y, y + 0.012, B + 0.031, B + 0.0345, M["Olive"], 0.0008))
-    barrel.append(prism("fgrip", [(0.31 + DY, 0.036), (0.35 + DY, 0.036), (0.345 + DY, -0.065), (0.315 + DY, -0.065)], 0.014, M["Polymer"], 0.004, 2))
-    barrel.append(block("fmount", -0.015, 0.015, 0.30 + DY, 0.36 + DY, B - 0.04, B - 0.03, M["Dark"], 0.002))
-    barrel.append(block("fbase", -0.005, 0.005, 0.352, 0.37, B + 0.026, B + 0.032, M["Dark"], 0.0008))
-    barrel.append(block("fpost", -0.0014, 0.0014, 0.36, 0.364, B + 0.03, B + 0.048, M["Dark"], 0.0003))
-    barrel.append(block("fdot", -0.0015, 0.0015, 0.3595, 0.36, B + 0.0455, B + 0.048, M["Dot"], 0.0))
-    # The leaf sight, folded up: a base on the barrel, a frame and in it a ring to look through (a wide one: it
-    # is seen at arm's length), on the line of sight. The ring is wound like the barrel: in, front, out, back.
-    SY, SZ = 0.098, B + 0.048
-    barrel.append(block("lbase", -0.009, 0.009, 0.088, 0.11, B + 0.025, B + 0.031, M["Dark"], 0.0008))
+    # The frame: a narrow trigger housing over the grip (the thumb lies along its left side), the wider break
+    # frame above it, rounded over the top like the barrel and closed by a dome at the back.
+    body.append(prism("housing", [(-0.066, 0.03), (-0.066, 0.008), (-0.05, -0.004), (0.05, -0.004), (0.064, 0.008), (0.066, 0.03)],
+                      0.0155, M["Steel"], 0.003, 2))
+    body.append(prism("frame", [(-0.07, B), (-0.074, 0.04), (-0.062, 0.027), (0.05, 0.027), (0.0565, 0.034), (0.0565, B)], FW, M["Steel"], 0.003, 2))
+    body.append(lathe("shroud", [(-0.079, 0.0), (-0.0785, 0.012), (-0.0755, 0.021), (-0.07, FW), (0.054, FW), (0.0565, 0.026)],
+                      M["Steel"], 20, at=(0, 0, B)))
+    # The standing breech's face, with the firing pin's hole, and the side knuckles the barrel hinges between.
+    body.append(block("face", -0.02, 0.02, 0.0555, 0.0572, B - 0.021, B + 0.021, M["Dark"], 0.0005))
+    body.append(disc("pinhole", 0.0022, M["Steel"], (0, 0.05725, B), 1, 10))
+    knuckle = [(0.05, HZ + 0.0115)] + arc(HY, HZ, 0.0115, 90, -90, 8) + [(0.05, HZ - 0.0115)]
     for s in (-1, 1):
-        barrel.append(block("upright", s * 0.0075 - 0.0012, s * 0.0075 + 0.0012, SY - 0.002, SY + 0.002, B + 0.03, B + 0.066, M["Dark"], 0.0003))
-    barrel.append(block("ltop", -0.0087, 0.0087, SY - 0.002, SY + 0.002, B + 0.063, B + 0.067, M["Dark"], 0.0004))
+        body.append(prism("knuckle", knuckle, 0.005, M["Steel"], 0.0012, 2, x=s * (FW - 0.005)))
+        body.append(sweep("pin", [(s * 0.009, HY, HZ), (s * (FW + 0.0012), HY, HZ)], [0.0062, 0.0062], M["Dark"], 12, tip=True, base=False))
+    # A plate let into each side, held by three screws.
+    for s in (-1, 1):
+        body.append(block("plate", s * (FW + 0.0004) - 0.0006, s * (FW + 0.0004) + 0.0006, -0.056, 0.04, 0.033, B - 0.006, M["Dark"], 0.0005))
+        for y, z in ((-0.046, 0.04), (0.03, 0.04), (-0.008, B - 0.013)):
+            body.append(sweep("screw", [(s * (FW + 0.0008), y, z), (s * (FW + 0.0022), y, z)], [0.0026, 0.0026], M["Steel"], 8, tip=True, base=False))
+    # The thumb latch on top: a round boss, the lever swung to the right and back, a ridged pad for the thumb.
+    body.append(lathe("boss", [(B + FW - 0.002, 0.0068), (B + FW + 0.0035, 0.0068), (B + FW + 0.0045, 0.0055)], M["Dark"], 16, at=(0, -0.03, 0), axis="z"))
+    body.append(sweep("lever", [(0.0, -0.03, B + FW + 0.002), (0.012, -0.038, B + FW + 0.0025), (0.022, -0.047, B + FW + 0.003)],
+                      [0.0034, 0.003, 0.003], M["Dark"], 10, tip=False))
+    pad = [(x, y, z) for x in (0.018, 0.032) for y in (-0.043, -0.057) for z in (B + FW, B + FW + 0.006)]
+    body.append(hull("thumbpad", [(x, y, z - 0.0015 if x > 0.03 else z) for x, y, z in pad], M["Dark"], smooth=False))
+    for k in range(4):
+        y = -0.0455 - k * 0.0032
+        body.append(block("ridge", 0.019, 0.031, y, y + 0.0012, B + FW + 0.0055, B + FW + 0.0068, M["Dark"], 0.0))
+    # The grip, in the stock's walnut, with a rubber panel; the trigger, and a guard in a smooth curve round it.
+    body.append(prism("grip", [(0.005, 0.0), (-0.003, -0.04), (-0.012, -0.095), (-0.05, -0.098), (-0.045, -0.06), (-0.036, -0.02), (-0.035, 0.0)],
+                      0.0145, M["Wood"], 0.004, 2))
+    body.append(prism("gpanel", [(-0.004, -0.03), (-0.012, -0.088), (-0.044, -0.09), (-0.04, -0.03)], 0.0152, M["Grip"], 0.0006))
+    body.append(prism("gcap", [(-0.011, -0.093), (-0.051, -0.096), (-0.052, -0.103), (-0.012, -0.1)], 0.0148, M["Steel"], 0.0015))
+    body.append(trigger("trigger", 0.022, -0.002, -0.02))
+    yc, zc, ry, rz, t = 0.03, -0.004, 0.026, 0.028, 0.0034
+    outer = [(yc + (ry + t / 2) * math.cos(math.radians(a)), zc + (rz + t / 2) * math.sin(math.radians(a))) for a in range(10, -165, -12)]
+    inner = [(yc + (ry - t / 2) * math.cos(math.radians(a)), zc + (rz - t / 2) * math.sin(math.radians(a))) for a in range(-162, 12, 12)]
+    body.append(prism("guard", outer + inner, 0.0042, M["Steel"], 0.0008))
+    # The stock: walnut, shaped through cross-sections: a slim wrist behind the grip, a comb rising under the cheek,
+    # wider towards the butt; a ribbed rubber pad on it, and a sling swivel under it.
+    stock = [(-0.064, 0.04, 0.042, 0.0145), (-0.085, 0.033, 0.043, 0.014), (-0.11, 0.018, 0.04, 0.0135), (-0.14, 0.015, 0.047, 0.0148),
+             (-0.17, 0.0125, 0.0565, 0.0165), (-0.21, 0.009, 0.0625, 0.018), (-0.25, 0.0045, 0.0672, 0.0193), (-0.285, 0.0005, 0.0695, 0.0203),
+             (-0.299, -0.0015, 0.0695, 0.0205)]
+    body.append(loft("stock", stock, M["Wood"], 24, 2.4))
+    body.append(loft("pad", [(-0.2985, -0.0015, 0.0705, 0.0212), (-0.315, -0.0015, 0.0705, 0.0212), (-0.3185, -0.0015, 0.068, 0.0198)], M["Grip"], 24, 2.4))
+    for k in range(8):
+        z = -0.054 + k * 0.0148
+        body.append(block("prib", -0.0165, 0.0165, -0.3205, -0.317, z, z + 0.0045, M["Grip"], 0.0))
+    body.append(block("stud", -0.0045, 0.0045, -0.256, -0.244, -0.07, -0.0605, M["Steel"], 0.001))
+    body.append(sweep("swivel", [(0, -0.25 + 0.0075 * math.cos(math.radians(a)), -0.0765 + 0.0065 * math.sin(math.radians(a))) for a in range(80, 430, 30)],
+                      [0.0014] * 12, M["Steel"], 6, tip=False))
+    # The barrel (it moves: it tips down about the pin). Its outside wound outward in one turn: a ring reinforcing
+    # the muzzle, a collar where it leaves the handguard; a dark seam band at the breech where it breaks from the
+    # frame, the breech's face, the crown, and the rifled bore (lands and grooves seen from the front).
+    barrel = [lathe("tube", [(0.392, 0.0287), (0.3905, 0.0305), (0.3725, 0.0305), (0.371, 0.0285), (0.371, R), (0.3225, R), (0.322, 0.0292),
+                             (0.3155, 0.0292), (0.315, R), (0.0615, R)], M["Steel"], 20, at=(0, 0, B), caps=(False, False), inside=True),
+              lathe("seam", [(0.0615, R), (0.0615, 0.0278), (0.058, 0.0278), (0.058, R)], M["Dark"], 20, at=(0, 0, B), caps=(False, False), inside=True, smooth=False),
+              lathe("breech", [(0.058, R), (0.058, BORE - 0.0003)], M["Steel"], 20, at=(0, 0, B), caps=(False, False), inside=True, smooth=False),
+              lathe("crown", [(0.392, BORE - 0.0003), (0.392, 0.0287)], M["Steel"], 20, at=(0, 0, B), caps=(False, False), inside=True, smooth=False),
+              rifled("bore", 0.058, 0.392, BORE, 0.0009, 12, 0.5, M["Dark"], (0, 0, B))]
+    # The barrel's own knuckle round the pin, between the frame's.
+    bk = arc(HY, HZ, 0.0105, -90, 70, 8) + [(0.105, B - 0.02), (0.06, B - 0.02), (0.06, HZ - 0.0105)]
+    barrel.append(prism("bknuckle", bk, 0.0098, M["Steel"], 0.001, 2))
+    # The handguard: olive, eight-sided, ribs along its top for the fingers, three heat slots each side, its fore grip
+    # below with a groove for each finger and a flared foot.
+    barrel.append(lathe("hguard", [(0.125, 0.029), (0.13, 0.0335), (0.31, 0.0335), (0.315, 0.029)], M["Olive"], 8, at=(0, 0, B), turn=math.pi / 8, smooth=False))
+    flat = 0.0335 * math.cos(math.pi / 8)  # its flat faces' distance from the axis
+    for y in (0.142, 0.162, 0.182, 0.202, 0.222, 0.242, 0.262, 0.282):
+        barrel.append(block("rib", -0.0105, 0.0105, y, y + 0.008, B + flat - 0.0005, B + flat + 0.0028, M["Olive"], 0.0007))
+    for s in (-1, 1):
+        for y in (0.15, 0.2, 0.25):
+            barrel.append(block("slot", s * (flat + 0.0001) - 0.00025, s * (flat + 0.0001) + 0.00025, y, y + 0.034, B - 0.0045, B + 0.0045, M["Dark"], 0.0))
+    y0, y1 = 0.31 + DY, 0.35 + DY
+    front = [(y1, 0.036)]
+    for z in (0.024, 0.004, -0.016, -0.034):  # a finger's groove, then a ridge between it and the next
+        front += [(y1 - 0.0025, z + 0.004), (y1 - 0.0028, z - 0.003), (y1 + 0.0004, z - 0.0085)]
+    front += [(y1 + 0.003, -0.058), (y1 + 0.004, -0.066), (y1 - 0.002, -0.07)]
+    barrel.append(prism("fgrip", front + [(y0 - 0.002, -0.07), (y0 - 0.004, -0.066), (y0 + 0.004, -0.058), (y0 + 0.002, 0.0), (y0, 0.036)], 0.014,
+                        M["Polymer"], 0.0035, 2))
+    barrel.append(block("fmount", -0.015, 0.015, 0.30 + DY, 0.36 + DY, B - 0.04, B - 0.03, M["Dark"], 0.002))
+    # The front sight on the muzzle ring: a blade with a bead on its top (the line of sight), between two ears.
+    barrel.append(block("fbase", -0.0065, 0.0065, 0.374, 0.39, B + 0.029, B + 0.034, M["Steel"], 0.001))
+    barrel.append(block("fpost", -0.0012, 0.0012, 0.38, 0.384, B + 0.032, B + 0.046, M["Dark"], 0.0003))
+    barrel.append(lathe("bead", [(B + 0.0448, 0.0), (B + 0.0452, 0.0016), (B + 0.047, 0.0019), (B + 0.0488, 0.0016), (B + 0.0492, 0.0)], M["Brass"], 10,
+                        at=(0, 0.382, 0), axis="z"))
+    for s in (-1, 1):
+        barrel.append(prism("ear", [(0.375, B + 0.032), (0.389, B + 0.032), (0.386, B + 0.05), (0.378, B + 0.05)], 0.001, M["Steel"], 0.0003,
+                            x=s * 0.0055))
+    # The leaf sight, folded up: its hinge on a base on the barrel, a ladder frame you see through, range marks up
+    # its right rail, and a ring to look through (a wide one: it is seen at arm's length) on the line of sight.
+    SY, SZ = 0.098, B + 0.048
+    barrel.append(block("lbase", -0.0095, 0.0095, 0.087, 0.11, B + 0.025, B + 0.031, M["Dark"], 0.0008))
+    barrel.append(sweep("lhinge", [(-0.0095, SY, B + 0.0325), (0.0095, SY, B + 0.0325)], [0.0022, 0.0022], M["Steel"], 8, tip=False))
+    for s in (-1, 1):
+        barrel.append(block("rail", s * 0.0078 - 0.0012, s * 0.0078 + 0.0012, SY - 0.0018, SY + 0.0018, B + 0.031, B + 0.07, M["Dark"], 0.0003))
+    for z in (B + 0.034, B + 0.068):
+        barrel.append(block("rung", -0.009, 0.009, SY - 0.0016, SY + 0.0016, z - 0.0018, z + 0.0018, M["Dark"], 0.0003))
+    for k in range(6):
+        z = B + 0.039 + k * 0.0052
+        barrel.append(block("mark", 0.0066, 0.0084 if k % 2 else 0.0090, SY - 0.0022, SY - 0.0018, z - 0.0004, z + 0.0004, M["Dot"], 0.0))
     barrel.append(lathe("ring", [(SY - 0.002, 0.0042), (SY + 0.002, 0.0042), (SY + 0.002, 0.0068), (SY - 0.002, 0.0068), (SY - 0.002, 0.0042)],
                         M["Dark"], 16, at=(0, 0, SZ), caps=(False, False), inside=True, smooth=False))
     for s in (-1, 1):
         barrel.append(block("arm", min(s * 0.0064, s * 0.0076), max(s * 0.0064, s * 0.0076), SY - 0.0015, SY + 0.0015, SZ - 0.0012, SZ + 0.0012, M["Dark"], 0.0002))
-    # The round in the chamber (it moves: gone with the shot, and the hand brings a new one): its case, a band,
-    # the rounded head.
-    round_ = [lathe("case", [(0.06, 0.0196), (0.066, 0.0196), (0.067, 0.0188), (0.104, 0.0188)], M["Steel"], 16, at=(0, 0, B)),
-              lathe("rband", [(0.104, 0.0194), (0.11, 0.0194)], M["Brass"], 16, at=(0, 0, B), smooth=False),
-              lathe("head", [(0.11, 0.0188), (0.14, 0.0188), (0.152, 0.016), (0.162, 0.0105), (0.168, 0.004), (0.169, 0.0)], M["Warhead"], 16, at=(0, 0, B)),
-              disc("primer", 0.0045, M["Brass"], (0, 0.0598, B), -1, 10)]
+    # The round in the chamber (it moves: gone with the shot, and the hand brings a new one): a brass rim at its back
+    # (it shows in the open breech), the case, a driving band, and the domed head.
+    dome = [(0.13 + 0.019 * math.sin(math.radians(a)), 0.0188 * math.cos(math.radians(a))) for a in range(0, 91, 15)]
+    round_ = [lathe("rim", [(0.0598, 0.0), (0.0598, 0.0203), (0.0632, 0.0203), (0.0636, 0.0186)], M["Brass"], 18, at=(0, 0, B), smooth=False),
+              lathe("case", [(0.0636, 0.0186), (0.066, 0.0188), (0.103, 0.0188), (0.104, 0.0)], M["Steel"], 18, at=(0, 0, B)),
+              lathe("rband", [(0.103, 0.0194), (0.109, 0.0194)], M["Brass"], 18, at=(0, 0, B), smooth=False),
+              lathe("head", [(0.109, 0.0188)] + dome, M["Warhead"], 18, at=(0, 0, B)),
+              disc("primer", 0.0045, M["Brass"], (0, 0.0596, B), -1, 10)]
     # Paintball's kit: an air tank strapped to the stock's left, and three paint balloons in a tray on its right.
-    ty0, ty1, tr, tx, tz = -0.255, -0.115, 0.0145, -0.036, -0.018
+    ty0, ty1, tr, tx, tz = -0.255, -0.115, 0.0145, -0.037, -0.018
     kit = [lathe("tank", [(ty0, 0), (ty0 + tr * 0.3, tr * 0.7), (ty0 + tr * 0.9, tr), (ty1 - tr * 0.9, tr), (ty1 - tr * 0.3, tr * 0.7), (ty1, 0)],
                  M["Tank"], 14, at=(tx, 0, tz)),
            lathe("reg", [(ty1 - tr * 1.6, tr * 1.08), (ty1 - tr * 0.6, tr * 1.08)], M["KitTrim"], 14, at=(tx, 0, tz))]
     for y in (-0.225, -0.165):
-        kit.append(block("strap", tx, -0.0175, y, y + 0.012, tz - 0.009, tz + 0.009, M["KitTrim"], 0.001))
-    kit.append(block("tray", 0.017, 0.022, -0.235, -0.105, B - 0.05, B - 0.01, M["KitTrim"], 0.002))
+        kit.append(block("strap", tx, -0.015, y, y + 0.012, tz - 0.009, tz + 0.009, M["KitTrim"], 0.001))
+    kit.append(block("tray", 0.0185, 0.0235, -0.235, -0.105, B - 0.05, B - 0.012, M["KitTrim"], 0.002))
     for y in (-0.21, -0.17, -0.13):
         kit.append(lathe("balloon", [(-0.019, 0.0), (-0.016, 0.009), (-0.006, 0.0165), (0.006, 0.0165), (0.015, 0.011), (0.02, 0.0)], M["Hopper"], 12,
-                         at=(0.0385, y, B - 0.03), axis="z", squash=1.0))
+                         at=(0.04, y, B - 0.031), axis="z", squash=1.0))
     gw = Wrap((0, -0.015, -0.002), (0, -0.018, -0.1), (0, 1, 0), 0.021, 0.0148)
     right = hand("launcher_handR", gw,
                  [(0.032, 70, -1, 0.09, 0.0098, 0.0), (0.052, 72, -1, 0.086, 0.0094, 0.0), (0.071, 76, -1, 0.07, 0.0086, 0.0)],
