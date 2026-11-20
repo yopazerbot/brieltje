@@ -425,6 +425,8 @@ export class Weather {
     const wa = windOf(pair.a, depth), wb = windOf(pair.b, depth);
     const wk = (i: number) => wa[i] + (wb[i] - wa[i]) * pair.k;
     windStep(Date.now() + (this.server !== null ? this.serverOffset : 0), wk(0), wk(1), wk(2), wk(3));
+    // Under a grey sky, cloud decks drifting with that wind instead of a flat white; darker in the rain (world/sky.ts).
+    environment.sky?.setClouds(this.now.overcast * (1 - this.now.night), this.now.rain, dt);
 
     // Wet: on Auto as the cycle has it (the same on every page); else towards the mood's, quickly up, slowly dry.
     const want = blendLook(this.tmp, LOOKS[pair.a], LOOKS[pair.b], pair.k).wet;
