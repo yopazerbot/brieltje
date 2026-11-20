@@ -208,6 +208,9 @@ const CARS = shared('car.json'); // the cars: where each is parked, its size and
 const PLACED = CARS.placed;
 /** A car's size and speeds: its own, or for a placed one its kind's base car's. */
 const carSpec = (car) => CARS.cars[car.id] ?? CARS.cars[PLACED.kinds[car.kind]?.base] ?? truckSpec(car.kind); // Attack and defend's spawn truck (shared/assaultFields.mjs)
+// A car's look (`dent`, src/world/carDamage.ts): eight zones round it and its mud, and how often its driver may change it.
+const DENT_LENGTH = 9;
+const DENT_MS = 800;
 const TESLA_MS = 400; // ms: at most one place, move or removal this often per player
 const BIKES = shared('bike.json'); // the bikes: where each stands, its size and top speed (src/world/bike.ts)
 const BELL_MS = 400; // ms: a rider's bell rings for the others at most this often
@@ -384,7 +387,7 @@ const ROOM_REFUSED = new Set(['furn', 'tesla', 'clown', 'rules', 'mood', 'moodsk
  * when a type Game.handle reads is in neither list.
  */
 export const HELI_REFUSED = new Set(['hit', 'rocket', 'nade', 'boom', 'shot', 'crack', 'vil', 'cat', 'clownhit', 'zhit', 'zitem', 'zbuy', 'revive', 'pickup', 'coin', 'tag', 'kickball',
-  'glass', 'door', 'furn', 'tesla', 'clown', 'claymore', 'turret', 'stakes', 'placement', 'car', 'horse', 'bike', 'bell', 'spawn', 'chute', 'unstuck', 'vhit', 'asup', 'sphit', 'gl']);
+  'glass', 'door', 'furn', 'tesla', 'clown', 'claymore', 'turret', 'stakes', 'placement', 'car', 'dent', 'horse', 'bike', 'bell', 'spawn', 'chute', 'unstuck', 'vhit', 'asup', 'sphit', 'gl']);
 
 /** The ids a `door` message may carry: the house data's and the end house's door ids (letters, digits, dots and dashes), at most 40 characters. */
 export const DOOR_ID = /^[A-Za-z0-9.-]{1,40}$/;
@@ -1318,6 +1321,17 @@ export class Game {
       }
       if (m.op === 'in' && Object.hasOwn(this.cars, m.id)) this.enterCar(name, player, this.cars[m.id]);
       else if (m.op === 'out') this.releaseCar(name);
+    } else if (m.t === 'dent') {
+      // A car's dents, scratches and mud as its driver's page shows them (src/world/carDamage.ts): only its driver, at
+      // most every DENT_MS, exactly DENT_LENGTH whole numbers 0 to 15, kept as a copy and passed on as the car's look.
+      // Nothing on the server reads it (no hit, no speed, no seat): it is how the car looks to the others, nothing more.
+      const car = this.carOf(name);
+      if (!car || car.driver !== name || now < (player.nextDent || 0)) return;
+      if (!Array.isArray(m.dm) || m.dm.length !== DENT_LENGTH || !m.dm.every((v) => Number.isInteger(v) && v >= 0 && v <= 15)) return;
+      player.nextDent = now + DENT_MS;
+      if (car.dm && car.dm.every((v, i) => v === m.dm[i])) return;
+      car.dm = m.dm.slice();
+      this.broadcastThing({ t: 'car', car }, 'car', car);
     } else if (m.t === 'tesla') {
       this.placeCar(name, player, m, now).catch((e) => console.error('tesla failed', String(e)));
     } else if (m.t === 'horse') {
