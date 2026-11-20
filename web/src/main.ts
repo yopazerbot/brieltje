@@ -5110,6 +5110,9 @@ if (import.meta.env.DEV) {
       horses,
       clowns,
       zombies,
+      /** The brook spirit's look alone at its grove (dev/spiritInWorld.ts): spiritLook({ open: 1 }), spiritLook({ remove: true }). */
+      spiritLook: (o?: import('./dev/spiritInWorld').SpiritInWorld) =>
+        import('./dev/spiritInWorld').then((m) => m.standSpirit({ scene, camera, renderer, ground: (x, z) => world.groundAt(x, z, 200, 0).y }, o)),
       aimAssist,
       villagers,
       christmas,

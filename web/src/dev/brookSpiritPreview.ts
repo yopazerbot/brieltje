@@ -279,7 +279,7 @@ applyTime();
 applyLook();
 requestAnimationFrame(frame);
 
-loadBrookSpirit().then((model) => {
+loadBrookSpirit(undefined, renderer).then((model) => {
   if (!model) {
     stats.textContent = 'The model did not load (npm run dev in web/, and public/models/brook-spirit.glb).';
     return;
