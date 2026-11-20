@@ -32,8 +32,55 @@ import { reflectionSkips } from './reflections';
  */
 
 const CELL = 16;
-/** Plants per square metre of the woods' floor, before the sparser presets thin them. */
-const DENSITY = 0.3;
+/**
+ * What stands where, as the big open-world games lay out a forest's floor: a map of density per kind, each candidate
+ * point kept or dropped by it, the kinds in layers that answer to each other. On average per square metre as before
+ * (about 0.13 bracken, 0.03 bramble, 0.045 shrub, 0.0075 fallen wood), but clumped: bracken in stands of a few to a
+ * few tens of metres (a third of the floor) with leaf litter between them, brambles where the light comes in, shrubs
+ * in twos and threes.
+ */
+const BRACKEN_TRIES = 115;
+/** The chance a bracken candidate between the stands is kept anyway */
+const STRAY = 0.03;
+const BRAMBLE_TRIES = 65;
+/** Groups of shrubs per square, on average (two or three shrubs each) */
+const SHRUB_GROUPS = 4.6;
+const WOOD_TRIES = 2;
+/** Numbers per plant in a square's list: x, y, z, kind, size, turn, colour, rank, look (how deep in its stand) */
+const STRIDE = 9;
+
+/** A number from 0 to 1 per corner of a grid of 1, the same everywhere for everyone. */
+function hash2(ix: number, iz: number): number {
+  let h = (Math.imul(ix, 374761393) + Math.imul(iz, 668265263)) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  h ^= h >>> 16;
+  return (h >>> 0) / 4294967295;
+}
+
+/** Smooth value noise from 0 to 1, features about 1 apart. */
+function noise(x: number, z: number): number {
+  const ix = Math.floor(x);
+  const iz = Math.floor(z);
+  const fx = x - ix;
+  const fz = z - iz;
+  const sx = fx * fx * (3 - 2 * fx);
+  const sz = fz * fz * (3 - 2 * fz);
+  const a = hash2(ix, iz);
+  const b = hash2(ix + 1, iz);
+  const c = hash2(ix, iz + 1);
+  const d = hash2(ix + 1, iz + 1);
+  return a + (b - a) * sx + (c - a) * sz + (a - b - c + d) * sx * sz;
+}
+
+function smooth(e0: number, e1: number, v: number): number {
+  const t = Math.min(1, Math.max(0, (v - e0) / (e1 - e0)));
+  return t * t * (3 - 2 * t);
+}
+
+/** How much a spot lies in a bracken stand, 0 to 1: stands of about 26 m with ragged edges, a third of the floor. */
+function standAt(x: number, z: number): number {
+  return smooth(0.55, 0.65, 0.65 * noise(x / 26, z / 26) + 0.35 * noise(x / 9 + 17.3, z / 9 - 4.1));
+}
 /** Metres a plant keeps from a trunk. */
 const TRUNK = 0.8;
 const enum Kind {
@@ -186,11 +233,35 @@ const MODELS: Record<Kind, [string, number][]> = {
 const TINTS = ['#ffffff', '#f2ebe2', '#fff8ee', '#e6e2dc', '#f8f0dc'].map((c) => new THREE.Color(c));
 /** Near copies of each kind at most (within NEAR of the eye). */
 const NEAR_CAPACITY = [500, 160, 220, 40];
+/** Triangles of all near copies together, per preset (High and Ultra, Medium, Low and phones). */
+const NEAR_TRIS = { high: 160_000, medium: 85_000, low: 25_000 };
 
 /** One instanced mesh of the models: a kind's variant, near or far. */
 interface Planted {
   mesh: THREE.InstancedMesh;
   count: number;
+  /** Triangles of one copy */
+  tris: number;
+}
+
+/** A plant gathered round the eye: its square's list and place in it, its model, its distance squared, near or far. */
+interface Gathered {
+  list: Float32Array;
+  k: number;
+  v: number;
+  d2: number;
+  near: boolean;
+}
+
+/**
+ * Which model a plant is, from its own number: for bracken also by how deep in its stand it stands (`look`): more
+ * collapsed fronds at a stand's ragged edge and between stands, more standing and arching ones in its middle.
+ */
+function variant(kind: Kind, colour: number, look: number): number {
+  const shares = kind !== Kind.Fern ? MODELS[kind].map(([, share]) => share) : look > 0.6 ? [0.25, 0.55, 0.2] : look > 0.15 ? [0.15, 0.35, 0.5] : [0.1, 0.3, 0.6];
+  let v = 0;
+  for (let pick = colour; v < shares.length - 1 && pick >= shares[v]; v++) pick -= shares[v];
+  return v;
 }
 
 export class Undergrowth {
@@ -219,6 +290,9 @@ export class Undergrowth {
   private planted: Planted[][][] | null = null;
   /** Metres from the eye within which the near models stand */
   private near = 12;
+  /** Triangles the near models may take in all: the nearest plants get them first */
+  private nearBudget = NEAR_TRIS.high;
+  private gathered: Gathered[] = [];
 
   constructor(shade?: GroundShadeUniforms) {
     const geometries = [fernGeometry(), lumpGeometry(1.3, 0.75, 0.2), lumpGeometry(4.1, 1.2, 0.5), branchGeometry()];
@@ -308,7 +382,7 @@ export class Undergrowth {
           mesh.raycast = () => {};
           mesh.name = `undergrowth ${MODELS[k as Kind][v][0]} ${lod ? 'far' : 'near'}`;
           this.group.add(mesh);
-          return { mesh, count: 0 };
+          return { mesh, count: 0, tris: g.index ? g.index.count / 3 : g.getAttribute('position').count / 3 };
         }),
       ),
     );
@@ -450,6 +524,7 @@ export class Undergrowth {
     this.share = low ? 0.5 : quality === 'medium' ? 0.75 : 1;
     // The near models within a dozen metres (Medium ten); on Low and phones only those at your feet.
     this.near = low ? 5 : quality === 'medium' ? 10 : 12;
+    this.nearBudget = low ? NEAR_TRIS.low : quality === 'medium' ? NEAR_TRIS.medium : NEAR_TRIS.high;
     this.reachUniform.value = this.reach;
     this.last.set(Infinity, 0, 0);
     // The brambles and shrubs follow the trees: leaf cards or lumps (the constructor's watchCards).
@@ -474,24 +549,79 @@ export class Undergrowth {
       const rand = () => ((s = (s * 16807) % 2147483647) / 2147483647);
       const near: [number, number][] = [];
       for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) near.push(...(this.trunks.get(`${i + a},${j + b}`) ?? []));
-      const n = Math.round(CELL * CELL * DENSITY);
-      for (let k = 0; k < n; k++) {
+      // Open ground near: the wood's edge, a path, a clearing (any spot 6 m off that is no wood floor), on a grid of 4 m.
+      const open = new Array<boolean>(25);
+      const floorAt = (x: number, z: number) =>
+        (this.woodAt.get(`${Math.floor(x / 64)},${Math.floor(z / 64)}`) ?? []).some((w) => inside(x, z, w.rings)) &&
+        !(this.bare.get(`${Math.floor(x / 64)},${Math.floor(z / 64)}`) ?? []).some((b) => x > b.box[0] && x < b.box[2] && z > b.box[1] && z < b.box[3] && inside(x, z, b.rings));
+      const openNear = (x: number, z: number) => {
+        const g = Math.min(4, Math.round((x - x0) / 4)) * 5 + Math.min(4, Math.round((z - z0) / 4));
+        if (open[g] === undefined) {
+          const gx = x0 + Math.floor(g / 5) * 4;
+          const gz = z0 + (g % 5) * 4;
+          open[g] = !floorAt(gx + 6, gz) || !floorAt(gx - 6, gz) || !floorAt(gx, gz + 6) || !floorAt(gx, gz - 6);
+        }
+        return open[g];
+      };
+      // One candidate: on the wood's floor, off the trunks, not on paving, gravel, a terrace, a path or in a building.
+      const plant = (kind: Kind, x: number, z: number, size: number, turn: number, colour: number, rank: number, look: number) => {
+        if (x < x0 || x >= x0 + CELL || z < z0 || z >= z0 + CELL) return;
+        const wood = woods.find((w) => inside(x, z, w.rings));
+        if (!wood || near.some(([tx, tz]) => Math.hypot(tx - x, tz - z) < TRUNK)) return;
+        if (bare.some((b) => x > b.box[0] - 0.6 && x < b.box[2] + 0.6 && z > b.box[1] - 0.6 && z < b.box[3] + 0.6 && overArea(x, z, b.rings))) return;
+        out.push(x, terrain.height(x, z) + wood.y, z, kind, size, turn, colour, rank, look);
+      };
+      // Bracken in stands: the stand map (standAt) says how likely each candidate is kept, several times today's
+      // average inside a stand, a stray frond between them.
+      for (let k = 0; k < BRACKEN_TRIES; k++) {
         const x = x0 + rand() * CELL;
         const z = z0 + rand() * CELL;
-        const roll = rand();
+        const keep = rand();
         const size = rand();
         const turn = rand() * Math.PI * 2;
         const colour = rand();
         const rank = rand();
-        const wood = woods.find((w) => inside(x, z, w.rings));
-        if (!wood || near.some(([tx, tz]) => Math.hypot(tx - x, tz - z) < TRUNK)) continue;
-        // Nothing on paving, gravel, a terrace, a path or in a building, though the wood's outline runs over it.
-        if (bare.some((b) => x > b.box[0] - 0.6 && x < b.box[2] + 0.6 && z > b.box[1] - 0.6 && z < b.box[3] + 0.6 && overArea(x, z, b.rings))) continue;
-        // Ferns in patches, brambles in thickets: a slow wave over the floor says where each grows best.
-        const patch = 0.5 + 0.5 * Math.sin(x * 0.19 + z * 0.07) * Math.sin(z * 0.23 - x * 0.05);
-        const kind = roll < 0.6 ? (patch > 0.3 ? Kind.Fern : -1) : roll < 0.78 ? (patch < 0.6 ? Kind.Bramble : -1) : roll < 0.93 ? Kind.Shrub : roll < 0.955 ? Kind.Branch : -1;
-        if (kind < 0) continue;
-        out.push(x, terrain.height(x, z) + wood.y, z, kind, size, turn, colour, rank);
+        const stand = standAt(x, z);
+        if (keep < Math.max(stand, STRAY)) plant(Kind.Fern, x, z, size, turn, colour, rank, stand);
+      }
+      // Brambles where there is light: along the wood's edges, its paths and clearings, and where no trunk stands
+      // within 5 m; in thickets (a second, finer map), and seldom inside a bracken stand.
+      for (let k = 0; k < BRAMBLE_TRIES; k++) {
+        const x = x0 + rand() * CELL;
+        const z = z0 + rand() * CELL;
+        const keep = rand();
+        const size = rand();
+        const turn = rand() * Math.PI * 2;
+        const colour = rand();
+        const rank = rand();
+        if (keep > 0.6) continue; // most candidates go before the tests below, which cost more
+        const light = openNear(x, z) ? 1 : near.some(([tx, tz]) => Math.hypot(tx - x, tz - z) < 5) ? 0.06 : 0.45;
+        const thicket = 0.35 + 0.65 * smooth(0.35, 0.65, noise(x / 7 - 31.7, z / 7 + 12.9));
+        if (keep < 0.6 * light * thicket * (1 - 0.8 * standAt(x, z))) plant(Kind.Bramble, x, z, size, turn, colour, rank, 0);
+      }
+      // Shrubs in twos and threes, one kind to a group (the group's own number picks it).
+      const groups = Math.floor(SHRUB_GROUPS + rand());
+      for (let g = 0; g < groups; g++) {
+        const cx = x0 + rand() * CELL;
+        const cz = z0 + rand() * CELL;
+        const colour = rand();
+        const members = 2 + (rand() < 0.5 ? 1 : 0);
+        for (let k = 0; k < members; k++) {
+          const a = rand() * Math.PI * 2;
+          const r = k ? 0.8 + rand() * 0.9 : 0;
+          plant(Kind.Shrub, cx + Math.cos(a) * r, cz + Math.sin(a) * r, rand(), rand() * Math.PI * 2, colour, rand(), rand());
+        }
+      }
+      // The odd fallen branch, log or stump, anywhere.
+      for (let k = 0; k < WOOD_TRIES; k++) {
+        const x = x0 + rand() * CELL;
+        const z = z0 + rand() * CELL;
+        const keep = rand();
+        const size = rand();
+        const turn = rand() * Math.PI * 2;
+        const colour = rand();
+        const rank = rand();
+        if (keep < 0.95) plant(Kind.Branch, x, z, size, turn, colour, rank, 0);
       }
     }
     list = new Float32Array(out);
@@ -513,6 +643,9 @@ export class Undergrowth {
     const at = new THREE.Vector3();
     const scale = new THREE.Vector3();
     const reach2 = this.reach * this.reach;
+    const near2 = this.near * this.near;
+    const gathered = this.gathered;
+    gathered.length = 0;
     if (above < this.reach) {
       const r = Math.ceil(this.reach / CELL);
       const ci = Math.floor(eye.x / CELL);
@@ -520,30 +653,20 @@ export class Undergrowth {
       for (let i = ci - r; i <= ci + r; i++) {
         for (let j = cj - r; j <= cj + r; j++) {
           const list = this.square(i, j);
-          for (let k = 0; k < list.length; k += 8) {
+          for (let k = 0; k < list.length; k += STRIDE) {
             const kind = list[k + 3];
             if (list[k + 7] > this.share || counts[kind] >= CAPACITY[kind]) continue;
             const dx = list[k] - eye.x;
             const dz = list[k + 2] - eye.z;
-            if (dx * dx + dz * dz > reach2) continue;
+            const d2 = dx * dx + dz * dz;
+            if (d2 > reach2) continue;
             const size = list[k + 4];
             q.setFromAxisAngle(up, list[k + 5]);
             at.set(list[k], list[k + 1], list[k + 2]);
             const colour = list[k + 6];
             if (this.planted) {
-              // The models, at their own sizes: which one and its tint from the plant's own number, near or far by
-              // the distance.
-              let v = 0;
-              for (let pick = colour; v < MODELS[kind as Kind].length - 1 && pick >= MODELS[kind as Kind][v][1]; v++) pick -= MODELS[kind as Kind][v][1];
-              const pair = this.planted[kind][v];
-              const slot = dx * dx + dz * dz < this.near * this.near && pair[0].count < NEAR_CAPACITY[kind] ? pair[0] : pair[1];
-              if (kind === Kind.Fern) scale.setScalar(0.95 + size * 0.55);
-              else if (kind === Kind.Bramble) scale.set(0.85 + size * 0.4, 0.8 + size * 0.35, 0.85 + size * 0.4);
-              else if (kind === Kind.Shrub) scale.setScalar(0.8 + size * 0.45);
-              else scale.setScalar(0.75 + size * 0.5);
-              slot.mesh.setMatrixAt(slot.count, m.compose(at, q, scale));
-              slot.mesh.setColorAt(slot.count, TINTS[Math.floor(((colour * 977) % 1) * TINTS.length)]);
-              slot.count++;
+              // The models: gathered first, then the nearest made near models while the near budget lasts.
+              gathered.push({ list, k, v: variant(kind, colour, list[k + 8]), d2, near: false });
               counts[kind]++;
               continue;
             }
@@ -558,6 +681,40 @@ export class Undergrowth {
             counts[kind]++;
           }
         }
+      }
+    }
+    if (this.planted) {
+      // The near models for the nearest plants, until the preset's budget of triangles is spent: in a dense stand
+      // at your feet the near ring is a little shorter, never thinner.
+      const nearest = gathered.filter((p) => p.d2 < near2).sort((a, b) => a.d2 - b.d2);
+      let budget = this.nearBudget;
+      for (const p of nearest) {
+        const slot = this.planted[p.list[p.k + 3]][p.v][0];
+        if (slot.tris > budget) break;
+        if (slot.count >= NEAR_CAPACITY[p.list[p.k + 3]]) continue;
+        budget -= slot.tris;
+        slot.count++;
+        p.near = true;
+      }
+      for (const kind of this.planted) for (const pair of kind) pair[0].count = 0;
+      const lean = new THREE.Quaternion();
+      const side = new THREE.Vector3(1, 0, 0);
+      for (const { list, k, v, near } of gathered) {
+        const kind = list[k + 3] as Kind;
+        const slot = this.planted[kind][v][near ? 0 : 1];
+        const size = list[k + 4];
+        const colour = list[k + 6];
+        // Sizes vary more than before, and each leans a little its own way: a stand reads as one mass, not copies.
+        if (kind === Kind.Fern) scale.setScalar(0.85 + size * 0.65);
+        else if (kind === Kind.Bramble) scale.set(0.85 + size * 0.4, 0.8 + size * 0.35, 0.85 + size * 0.4);
+        else if (kind === Kind.Shrub) scale.setScalar(0.8 + size * 0.45);
+        else scale.setScalar(0.75 + size * 0.5);
+        q.setFromAxisAngle(up, list[k + 5]);
+        if (kind !== Kind.Branch) q.multiply(lean.setFromAxisAngle(side, (((colour * 313) % 1) - 0.5) * 0.3));
+        at.set(list[k], list[k + 1], list[k + 2]);
+        slot.mesh.setMatrixAt(slot.count, m.compose(at, q, scale));
+        slot.mesh.setColorAt(slot.count, TINTS[Math.floor(((colour * 977 + size * 31) % 1) * TINTS.length)]);
+        slot.count++;
       }
     }
     const show = (mesh: THREE.InstancedMesh, count: number) => {
