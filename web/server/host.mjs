@@ -246,7 +246,7 @@ export class Host {
     if (this.actions.length >= 10) return { error: 'Slow down', code: 'tooFast' };
     this.actions.push(now);
     const op = str(b?.op, 20);
-    const name = str(b?.name, 20);
+    const name = this.resolve(str(b?.name, 20));
     const known = (n) => this.game.players.has(n) && !this.game.players.get(n).guard; // a guard (server/flagGuards.mjs) is no one to mute, move or kick
     const g = this.game;
     switch (op) {
@@ -370,6 +370,21 @@ export class Host {
       default:
         return { error: 'Unknown action', code: 'badOp' };
     }
+  }
+
+  /**
+   * The name an action of the host means, however it is typed ("Uil" for uil): the name as kept when someone here or
+   * knocking has it, else the one name among them that differs from it only in case, else the typed name in lower case
+   * (as every login keeps a name: server/auth.mjs NAME_RE; letting someone in before they knock). Two names here that
+   * differ only in case (none can, today) would both match: then neither does, never the wrong player. A flag game's
+   * guard (server/flagGuards.mjs, names with capitals) is nobody's match.
+   */
+  resolve(name) {
+    const all = new Set([...[...this.game.players.entries()].filter(([, p]) => !p.guard).map(([n]) => n), ...this.knocking.keys()]);
+    if (!name || all.has(name)) return name;
+    const low = name.toLowerCase();
+    const hits = [...all].filter((n) => n.toLowerCase() === low);
+    return hits.length === 1 ? hits[0] : hits.length ? '' : low;
   }
 
   /**
