@@ -33,6 +33,14 @@ export interface Preset {
    */
   shadowReach: number;
   /**
+   * The far shadow map round it (world/sunShadow.ts `far`): metres from its middle to its side (0: none), its size
+   * in texels, and every how many frames it is drawn. What moves and the street's furniture throw the sun's shadow
+   * this far out; beyond it the ground's bake (world/groundShade.ts) and the figures' soft shadows (world/figureShadows.ts).
+   */
+  shadowFar: number;
+  shadowFarMap: 1024 | 2048 | 4096;
+  shadowFarEvery: number;
+  /**
    * The glow round bright light (lamps and lit windows at night, the sun's glints, muzzle flashes, portals):
    * worked out at a half (2) or a quarter (4) of the resolution, 0 for none (src/bloom.ts).
    */
@@ -50,10 +58,10 @@ export interface Preset {
 }
 
 export const PRESETS: Record<Quality, Preset> = {
-  low: { label: 'Low', scale: 0.55, ao: 'off', shadowMap: 1024, shadowSoft: 1, shadowReach: 0, bloom: 0, smaa: false, anisotropy: 1, far: 550 },
-  medium: { label: 'Medium', scale: 0.8, ao: 'off', shadowMap: 2048, shadowSoft: 1.5, shadowReach: 22, bloom: 4, smaa: true, anisotropy: 2, far: 725 },
-  high: { label: 'High', scale: 1, ao: 'half', shadowMap: 2048, shadowSoft: 2.5, shadowReach: 26, bloom: 4, smaa: true, anisotropy: 4, far: 725 },
-  ultra: { label: 'Ultra', scale: 1, ao: 'full', shadowMap: 4096, shadowSoft: 5, shadowReach: 36, bloom: 2, smaa: true, anisotropy: 8, far: 725 },
+  low: { label: 'Low', scale: 0.55, ao: 'off', shadowMap: 1024, shadowSoft: 1, shadowReach: 0, shadowFar: 0, shadowFarMap: 1024, shadowFarEvery: 1, bloom: 0, smaa: false, anisotropy: 1, far: 550 },
+  medium: { label: 'Medium', scale: 0.8, ao: 'off', shadowMap: 2048, shadowSoft: 1.5, shadowReach: 22, shadowFar: 60, shadowFarMap: 1024, shadowFarEvery: 2, bloom: 4, smaa: true, anisotropy: 2, far: 725 },
+  high: { label: 'High', scale: 1, ao: 'half', shadowMap: 2048, shadowSoft: 2.5, shadowReach: 26, shadowFar: 100, shadowFarMap: 2048, shadowFarEvery: 2, bloom: 4, smaa: true, anisotropy: 4, far: 725 },
+  ultra: { label: 'Ultra', scale: 1, ao: 'full', shadowMap: 4096, shadowSoft: 5, shadowReach: 36, shadowFar: 120, shadowFarMap: 2048, shadowFarEvery: 2, bloom: 2, smaa: true, anisotropy: 8, far: 725 },
 };
 /** A phone or tablet's draw distance, whatever the preset. */
 export const FAR_PHONE = 450;

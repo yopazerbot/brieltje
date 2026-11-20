@@ -250,7 +250,8 @@ sun.shadow.normalBias = 0.025;
 castLayers(renderer, [SHADOW_LAYER, CAST_LAYER]); // the shadow-only stand-ins (world/tiles.ts): the near trees' lighter crowns, trunks, posts
 scene.add(sun, sun.target);
 // Where its shadow map lies: on the house (Low), or following the eye (Medium and up; world/sunShadow.ts).
-const sunShadow = new SunShadow(sun, center);
+const sunShadow = new SunShadow(sun, center, renderer);
+scene.add(sunShadow.far, sunShadow.far.target); // the far shadow map's light, right after the sun (light 1)
 // The photographed sky is empty below the horizon, so add the light that
 // bounces off the ground and floors (it is what lights ceilings).
 const hemi = new THREE.HemisphereLight('#dfe9f5', '#b9a487', 0.9);
@@ -709,7 +710,7 @@ function placeShadow(): void {
   sunShadow.update(camera);
   tiles.shadowAt(sunShadow.middle.x, sunShadow.middle.z, sunShadow.follows);
   renderer.shadowMap.autoUpdate = false;
-  if (sunShadow.follows || camera.position.distanceTo(center) < 250) renderer.shadowMap.needsUpdate = true;
+  if (sunShadow.follows || sunShadow.farDue || camera.position.distanceTo(center) < 250) renderer.shadowMap.needsUpdate = true;
 }
 
 function applyQuality(q: Quality): void {
@@ -728,7 +729,7 @@ function applyQuality(q: Quality): void {
     // shadow drew nothing (Auto dropping a preset in the village emptied the screen).
     renderer.shadowMap.needsUpdate = true;
   }
-  sunShadow.setup(preset.shadowReach, preset.shadowMap);
+  sunShadow.setup(preset.shadowReach, preset.shadowMap, phone ? 0 : preset.shadowFar, preset.shadowFarMap, preset.shadowFarEvery); // no far map on phones
   placeShadow();
   bloom.setDivisor(preset.bloom);
   setAnisotropy(preset.anisotropy);
