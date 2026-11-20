@@ -273,7 +273,18 @@ class Mesh {
     g.setAttribute('color', new THREE.BufferAttribute(new Uint8Array(this.col), 3, true));
     g.setIndex(this.idx);
     g.computeVertexNormals();
-    return solidNormals(g); // some of the strips' triangles have no area (world/normals.ts)
+    solidNormals(g); // some of the strips' triangles have no area (world/normals.ts)
+    // The upright faces (a kerb's, a step's, their ends) lit as turned 60 degrees up. Such a face is a hand high over
+    // the street, and most of its light is what the sunlit street throws back and the open sky over it; the hemisphere
+    // light gives an upright face neither, and on the side turned from the sun it drew black (a kerb's face 5 % of the
+    // street's brightness, a hard black strip along the road). Turned up, it takes the sky's light as the street does,
+    // and the sun only on the side the sun is on.
+    const n = g.attributes.normal as THREE.BufferAttribute;
+    for (let i = 0; i < n.count; i++) {
+      const h = Math.hypot(n.getX(i), n.getZ(i));
+      if (Math.abs(n.getY(i)) < 0.2 && h > 0) n.setXYZ(i, (n.getX(i) / h) * 0.5, 0.866, (n.getZ(i) / h) * 0.5);
+    }
+    return g;
   }
 }
 
