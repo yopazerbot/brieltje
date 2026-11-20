@@ -43,6 +43,21 @@ export const ZOMBIE: {
   spawnBest: number;
   spawnFar: number;
   spawnMax: number;
+  pulse: number;
+  pulsePer: number;
+  pulseGrow: number;
+  pulseGap: [number, number];
+  gapShrink: number;
+  gapLeast: number;
+  peak: [number, number];
+  calm: number;
+  calmPer: number;
+  rest: number;
+  restMax: number;
+  bigAt: number;
+  stagger: number;
+  groupSpread: number;
+  flank: number;
   runFrom: number;
   runShare: number;
   runGrow: number;
@@ -60,7 +75,6 @@ export function bigOf(n: number): number;
 export function aliveCap(players: number): number;
 export function runnersOf(n: number, size: number): number;
 export function zombieStats(n: number, big: boolean, jitter?: number, runner?: boolean): { speed: number; hp: number; damage: number };
-export function spawnEvery(n: number): number;
 /** ms of the break after wave `n` is beaten (0: the first break before wave 1) */
 export function breakAfter(n: number): number;
 

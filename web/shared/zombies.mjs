@@ -4,7 +4,8 @@
 // The players are one team round the house and the bungalow (shared/bounds.json `party`). Zombies
 // come in waves from all over that area, out of sight, each wave bigger, a little faster and a
 // little tougher than the last, with a break between them (breakAfter: a little longer each wave, to
-// restock at the stall). From wave 3 some of them are
+// restock at the stall). In a wave they come in pulses, groups from two or three sides at once, with
+// peaks and short rests between (Horde.plan). From wave 3 some of them are
 // runners: as fast as you nearly, and fragile. A zombie goes for the nearest player who fights
 // (Action or Paintball), round walls, fences, hedges and the parked cars, and into the houses after
 // them: up their stairs, through their doors (a closed one it shoves open) and through a pane that
@@ -82,6 +83,34 @@ export const ZOMBIE = {
   spawnBest: 15,
   spawnFar: 28,
   spawnMax: 40,
+  /**
+   * The horde's pacing in a wave (Horde.plan, Horde.spawn), as a director in the big co-op games paces theirs: the wave
+   * comes in pulses, groups that come out at once from one to three sides round the players. A pulse brings `pulse`
+   * zombies and `pulsePer` more a player who fights, a share `pulseGrow` more each wave after the first (each pulse a
+   * quarter more or less, by the wave's dice). In a peak of `peak` pulses (the least and the most) one follows the other
+   * `pulseGap` ms on (the least and the most; a share `gapShrink` less each wave after the first, down to `gapLeast` of
+   * it, as the zombies came quicker each wave before the pulses; sooner when the last is beaten); then a short rest: nothing new until at
+   * most `calm` zombies stand (and `calmPer` a player), and then `rest` ms more, or `restMax` ms after the peak however
+   * many still stand. The big ones come as an event, from a side each with an escort, after a rest, once `bigAt` of the
+   * wave is out.
+   */
+  pulse: 3,
+  pulsePer: 0.7,
+  pulseGrow: 0.1,
+  pulseGap: [3500, 6500],
+  gapShrink: 0.05,
+  gapLeast: 0.45,
+  peak: [2, 3],
+  calm: 1,
+  calmPer: 0.3,
+  rest: 1500,
+  restMax: 20000,
+  bigAt: 0.6,
+  /** ms between two zombies of a pulse coming out; m round the first of a side's group that the rest of it comes out in */
+  stagger: 200,
+  groupSpread: 7,
+  /** Two sides of one pulse are at least a quarter turn apart round the players (the cosine of the angle between them at most this) */
+  flank: 0.2,
   /** Runners: from this wave, this share of the wave (a little more each wave, at most `runMax`) */
   runFrom: 3,
   runShare: 0.12,
@@ -221,11 +250,6 @@ export function zombieStats(n, big, jitter = 0.5, runner = false) {
 export function breakAfter(n) {
   if (!(n >= 1)) return ZOMBIE.firstBreak; // 0, negative, NaN, not a number
   return Math.min(ZOMBIE.breakMax, ZOMBIE.break + ZOMBIE.breakStep * Math.floor(n));
-}
-
-/** ms between two zombies coming out: quicker in later waves. */
-export function spawnEvery(n) {
-  return Math.max(250, 900 - 60 * n);
 }
 
 /**
@@ -1238,6 +1262,12 @@ export class Horde {
     this.bigAt = 0;
     this.cap = ZOMBIE.maxAlive;
     this.nextSpawn = 0;
+    /** This wave's pulses (plan): { n, bigs, ways, rest, gap }; the next one's index; the one coming out now; until when a rest may wait for calm (0: none) */
+    this.pulses = [];
+    this.pi = 0;
+    this.cur = null;
+    this.resting = 0;
+    this.hasten = false;
     this.fieldAt = -Infinity;
     /** id -> zombie: { id, kind, x, y, z, node, yaw, speed, top, hp, max, damage, act, actAt, until, struck, next, downAt, target } */
     this.zombies = new Map();
@@ -1346,7 +1376,7 @@ export class Horde {
       // (rehome), it waits for the places where they may come out too, so pick() knows which of them the way from the
       // players reaches: those up to spawnMax, and once pick() looks further (three looks found nothing) those as far
       // as it looks.
-      const due = (this.toSpawn || this.bigs) && standing < this.cap && now + ZOMBIE.fieldEvery >= this.nextSpawn;
+      const due = (this.toSpawn || this.bigs) && standing < this.cap && !this.resting && now + ZOMBIE.fieldEvery >= this.nextSpawn;
       const placing = this.phase === 'wave' && (due || this.lostDue(now));
       if (placing) {
         this.measureSpots(targets);
@@ -1386,11 +1416,51 @@ export class Horde {
     this.toSpawn = waveSize(this.wave, this.players);
     this.runners = runnersOf(this.wave, this.toSpawn);
     this.bigs = bigOf(this.wave);
-    this.bigAt = Math.floor(this.toSpawn * 0.6); // the big ones come once a good part of the wave is out
+    this.bigAt = Math.floor(this.toSpawn * ZOMBIE.bigAt); // the big ones come once a good part of the wave is out
     this.cap = aliveCap(this.players);
     this.nextSpawn = now + 400;
     this.sides.fill(0);
+    this.plan();
     ev.push({ type: 'wave', wave: this.wave, count: this.toSpawn + this.bigs, big: this.bigs > 0, bigs: this.bigs, runners: this.runners });
+  }
+
+  /**
+   * The wave's pulses, thrown with its own dice (`mix`) before any of its zombies: in the Zombies duel both rooms get the
+   * same pulses in the same order, and still the same k-th zombie. Each: `n` regular zombies and `bigs` big ones, from
+   * `ways` sides, then a rest (`rest`) or the next pulse `gap` ms on. The pulse that brings the big ones comes after a
+   * rest, from a side each, with its escort.
+   */
+  plan() {
+    const size = (ZOMBIE.pulse + ZOMBIE.pulsePer * this.players) * (1 + ZOMBIE.pulseGrow * (this.wave - 1));
+    const quick = Math.max(ZOMBIE.gapLeast, 1 - ZOMBIE.gapShrink * (this.wave - 1));
+    const [g0, g1] = ZOMBIE.pulseGap.map((g) => g * quick);
+    const [k0, k1] = ZOMBIE.peak;
+    const out = [];
+    let left = this.toSpawn;
+    let bigs = this.bigs;
+    let inPeak = 0;
+    let peak = k0 + Math.floor(this.mix() * (k1 - k0 + 1));
+    while (left > 0 || bigs > 0) {
+      const n = Math.min(left, Math.max(1, Math.round(size * (0.75 + 0.5 * this.mix()))));
+      const out0 = this.toSpawn - left;
+      const big = bigs > 0 && (out0 >= this.bigAt || left - n <= 0) ? bigs : 0;
+      if (big && out.length) out[out.length - 1].rest = true; // the calm before it
+      const ways = big ? Math.max(1, Math.min(3, big)) : n <= 3 ? 1 : n <= 6 ? 2 : 2 + Math.floor(this.mix() * 2);
+      const p = { n, bigs: big, ways, rest: false, gap: g0 + this.mix() * (g1 - g0) };
+      out.push(p);
+      left -= n;
+      bigs -= big;
+      if (big || ++inPeak >= peak) {
+        p.rest = true;
+        inPeak = 0;
+        peak = k0 + Math.floor(this.mix() * (k1 - k0 + 1));
+      }
+    }
+    this.pulses = out;
+    this.pi = 0;
+    this.cur = null;
+    this.resting = 0;
+    this.hasten = false;
   }
 
   /**
@@ -1468,22 +1538,52 @@ export class Horde {
     }
   }
 
-  /** Zombies out of the ground, one at a time, while there is room under the cap. */
+  /**
+   * Zombies out of the ground, a pulse at a time (plan), one zombie every ZOMBIE.stagger ms while there is room under the
+   * cap: each side's group round the first of it to come out, the sides of one pulse round the players from one another.
+   */
   spawn(now, targets, ev) {
-    if (now < this.nextSpawn || (!this.toSpawn && !this.bigs)) return;
+    if (!this.toSpawn && !this.bigs) return;
     let up = 0;
     for (const z of this.zombies.values()) if (z.act !== 'down') up++;
-    if (up >= this.cap) return;
-    const big = this.bigs > 0 && (this.toSpawn <= this.bigAt || this.toSpawn === 0);
-    const at = this.pick(targets);
+    const calm = up <= ZOMBIE.calm + Math.round(ZOMBIE.calmPer * this.players);
+    if (this.resting) {
+      // A rest: once the peak is beaten (or it went on too long), a short quiet, then the next build-up.
+      if (!calm && now < this.resting) return;
+      this.resting = 0;
+      this.nextSpawn = Math.max(this.nextSpawn, now + ZOMBIE.rest);
+    } else if (this.hasten && calm) {
+      // Between two pulses of a peak: the last one beaten already, the next comes sooner.
+      this.hasten = false;
+      this.nextSpawn = Math.min(this.nextSpawn, now + 1500);
+    }
+    if (now < this.nextSpawn || up >= this.cap) return;
+    if (!this.cur) {
+      const p = this.pulses[this.pi] ?? { n: this.toSpawn, bigs: this.bigs, ways: 2, rest: false, gap: ZOMBIE.pulseGap[0] };
+      this.cur = { n: Math.min(p.n, this.toSpawn), bigs: Math.min(p.bigs, this.bigs), ways: p.ways, rest: p.rest, gap: p.gap, k: 0, miss: 0, lanes: [] };
+      this.hasten = false;
+    }
+    const cur = this.cur;
+    const lane = (cur.lanes[cur.k % cur.ways] ??= { anchor: null, used: [] });
+    const big = cur.bigs > 0;
+    const at = this.pick(targets, false, lane.anchor ? lane : { anchor: null, others: cur.lanes.filter((l) => l.anchor).map((l) => l.anchor) });
     if (!at) {
+      // No room round its side's first (all in someone's sight now): that side starts afresh elsewhere.
+      if (lane.anchor && ++cur.miss >= 2) [lane.anchor, cur.miss] = [null, 0];
       this.nextSpawn = now + 500;
       return;
     }
+    cur.miss = 0;
+    if (!lane.anchor) lane.anchor = { x: at.x, z: at.z };
+    lane.used.push(at.spot);
+    cur.k++;
     const run = !big && this.runners > 0 && this.mix() < this.runners / Math.max(1, this.toSpawn);
-    if (big) this.bigs--;
-    else {
+    if (big) {
+      this.bigs--;
+      cur.bigs--;
+    } else {
       this.toSpawn--;
+      cur.n--;
       if (run) this.runners--;
     }
     const s = zombieStats(this.wave, big, this.mix(), run);
@@ -1494,7 +1594,14 @@ export class Horde {
       id, kind, x: at.x, y: this.nav.y(at.node, at.x, at.z), z: at.z, node: at.node, yaw, speed: 0, top: s.speed, hp: s.hp, max: s.hp, damage: s.damage,
       act: 'walk', actAt: now, until: 0, struck: false, next: now + 800, downAt: 0, target: null,
     });
-    this.nextSpawn = now + spawnEvery(this.wave) * (0.6 + 0.8 * this.rand());
+    this.nextSpawn = now + ZOMBIE.stagger;
+    if ((cur.n <= 0 || !this.toSpawn) && (cur.bigs <= 0 || !this.bigs)) {
+      // The pulse is out: a rest after a peak, else the next pulse of it.
+      this.cur = null;
+      this.pi++;
+      if (cur.rest) this.resting = now + ZOMBIE.restMax;
+      else [this.nextSpawn, this.hasten] = [now + cur.gap, true];
+    }
     ev.push({ type: 'spawn', id });
     if (run && !this.ran) {
       this.ran = true;
@@ -1505,17 +1612,20 @@ export class Horde {
   /**
    * Where the next zombie comes out: a spot anywhere over the open ground that is joined to a player,
    * never closer than ZOMBIE.spawnMin to any of them, out of everyone's sight. Chosen at random,
-   * weighted: most from spawnBest to spawnFar m away, fewer further; a side round the players that
-   * had fewer of this wave's zombies weighs more (they come from all round at once), and the last
-   * few spots hardly at all (never the same one twice in a row). With nobody fighting, round the house.
+   * weighted: most from spawnBest to spawnFar m away along the way (where the last field reaches: a spot
+   * just behind a house but far round it weighs as far as its way is), fewer further; a side round the
+   * players that had fewer of this wave's groups weighs more, and the last few spots hardly at all.
+   * `lane` (spawn): with an `anchor`, the rest of a side's group, within ZOMBIE.groupSpread of it (and
+   * not twice on one spot, `used`, where another will do); else a side's first, a quarter turn round the
+   * players at least from the `others` of its pulse where it can. With nobody fighting, round the house.
    * Only where the last distance field reaches (a zombie that comes out there has its way to the players; past the
    * field it would walk at them as the crow flies and stand against a wall): the rule without that only after twenty
    * looks found nothing (10 s; by then the look goes past spawnMax and into sight too, see `fair`). `again`: for one
    * brought back (rehome), which leaves the count of looks as it is.
    */
-  pick(targets, again = false) {
+  pick(targets, again = false, lane = null) {
     for (const way of this.starved >= 20 ? [true, false] : [true]) {
-      const at = this.pickWith(targets, way, again);
+      const at = this.pickWith(targets, way, again, lane);
       if (at) return at;
     }
     if (!again) this.starved++;
@@ -1534,8 +1644,11 @@ export class Horde {
   }
 
   /** One look for pick(): `way`, only spots the last field reaches. */
-  pickWith(targets, way, again) {
+  pickWith(targets, way, again, lane = null) {
     const nav = this.nav;
+    const anchor = lane?.anchor ?? null;
+    const others = lane?.others ?? [];
+    const spread = ZOMBIE.groupSpread;
     const from = targets.length ? targets : [this.home];
     let mx = 0, mz = 0;
     for (const p of from) {
@@ -1552,18 +1665,34 @@ export class Horde {
       const s = this.spots[i];
       const d = this.spotD[i];
       if (d < lo + 1 || d >= ZOMBIE.fieldReach - 15 || !joined.has(nav.region(s.node))) continue;
-      if (way && nav.distance(s.node) === Infinity) continue;
+      const way0 = nav.distance(s.node);
+      if (way && way0 === Infinity) continue;
+      if (anchor) {
+        // The rest of a side's group: round its first, any spot there alike (one already used much less).
+        if (Math.abs(s.x - anchor.x) > spread || Math.abs(s.z - anchor.z) > spread || Math.hypot(s.x - anchor.x, s.z - anchor.z) > spread) continue;
+        weight[i] = lane.used.includes(i) ? 0.1 : 1;
+        total += weight[i];
+        continue;
+      }
+      // How far it is along the way, where the field says (never less than as the crow flies).
+      const e = way0 < Infinity ? Math.max(d, way0) : d;
       // Past spawnMax only as a last resort (far ones take long to come, and the field must reach them):
       // more so after a few looks found nothing nearer out of everyone's sight.
-      if (d > max) {
+      if (e > max) {
         const w = this.starved >= 3 ? 0.15 : 1e-6;
         weight[i] = w;
         total += w;
         continue;
       }
-      let w = d < best ? (d - lo) / (best - lo) : d <= far ? 1 : 1 - (0.9 * (d - far)) / (max - far);
+      let w = e < best ? Math.max(0.05, (e - lo) / (best - lo)) : e <= far ? 1 : 1 - (0.9 * (e - far)) / (max - far);
       w /= (1 + this.sides[side(s.x, s.z, mx, mz)]) ** 2;
       for (const r of this.recent) if (Math.abs(r.x - s.x) < 6 && Math.abs(r.z - s.z) < 6 && Math.hypot(r.x - s.x, r.z - s.z) < 6) w *= 0.03;
+      // Another side of the same pulse: a quarter turn round the players at least, where there is room.
+      const sx = s.x - mx, sz = s.z - mz, sl = Math.hypot(sx, sz) || 1;
+      for (const o of others) {
+        const ox = o.x - mx, oz = o.z - mz;
+        if ((sx * ox + sz * oz) / (sl * (Math.hypot(ox, oz) || 1)) > ZOMBIE.flank) w *= 0.02;
+      }
       weight[i] = w;
       total += w;
     }
@@ -1592,15 +1721,18 @@ export class Horde {
       if (!fair(s.x, s.z)) continue;
       if (!again) {
         this.starved = 0;
-        this.sides[side(s.x, s.z, mx, mz)]++;
-        this.recent.push(s);
-        if (this.recent.length > 4) this.recent.shift();
+        if (!anchor) {
+          // A group's first (or one alone): its side counts once for the group.
+          this.sides[side(s.x, s.z, mx, mz)]++;
+          this.recent.push(s);
+          if (this.recent.length > 4) this.recent.shift();
+        }
       }
       for (let k = 0; k < 6; k++) {
         const x = s.x + (this.rand() - 0.5), z = s.z + (this.rand() - 0.5);
-        if (nav.locate(x, nav.ground(x, z), z) === s.node && fair(x, z)) return { x, z, node: s.node };
+        if (nav.locate(x, nav.ground(x, z), z) === s.node && fair(x, z)) return { x, z, node: s.node, spot: i };
       }
-      return { x: s.x, z: s.z, node: s.node };
+      return { x: s.x, z: s.z, node: s.node, spot: i };
     }
     return null;
   }
