@@ -10,13 +10,20 @@
 // Bob rides along beside her (his page draws the car from the server's states, as anyone watching it does). Checks
 // that Bob sees it leave the ground and land, about as high as Alice flew it, and that the server took every state
 // (Bob sees it end where Alice has it, and at her height).
+// With --streets (all, or names with commas), the village's streets driven end to end along their centre lines
+// (web/src/data/streets.json) by an autopilot at each of --speeds km/h where it can hold the road (no faster than
+// about 0.6 g round a bend), nothing in the way, on the real ground: per street and speed the frames in the air, and
+// each flight's place, speed, height over the ground and landing. On a street a car must not leave the ground at 50
+// or 70 km/h.
 //   node tools/dev/carAir.mjs --url http://localhost:5320/ --port 9421 [--out <folder>] [--json <file>] [--quality low]
+//   node tools/dev/carAir.mjs --streets all [--speeds 50,70,90,120] --url http://localhost:5320/ --port 9421 [--json <file>]
 //   node tools/dev/carAir.mjs --mp --url http://localhost:5320/ --ports 9422,9423 [--out <folder>]
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { launch, localOnly, options, startGame } from './cdp.mjs';
 
-const o = options({ url: 'http://localhost:5320/', port: '9421', ports: '9422,9423', mp: false, out: '', json: '', quality: 'low', width: '960', height: '540' });
+const o = options({ url: 'http://localhost:5320/', port: '9421', ports: '9422,9423', mp: false, streets: '', speeds: '50,70,90,120', piece: '', trace: '', out: '', json: '', quality: 'low', width: '960', height: '540' });
+if (o.streets === 'all') o.streets = true;
 if (o.mp) {
   await together();
   process.exit(process.exitCode ?? 0);
@@ -47,7 +54,7 @@ async function setUp() {
   await b.send('Page.addScriptToEvaluateOnNewDocument', { source: `localStorage.setItem('briel.graphics','${o.quality}');localStorage.setItem('briel.lang','en');localStorage.setItem('briel.spawn','house');localStorage.setItem('briel.playMode','explore');` });
   const url = new URL(o.url);
   url.searchParams.set('nobake', '');
-  await startGame(b, url.href, { noAsk: true });
+  await startGame(b, url.href, { noAsk: true, village: true });
   await b.waitFor('briel.cars.slice(0,2).every(c=>c.wheels.length===4)');
   await b.evaluate("document.getElementById('cc-close')?.click(); briel.getIn()", false);
   await b.waitFor('briel.driving()');
@@ -140,8 +147,142 @@ async function setUp() {
           wentM: Math.hypot(car.x - x0, car.z - z0), turnedDeg: Math.atan2(Math.sin(car.yaw - yaw0), Math.cos(car.yaw - yaw0)) * 57.3,
         };
       },
+      /**
+       * Along a street's centre line (path: [x, z] every few metres) at up to kmh, by an autopilot: it steers for a
+       * point ahead on the line (further the faster), and takes each bend no faster than about 0.6 g allows, braking
+       * for it in time. Every flight: where it took off, how fast, how high over the ground and for how many frames.
+       */
+      async street(path, want, trace = null) {
+        const rows = [];
+        const R = path.map((p, i) => {
+          const a = path[Math.max(0, i - 2)], c = path[Math.min(path.length - 1, i + 2)];
+          const ab = Math.hypot(p[0] - a[0], p[1] - a[1]), bc = Math.hypot(c[0] - p[0], c[1] - p[1]), ac = Math.hypot(c[0] - a[0], c[1] - a[1]);
+          const cross = Math.abs((p[0] - a[0]) * (c[1] - a[1]) - (p[1] - a[1]) * (c[0] - a[0]));
+          return cross < 1e-6 ? Infinity : (ab * bc * ac) / (2 * cross);
+        });
+        const along = [0];
+        for (let i = 1; i < path.length; i++) along.push(along[i - 1] + Math.hypot(path[i][0] - path[i - 1][0], path[i][1] - path[i - 1][1]));
+        const [x0, z0] = path[0], [x1, z1] = path[Math.min(2, path.length - 1)];
+        car.place(x0, real.groundAt(x0, z0, 60, 0.3).y, z0, Math.atan2(-(x1 - x0), -(z1 - z0)));
+        for (let i = 0; i < 30; i++) await frame();
+        const top = want / 3.6;
+        let i = 0, frames = 0, air = 0, fast = 0, off = 0, most = 0, wasAir = false, flight = null;
+        const flights = [];
+        const t0 = performance.now();
+        while (performance.now() - t0 < 600000) {
+          // Where it is along the line: the nearest of the next few points.
+          for (let j = i + 1, best = Math.hypot(path[i][0] - car.x, path[i][1] - car.z); j < Math.min(path.length, i + 15); j++) {
+            const dj = Math.hypot(path[j][0] - car.x, path[j][1] - car.z);
+            if (dj < best) [i, best] = [j, dj];
+          }
+          if (i >= path.length - 1 || Math.hypot(path.at(-1)[0] - car.x, path.at(-1)[1] - car.z) < 4) break;
+          off = Math.max(off, Math.hypot(path[i][0] - car.x, path[i][1] - car.z));
+          const v = Math.hypot(car.vx, car.vz);
+          // The point it steers for, and the speed each bend ahead allows (braking at 7 m/s2 to it).
+          const look = Math.max(6, v * 0.7);
+          let k = i;
+          while (k < path.length - 1 && along[k] - along[i] < look) k++;
+          let target = top;
+          for (let j = i; j < path.length && along[j] - along[i] < (v * v) / 14 + 20; j++) target = Math.min(target, Math.sqrt(6 * R[j] + 14 * (along[j] - along[i])));
+          const aim = Math.atan2(-(path[k][0] - car.x), -(path[k][1] - car.z));
+          const err = Math.atan2(Math.sin(aim - car.yaw), Math.cos(aim - car.yaw));
+          input = { throttle: v < target ? 1 : 0, brake: v > target + 1 ? Math.min(1, (v - target) / 3) : 0, steer: Math.max(-1, Math.min(1, -err * 2.2)), handbrake: false };
+          const [px, pz] = [car.x, car.z];
+          await frame();
+          frames++;
+          if (v > 0.9 * top) fast += Math.hypot(car.x - px, car.z - pz);
+          most = Math.max(most, v);
+          const h = car.y - floor();
+          if (trace && along[i] >= trace[0] && along[i] <= trace[1]) {
+            const g = real.groundAt(car.x, car.z, car.y, 0.3);
+            rows.push([Math.round(along[i]), +car.x.toFixed(2), +car.z.toFixed(2), +car.y.toFixed(3), +g.y.toFixed(3), +car.vy.toFixed(2), car.air ? 1 : 0, Math.round(v * 3.6), g.name ?? '', g.mat ?? '']);
+          }
+          if (car.air) {
+            air++;
+            if (!wasAir) flight = { x: Math.round(car.x * 10) / 10, z: Math.round(car.z * 10) / 10, kmh: Math.round(v * 3.6), m: Math.round(along[i]), frames: 0, most: 0 };
+            flight.frames++;
+            flight.most = Math.max(flight.most, h);
+          } else if (wasAir) flights.push({ ...flight, most: Math.round(flight.most * 100) / 100, landed: Math.round((landings.at(-1) ?? 0) * 100) / 100 });
+          wasAir = car.air;
+        }
+        input = { throttle: 0, brake: 1, steer: 0, handbrake: true };
+        return { frames, air, flights, done: i >= path.length - 1 || Math.hypot(path.at(-1)[0] - car.x, path.at(-1)[1] - car.z) < 4, lengthM: Math.round(along.at(-1)), fastM: Math.round(fast), topKmh: Math.round(most * 3.6), offM: Math.round(off * 10) / 10, rows };
+      },
     };
   })()`, false);
+}
+
+/**
+ * A street's centre lines (web/src/data/streets.json, the road register's network): the longest way through its
+ * pieces, then the longest through what is left, and so on while the rest is 80 m or more.
+ */
+function streetPaths(name) {
+  const g = JSON.parse(readFileSync(new URL('../../web/src/data/streets.json', import.meta.url), 'utf8')).graph;
+  const id = g.names.indexOf(name);
+  let edges = g.edges.filter((e, k) => g.street[k] === id);
+  const P = g.points;
+  const d = (a, c) => Math.hypot(P[a][0] - P[c][0], P[a][1] - P[c][1]);
+  const out = [];
+  while (edges.length) {
+    const next = new Map();
+    for (const [a, c] of edges) {
+      next.set(a, [...(next.get(a) ?? []), c]);
+      next.set(c, [...(next.get(c) ?? []), a]);
+    }
+    // The furthest point from a start along the pieces, and the way there.
+    const far = (from) => {
+      const dist = new Map([[from, 0]]);
+      const prev = new Map();
+      const todo = [from];
+      while (todo.length) {
+        const a = todo.shift();
+        for (const c of next.get(a)) if (!dist.has(c)) {
+          dist.set(c, dist.get(a) + d(a, c));
+          prev.set(c, a);
+          todo.push(c);
+        }
+      }
+      let end = from;
+      for (const [k, v] of dist) if (v > dist.get(end)) end = k;
+      const way = [end];
+      while (prev.has(way.at(-1))) way.push(prev.get(way.at(-1)));
+      return { end, way: way.reverse(), len: dist.get(end) };
+    };
+    const a = far(edges[0][0]).end;
+    const best = far(a);
+    if (best.len < 80) break;
+    out.push(best.way.map((k) => P[k]));
+    const used = new Set(best.way.slice(1).map((k, j) => `${Math.min(k, best.way[j])},${Math.max(k, best.way[j])}`));
+    edges = edges.filter(([x, y]) => !used.has(`${Math.min(x, y)},${Math.max(x, y)}`));
+  }
+  // Every 3 m along each.
+  return out.map((pts) => {
+    const fine = [pts[0]];
+    for (let j = 1; j < pts.length; j++) {
+      const [ax, az] = pts[j - 1], [bx, bz] = pts[j];
+      const n = Math.max(1, Math.round(Math.hypot(bx - ax, bz - az) / 3));
+      for (let s = 1; s <= n; s++) fine.push([ax + ((bx - ax) * s) / n, az + ((bz - az) * s) / n]);
+    }
+    return fine;
+  });
+}
+
+/** The village's streets end to end at 50, 70, 90 and 120 km/h, nothing in the way: where the car leaves the ground. */
+async function streets() {
+  const names = (o.streets === true ? 'Kapellenhoek,Briel,Smetlededorp,Molenhoek,Schildekensstraat,Kerkhofstraat,Oordegemkouter' : o.streets).split(',');
+  const speeds = o.speeds.split(',').map(Number);
+  for (const name of names) {
+    const paths = streetPaths(name);
+    for (const kmh of speeds) {
+      for (const [n, path] of paths.entries()) {
+        if (o.piece !== '' && Number(o.piece) !== n) continue;
+        const r = await b.evaluate(`__air.street(${JSON.stringify(path)}, ${kmh}, ${o.trace ? JSON.stringify(o.trace.split(',').map(Number)) : 'null'})`);
+        keep({ street: name, piece: n, kmh, lengthM: r.lengthM, atSpeedM: r.fastM, topKmh: r.topKmh, arrived: r.done, offM: r.offM, frames: r.frames, airFrames: r.air, flights: r.flights });
+        // --trace m0,m1: every frame from m0 to m1 m along the line (m, x, z, the car's height, the ground's, its speed up, in the air, km/h, the block).
+        for (const row of r.rows) console.log('  ', JSON.stringify(row));
+      }
+    }
+  }
 }
 
 /** From `before` m ahead of (x, z) along (dx, dz), rolling at kmh for s seconds. */
@@ -172,6 +313,17 @@ try {
   console.log('Browser PID:', b.pid);
   await setUp();
   await b.evaluate('__air.open(true)', false);
+  if (o.streets) await streets();
+  else await places();
+  await b.evaluate('__air.open(false)', false);
+  if (o.json) writeFileSync(o.json, JSON.stringify(results, null, 1));
+  console.log('Browser errors:', JSON.stringify(b.logs.filter((l) => /^(error|exception)/.test(l)).slice(-10)));
+} finally {
+  b.close();
+}
+
+/** The plateau, the ditch and the straight road in the fields. */
+async function places() {
   // Over the plateau, along its centre line from 40 m before it.
   const pl = { x: plateau.x0, z: plateau.z0, dx: plateau.x1 - plateau.x0, dz: plateau.z1 - plateau.z0, before: 40 };
   const len = Math.hypot(pl.dx, pl.dz);
@@ -200,11 +352,6 @@ try {
   // The straight road out in the fields (tools/dev/drive.mjs), the real ground: it must stay on it.
   const road = { x: 636.6, z: 142.6, dx: 668.9 - 636.6, dz: 355.8 - 142.6, before: 0 };
   for (const kmh of [50, 100, 150, 200]) await pass(`road-${kmh}`, road, kmh, Math.min(6, 190 / (kmh / 3.6)));
-  await b.evaluate('__air.open(false)', false);
-  if (o.json) writeFileSync(o.json, JSON.stringify(results, null, 1));
-  console.log('Browser errors:', JSON.stringify(b.logs.filter((l) => /^(error|exception)/.test(l)).slice(-10)));
-} finally {
-  b.close();
 }
 
 /** Two players: Alice drives over a ditch's bank, Bob rides along and sees it from the server's states. */
