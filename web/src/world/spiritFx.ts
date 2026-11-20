@@ -16,11 +16,12 @@ import { PARTICLE, particleSheet } from './sprites';
  *   the middle as the bolt comes; the bolt itself flies from the heart as a bright ball. Walk out of the ring.
  * - A pool: motes spiral in to where it will spread, then slow green fire-mist fills its whole circle while it lasts.
  * - Rising elsewhere: a column of motes spiralling up where it will come out of the ground.
- * - The open heart: sparks circling it (the weak point, plain to see).
+ * - The open heart: a ring of sparks circling it upright, facing you (the weak point, plain to see).
+ * - A lit light: a beam of light up through the crowns, a slow pulse running up it (findable from across the grove).
  *
  * Cheap on purpose (the graphics chip is the limit): one instanced draw of soft additive motes for all of it, one
  * draw for the sweep's two walls, one for the mist round the grove (a low band, only while awake and near), and
- * three small instanced draws and a line for the lights. No new render target, no full-screen pass, every colour far
+ * four small instanced draws and a line for the lights. No new render target, no full-screen pass, every colour far
  * under the half floats' 65504.
  */
 
@@ -538,6 +539,47 @@ void main() {
 /** The lights' colour: the spirit's cold green-white (world/brookSpirit.ts COLD), as a light (linear). */
 const LIT = new THREE.Color('#c9ffe2');
 
+/** m: how high a lit light's beam rises (over the grove's crowns) */
+const BEAM = 24;
+/**
+ * A lit light's beam: a soft upright shaft from the light up through the crowns, always turned to the eye round its
+ * own upright axis, a slow pulse of light running up it. One instanced additive draw for all eight.
+ */
+const BEAM_VERT = /* glsl */ `
+uniform float uHigh;
+uniform float uWide;
+varying vec2 vUv;
+varying vec3 vC;
+varying float vSeed;
+void main() {
+  vec3 base = (modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+  vec3 toEye = cameraPosition - base;
+  vec3 side = normalize(vec3(toEye.z, 0.0, -toEye.x) + vec3(1e-4, 0.0, 0.0));
+  float h = position.y;
+  float w = mix(0.28, 1.1, h) * uWide;
+  vec3 p = base + side * position.x * w + vec3(0.0, h * uHigh, 0.0);
+  vUv = vec2(position.x * 2.0, h);
+  vC = instanceColor;
+  vSeed = fract(base.x * 0.37 + base.z * 0.11);
+  gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0);
+}`;
+const BEAM_FRAG = /* glsl */ `
+uniform float uTime;
+uniform float uHigh;
+varying vec2 vUv;
+varying vec3 vC;
+varying float vSeed;
+void main() {
+  float x = vUv.x;
+  float across = pow(max(0.0, 1.0 - x * x), 3.0) * 0.55 + exp(-x * x * 30.0) * 0.6;
+  float h = vUv.y;
+  float up = smoothstep(0.0, 0.03, h) * pow(1.0 - h, 1.3);
+  // A slow pulse running up it, each light's at its own moment.
+  float f = fract(uTime * 0.35 + vSeed);
+  float pulse = exp(-pow((h - f * 1.1) * uHigh / 2.2, 2.0));
+  gl_FragColor = vec4(vC * across * up * (0.55 + 1.3 * pulse), 1.0);
+}`;
+
 /**
  * The lights among the trees: small will-o'-the-wisp lanterns hanging on a thread, 1 m from their trunk. Out: dark
  * glass, barely there. Lit: glowing through the bloom, gently swinging, with a soft patch of light on their trunk
@@ -548,6 +590,9 @@ class Lanterns {
   private readonly orbs: THREE.InstancedMesh;
   private readonly caps: THREE.InstancedMesh;
   private readonly patches: THREE.InstancedMesh;
+  /** Each lit light's beam up through the crowns: findable from anywhere in the grove, by day too */
+  private readonly beams: THREE.InstancedMesh;
+  private readonly beamU = { uTime: { value: 0 }, uHigh: { value: BEAM }, uWide: { value: 1 } };
   private readonly threads: THREE.LineSegments;
   private readonly threadPos: Float32Array;
   /** Where each hangs now (swinging), for the halo and the hit box */
@@ -558,6 +603,7 @@ class Lanterns {
   private q = new THREE.Quaternion();
   private v = new THREE.Vector3();
   private c = new THREE.Color();
+  private sc = new THREE.Vector3();
 
   constructor(private readonly spots: { x: number; y: number; z: number }[], private readonly trees: [number, number, number][]) {
     const n = spots.length;
@@ -566,11 +612,18 @@ class Lanterns {
     this.orbs = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.15, 1), new THREE.MeshBasicMaterial(), n);
     this.caps = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.05, 0.09, 0.07, 8), new THREE.MeshStandardMaterial({ color: '#2a2a26', roughness: 0.6, metalness: 0.5 }), n);
     this.patches = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.7, 1.7), new THREE.ShaderMaterial({ vertexShader: PATCH_VERT, fragmentShader: PATCH_FRAG, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }), n);
+    this.beams = new THREE.InstancedMesh(
+      new THREE.PlaneGeometry(1, 1, 1, 6).translate(0, 0.5, 0),
+      new THREE.ShaderMaterial({ uniforms: this.beamU, vertexShader: BEAM_VERT, fragmentShader: BEAM_FRAG, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }),
+      n,
+    );
+    this.beams.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(n * 3), 3).setUsage(THREE.DynamicDrawUsage);
+    this.beams.renderOrder = 5;
     this.threadPos = new Float32Array(n * 6);
     const tg = new THREE.BufferGeometry();
     tg.setAttribute('position', new THREE.BufferAttribute(this.threadPos, 3).setUsage(THREE.DynamicDrawUsage));
     this.threads = new THREE.LineSegments(tg, new THREE.LineBasicMaterial({ color: '#3b3a33', transparent: true, opacity: 0.8 }));
-    for (const o of [this.orbs, this.caps, this.patches, this.threads]) {
+    for (const o of [this.orbs, this.caps, this.patches, this.beams, this.threads]) {
       o.frustumCulled = false;
       quiet(o);
     }
@@ -586,11 +639,12 @@ class Lanterns {
       this.m.compose(this.v.set(tx + (dx / d) * 0.37, s.y - 0.2, tz + (dz / d) * 0.37), this.q, new THREE.Vector3(1, 1, 1));
       this.patches.setMatrixAt(i, this.m);
     });
-    this.group.add(this.threads, this.caps, this.orbs, this.patches);
+    this.group.add(this.threads, this.caps, this.orbs, this.patches, this.beams);
   }
 
-  /** Each frame: `mask` bit i lit; `time` s. */
-  update(dt: number, mask: number, time: number, day: number): void {
+  /** Each frame: `mask` bit i lit; `time` s; `low`: the Low preset or a phone (a thinner beam, no patch on the trunk). */
+  update(dt: number, mask: number, time: number, day: number, low = false): void {
+    this.beamU.uWide.value = low ? 0.6 : 1;
     const one = new THREE.Vector3(1, 1, 1);
     this.spots.forEach((s, i) => {
       const lit = (mask >> i) & 1;
@@ -606,8 +660,11 @@ class Lanterns {
       const y = s.y + top - Math.cos(ax) * Math.cos(az) * top;
       this.at[i].set(x, y, z);
       this.q.identity();
-      this.m.compose(this.v.set(x, y, z), this.q, one);
+      // Lit, the orb swells to half again its size (its hit box is larger still: shared/brookSpirit.json light.r).
+      this.m.compose(this.v.set(x, y, z), this.q, this.sc.setScalar(1 + 0.5 * g));
       this.orbs.setMatrixAt(i, this.m);
+      this.m.compose(this.v.set(x, y + 0.1, z), this.q, one);
+      this.beams.setMatrixAt(i, this.m);
       this.m.compose(this.v.set(x, y + 0.15, z), this.q, one);
       this.caps.setMatrixAt(i, this.m);
       this.threadPos.set([x, y + 0.18, z, s.x, s.y + top, s.z], i * 6);
@@ -619,13 +676,21 @@ class Lanterns {
       const p = g * (0.22 + 0.25 * (1 - day)) * pulse;
       this.c.setRGB(LIT.r * p, LIT.g * p, LIT.b * p);
       this.patches.setColorAt(i, this.c);
+      // The beam: stronger by day (additive light washes out in the sun), soft at night (the bloom does the rest).
+      const bb = g * (0.18 + 0.6 * day);
+      this.c.setRGB(LIT.r * bb, LIT.g * bb, LIT.b * bb);
+      this.beams.setColorAt(i, this.c);
     });
+    this.beamU.uTime.value = time;
+    this.beams.instanceMatrix.needsUpdate = true;
+    this.beams.instanceColor!.needsUpdate = true;
     this.orbs.instanceMatrix.needsUpdate = true;
     this.caps.instanceMatrix.needsUpdate = true;
     this.orbs.instanceColor!.needsUpdate = true;
     this.patches.instanceColor!.needsUpdate = true;
     (this.threads.geometry.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
-    this.patches.visible = this.glow.some((g) => g > 0.01);
+    this.beams.visible = this.glow.some((g) => g > 0.01);
+    this.patches.visible = this.beams.visible && !low;
   }
 
   glowOf(i: number): number {
@@ -633,7 +698,7 @@ class Lanterns {
   }
 
   dispose(): void {
-    for (const o of [this.orbs, this.caps, this.patches]) {
+    for (const o of [this.orbs, this.caps, this.patches, this.beams]) {
       o.geometry.dispose();
       (o.material as THREE.Material).dispose();
       o.dispose();
@@ -764,7 +829,7 @@ export class SpiritFx {
     const d = this.d;
     const awake = !!v && (v.mode === 'fight' || v.mode === 'mend');
     this.mist.update(dt, awake ? 1 : 0, time, day, near);
-    this.lanterns.update(dt, v ? v.lights : 0, time, day);
+    this.lanterns.update(dt, v ? v.lights : 0, time, day, this.low);
     const drop = this.drop;
     if (drop && near) {
       // The launcher's ring: a slow column of motes over it, seen from across the grove.
@@ -860,10 +925,20 @@ export class SpiritFx {
     // The open heart: sparks circling it, the weak point plain to see.
     const heartOpen = v.lights === 0 && ((v.mode === 'fight' && (v.act === 'open' || v.act === 'stun')) || (v.mode === 'mend' && v.act !== 'sink' && v.act !== 'under' && v.act !== 'rise'));
     if (heartOpen) {
+      // A ring of sparks circling it upright, facing its front (where it opened): seen from the front a ring round the
+      // gap, a target's ring, by its motion as much as by its light (colour-blind players). Bigger by day.
       const n = v.mode === 'mend' ? 5 : 9;
+      const fl = Math.hypot(v.tx - v.x, v.tz - v.z);
+      const sx = fl > 0.01 ? (v.tz - v.z) / fl : 1;
+      const sz = fl > 0.01 ? -(v.tx - v.x) / fl : 0;
+      const R = 1.2 + 0.08 * Math.sin(time * 2.6);
       for (let i = 0; i < n; i++) {
         const a = time * 2.2 + (i / n) * Math.PI * 2;
-        m.put(heart.x + Math.cos(a) * 0.95, heart.y + Math.sin(time * 3 + i) * 0.2, heart.z + Math.sin(a) * 0.95, 0.2, COLD[0], COLD[1], COLD[2], 1.6 * k);
+        const c = Math.cos(a) * R;
+        m.put(heart.x + sx * c, heart.y + Math.sin(a) * R, heart.z + sz * c, 0.2 + 0.16 * day, COLD[0], COLD[1], COLD[2], 1.6 * k);
+        // A short tail behind each.
+        const b = a - 0.16;
+        m.put(heart.x + sx * Math.cos(b) * R, heart.y + Math.sin(b) * R, heart.z + sz * Math.cos(b) * R, 0.13 + 0.1 * day, COLD[0], COLD[1], COLD[2], 0.8 * k);
       }
       m.put(heart.x, heart.y, heart.z, 2.2, COLD[0], COLD[1], COLD[2], 0.3 * k);
     }
