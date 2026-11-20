@@ -172,6 +172,59 @@ try {
       await pin(null);
       await b.evaluate(`briel.helis.dev.put('house', 0)`);
     }
+    if (want('join')) {
+      // The wash beside the weather's wind and the rain's cover: both move the same things at once. Two renders 0.4 s
+      // apart, the mean change of the middle of the view (0 to 255): with the machine far off (the wind alone) and
+      // hovering 3 m up near by (the wind and the wash).
+      const motion = () => b.evaluate(`(async () => {
+        const grab = () => { briel.bench(1); const r = briel.three.renderer.domElement; const c = document.createElement('canvas'); c.width = 240; c.height = 160;
+          const g = c.getContext('2d'); g.drawImage(r, r.width / 2 - r.width * 0.15, r.height / 2 - r.height * 0.05, r.width * 0.3, r.height * 0.3, 0, 0, 240, 160); return g.getImageData(0, 0, 240, 160).data; };
+        const a = grab(); await new Promise((f) => setTimeout(f, 400)); const q = grab();
+        let s = 0; for (let i = 0; i < a.length; i += 4) s += Math.abs(a[i] - q[i]) + Math.abs(a[i + 1] - q[i + 1]) + Math.abs(a[i + 2] - q[i + 2]);
+        return s / (a.length / 4) / 3;
+      })()`);
+      const crown = await b.evaluate(`(() => { const p = briel.helis.machines[0].park; const list = briel.helis.dev.crowns(); let best = null;
+        for (const c of list) { const d = Math.hypot(c.x - p.x, c.z - p.z); if (d > 30 && d < 300 && c.h > 8 && (!best || d < best.d)) best = { x: c.x, z: c.z, y: c.y, h: c.h, d }; } return best; })()`);
+      const checks = [
+        ['grass', spots.grass, 0.6, 1.0],
+        ['pond', spots.pond, 0.6, 0.3],
+        ['trees', crown && { x: crown.x, z: crown.z + 9 }, Math.PI / 2, crown ? crown.h * 0.6 : 5], // beside the crown as seen, not in front
+      ];
+      await b.evaluate("briel.three.weather.setSolo('overcast')", false);
+      await b.sleep(9000);
+      for (const [name, at, side, look] of checks) {
+        if (!at) continue;
+        const g = await ground(at.x, at.z);
+        // Looking at the place from 16 m: the trees' crown itself, the reeds and the grass at the pond's edge.
+        const lookAt = name === 'trees' ? { x: crown.x, z: crown.z } : at;
+        await standOff(lookAt.x, lookAt.z, 16, side, look);
+        await pin({ x: at.x + 400, y: g + 3, z: at.z, yaw: 0.4 });
+        await b.sleep(3000);
+        const alone = await motion();
+        await shot(`join-${name}-wind`);
+        await pin({ x: at.x, y: g + 3, z: at.z, yaw: 0.4 });
+        await b.sleep(3500);
+        const both = await motion();
+        await shot(`join-${name}-wind-and-wash`);
+        console.log(`  ${name}: change in 0.4 s, the wind alone ${alone.toFixed(2)}, the wind and the wash ${both.toFixed(2)}`);
+      }
+      // The rain by the bus shelter: the drops stop at its roof, slant with the gusts, and are driven outward under
+      // the machine hovering 3 m up beside it.
+      const shelter = { x: -31.88, z: -1118.44, yaw: -0.485 };
+      await b.evaluate("briel.three.weather.setSolo('rain')", false);
+      const fx = Math.sin(shelter.yaw), fz = Math.cos(shelter.yaw); // its open side, +z turned by its yaw
+      const hx = shelter.x + fx * 8, hz = shelter.z + fz * 8;
+      const g = await ground(hx, hz);
+      await pin({ x: hx, y: g + 3, z: hz, yaw: shelter.yaw });
+      await standOff(shelter.x, shelter.z, 7, shelter.yaw + Math.PI * 0.8, 1.8);
+      await b.sleep(9000);
+      await shot('join-rain-shelter');
+      await standOff(hx, hz, 12, shelter.yaw + Math.PI * 0.5, 2);
+      await b.sleep(2500);
+      await shot('join-rain-under-machine');
+      await pin(null);
+      await b.evaluate(`briel.helis.dev.put('house', 0)`);
+    }
     if (o.bench) {
       // The cost: a 3 m hover over the gravel (the thickest dust; the meadow without one) in view from 14 m (as from
       // the chase camera), wash on and off.
