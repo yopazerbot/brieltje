@@ -483,9 +483,9 @@ const POPLAR = 3;
  *
  * - at the end of November most broad-leaved crowns have turned (ochre, rust, brown) and a quarter are bare, a
  *   purple-grey haze of twigs; a few are still dull green; a wood's edge has its dark spruces here and there, a
- *   farmstead the odd ornamental conifer, and one hedgerow in five is a row of poplars, tall and slim;
+ *   farmstead the odd ornamental conifer, and one hedgerow in eight is a row of poplars, tall and slim;
  * - a broad crown is round on top (a half ellipse as wide as the tree), a conifer pointed, a poplar a tall narrow
- *   spindle; where two trees stand apart the strip dips between them to the hedge or the lower crowns behind;
+ *   round-topped column; where two trees stand apart the strip dips between them to the hedge or the lower crowns behind;
  * - the normal of each column leans the way the crown's outline faces there (along the row on its shoulders, up on
  *   its top), so the low sun lights one side of every crown and leaves the other in its own shade;
  * - `crown`: the crown's top height at the column, and how bare it is, for the shader's ragged, see-through top.
@@ -515,7 +515,7 @@ function treeStrips(rows: TreeRow[]): THREE.BufferGeometry {
     const rowHue = pick(BROAD);
     const crowns = row.closed ? [...row.crowns, row.crowns[0]] : row.crowns;
     // The row's mix: a wood's edge (closed and tall), a farmstead's ring (closed), or a hedgerow's trees.
-    const poplars = !row.closed && rand() < 0.2;
+    const poplars = !row.closed && rand() < 0.12;
     const wood = row.closed && row.tall >= 15;
     const kindOf = (): number => {
       if (poplars) return POPLAR;
@@ -544,11 +544,11 @@ function treeStrips(rows: TreeRow[]): THREE.BufferGeometry {
       const ux = dx / len;
       const uz = dz / len;
       // Halfway the strip drops to the hedge, or to the crowns of a wood behind, where the trees stand apart.
-      const low = Math.min(a.h, b.h) * (wood ? 0.72 : 0.38);
+      const low = Math.min(a.h, b.h) * (wood ? 0.72 : poplars ? 0.5 : 0.38);
       // Each half belongs to one crown: its outline from its middle (s 0) out to halfway (s = len / 2).
       for (const [t0, t1, tree, side] of [[0, 0.5, a, 1], [0.5, 1, b, -1]] as const) {
         // A broad crown reaches past halfway where trees stand close: neighbours overlap, a shallow dip between them.
-        const half = tree.kind === POPLAR ? 1.7 : tree.kind === CONIFER ? 2.6 : Math.min(len * 0.66, 3 + tree.h * 0.25);
+        const half = tree.kind === POPLAR ? 2.4 : tree.kind === CONIFER ? 2.6 : Math.min(len * 0.66, 3 + tree.h * 0.25);
         const base = pos.length / 3;
         for (let k = 0; k <= 3; k++) {
           const t = t0 + ((t1 - t0) * k) / 3;
@@ -556,7 +556,7 @@ function treeStrips(rows: TreeRow[]): THREE.BufferGeometry {
           const q = Math.min(1, s / half);
           let h: number;
           if (tree.kind === CONIFER) h = tree.h * (1 - 0.75 * q);
-          else if (tree.kind === POPLAR) h = tree.h * (1 - 0.55 * q * q);
+          else if (tree.kind === POPLAR) h = tree.h * (1 - 0.2 * q * q); // a column, round-topped, not a spike
           else h = tree.h * (0.58 + 0.42 * Math.sqrt(Math.max(0, 1 - q * q)));
           h = Math.max(low, s > half ? low : h);
           // Facing along the row on the crown's shoulders (away from its middle), up on its top, and across the row
