@@ -228,7 +228,7 @@ void main() {
   float front = clamp(uP * 1.7, 0.0, 1.0);
   float fill = smoothstep(front + 0.02, front - 0.12, u);
   // Densest at the ground, thinning upward, no edge at its top or its ends.
-  float body = smoothstep(0.04, 0.2, v) * exp(-v * 3.2) * smoothstep(1.0, 0.6, v);
+  float body = smoothstep(0.075, 0.3, v) * exp(-v * 3.2) * smoothstep(1.0, 0.6, v);
   float ends = smoothstep(0.0, 0.08, u) * smoothstep(1.0, 0.88, u);
   float strike = smoothstep(0.65, 1.0, uP);
   float a = body * ends * (fill * (0.3 + 0.6 * uP + 0.4 * strike) * (0.12 + 0.88 * n * n) * 1.5 + uFlash * 0.9);
@@ -349,7 +349,7 @@ void main() {
   float n2 = texture2D(uNoise, vec2(vArc * 0.38 - uTime * 0.07, v * 1.2 - uTime * vSpeed * 0.55)).r;
   float n = smoothstep(0.3, 0.85, n1 * 0.6 + n2 * 0.4);
   // Densest just above the ground (it starts under it: no seam there), thinning fast upward, no edge at its top.
-  float body = smoothstep(0.04, 0.22, v) * exp(-v * 3.6) * smoothstep(1.0, 0.55, v);
+  float body = smoothstep(0.08, 0.3, v) * exp(-v * 3.6) * smoothstep(1.0, 0.55, v);
   float a = body * (0.08 + 0.92 * n * n) * smoothstep(0.05, 0.6, vFacing) * vNear * vTint.a;
   gl_FragColor = vec4(vTint.rgb * (0.6 + 0.7 * n), clamp(a * 1.6, 0.0, 1.0));
 }`;
