@@ -7,7 +7,7 @@ import { solidNormals } from './normals';
 import type { Piece, TileData } from './tiles';
 import { fieldRows } from './fields';
 import { sway } from './wind';
-import { paneGeometry, paneLook, paneMaterial, COVER } from './windows';
+import { paneGeometry, paneLook, paneMaterial, porchPoolMaterial, COVER } from './windows';
 import { brickLook, byteAttribute, frameColour, glazeable, Houses, isBrick, renderable, roofLook } from './facadeLook';
 import { addWater, waterClock, waterLine, waterMaterial } from './water';
 import { bankMesh, bankWater } from './banks';
@@ -440,6 +440,7 @@ function buildOpenings(list: Opening[], ground: number, houses: Houses, pitched:
   const solid: THREE.BufferGeometry[] = [];
   const flat: THREE.BufferGeometry[] = [];
   const glass: THREE.BufferGeometry[] = [];
+  const pools: THREE.BufferGeometry[] = [];
   const sill = new THREE.Color('#d8d3c7');
   const trim: OpeningContext = { houses, groundAt: (x, z) => ground + terrain.height(x, z), pitched, list };
   list.forEach((o, i) => {
@@ -464,11 +465,14 @@ function buildOpenings(list: Opening[], ground: number, houses: Houses, pitched:
     // In a hole everything that stood on the wall's face moves back, the frame's face to the hole's depth.
     const back = hole ? hole.depth + 0.045 : 0;
     const out = (k: number) => mid.clone().addScaledVector(n, k - back);
-    const frame = frameColour(o.f, houses.at(mid.x - n.x * 0.3, mid.z - n.z * 0.3)); // the house the wall belongs to
+    const home = houses.at(mid.x - n.x * 0.3, mid.z - n.z * 0.3); // the house the wall belongs to
+    const frame = frameColour(o.f, home);
     solid.push(slab(out(0.02), d, n, w + 0.1, h + 0.1, 0.05, frame));
     const round = openingTrim(o, d, n, w, mid, trim, back);
     solid.push(...round.solid);
     flat.push(...round.flat);
+    if (round.glass) glass.push(...round.glass); // a porch lamp's (world/houseTrim.ts)
+    if (round.pool) pools.push(round.pool);
     // A stone threshold in the hole under a door (bluestone, as the steps; concrete under a garage door), level with its
     // foot and reaching 2 cm out of the wall.
     const threshold = (colour: string) => {
@@ -476,7 +480,7 @@ function buildOpenings(list: Opening[], ground: number, houses: Houses, pitched:
     };
     if (o.k === 'w') {
       const upper = y0 - (ground + terrain.height(mid.x, mid.z)) > 2;
-      glass.push(paneGeometry(out(0.053), d, n, w, h, paneLook(mid.x, mid.z, n.x, n.z, upper, i, h >= 1.9), mid.x + mid.y + mid.z * 1.7));
+      glass.push(paneGeometry(out(0.053), d, n, w, h, { ...paneLook(mid.x, mid.z, n.x, n.z, upper, i, h >= 1.9), home }, mid.x + mid.y + mid.z * 1.7));
       if (w > 1.3) solid.push(slab(out(0.056), d, n, 0.06, h, 0.02, frame));
       if (h >= 1.9) threshold('#6b7177'); // a garden door: no sill
       else if (hole) solid.push(slab(mid.clone().addScaledVector(n, (0.05 - hole.depth) / 2).setY(y0 - 0.075), d, n, w + 0.2, 0.05, hole.depth + 0.05, sill)); // from the frame to 5 cm out
@@ -485,7 +489,7 @@ function buildOpenings(list: Opening[], ground: number, houses: Houses, pitched:
       threshold('#6b7177');
       const panel = new THREE.Color(doorColour(o.c ?? '#6b4a32'));
       solid.push(slab(out(0.05), d, n, w, h, 0.02, panel));
-      glass.push(paneGeometry(out(0.067).setY(y0 + h * 0.72), d, n, w * 0.3, h * 0.35, { ...paneLook(mid.x, mid.z, n.x, n.z, false, i), cell: COVER.none, sill: h * 0.545 }, mid.x + mid.z * 1.7));
+      glass.push(paneGeometry(out(0.067).setY(y0 + h * 0.72), d, n, w * 0.3, h * 0.35, { ...paneLook(mid.x, mid.z, n.x, n.z, false, i), cell: COVER.none, sill: h * 0.545, home }, mid.x + mid.z * 1.7));
       solid.push(slab(out(0.07).addScaledVector(d, w * 0.38).setY(y0 + 1.05), d, n, 0.03, 0.18, 0.03, new THREE.Color('#9a9a96')));
     } else {
       // Garage door: horizontal sections with a groove between them.
@@ -516,6 +520,11 @@ function buildOpenings(list: Opening[], ground: number, houses: Houses, pitched:
   add(solid, frameMat, 'alu');
   add(flat, trimMat, 'alu');
   add(glass, paneMat, 'black_glass');
+  // The porch lamps' light round them at night (world/windows.ts): after the glass, added to what is there.
+  if (pools.length) {
+    out.push({ material: porchPoolMaterial(), geometry: mergeGeometries(pools), tag: 'glass', shadow: false, small: true, order: 2 });
+    pools.forEach((g) => g.dispose());
+  }
   return out;
 }
 

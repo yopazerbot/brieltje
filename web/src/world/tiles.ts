@@ -205,6 +205,7 @@ export class Tiles {
       if (p.shadowOnly) mesh.layers.set(SHADOW_LAYER);
       else if (p.castOnly) mesh.layers.set(CAST_LAYER);
       mesh.renderOrder = p.order ?? 0;
+      if (p.material.userData.noRay) mesh.raycast = () => {}; // light only (a porch lamp's pool): never in a shot's way
       mesh.userData.material = p.tag;
       mesh.userData.set = this.sets.length; // 0: the ring, 1: the village
       mesh.name = p.tag;

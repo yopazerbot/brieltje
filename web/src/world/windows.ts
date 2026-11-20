@@ -121,6 +121,10 @@ export interface PaneLook {
    * whether its light is on (below one half: on).
    */
   seed: number;
+  /** The household's number, 0 to 1 (the house's key): its rooms' lights at night agree a little; default from the place */
+  home?: number;
+  /** Bits: 1 above the ground floor, 2 a wall lamp's glass (no room behind), 4 that lamp lit at night */
+  flags?: number;
 }
 
 /**
@@ -157,8 +161,9 @@ export function paneLook(x: number, z: number, nx: number, nz: number, upper: bo
     mirror: hash(id, 17) < 0.5,
     room: 0.6 + 0.8 * hash(id, 19),
     sill: tall ? 0.02 : 0.9,
-    // At night about half the rooms have their light on: a few more downstairs than upstairs.
-    seed: upper ? 0.12 + 0.88 * hash(id, 37) : 0.92 * hash(id, 37),
+    seed: hash(id, 37),
+    home: house,
+    flags: upper ? 1 : 0,
   };
 }
 
@@ -186,19 +191,25 @@ export function paneGeometry(at: THREE.Vector3, d: THREE.Vector3, n: THREE.Vecto
   const colors = new Float32Array(pos.count * 3);
   const looks = new Float32Array(pos.count * 4);
   const rooms = new Float32Array(pos.count * 4);
+  const homes = new Float32Array(pos.count * 2);
+  const home = look.home ?? hash(Math.round(at.x / 7), Math.round(at.z / 7));
   for (let k = 0; k < pos.count; k++) {
     colors.set([look.tint.r, look.tint.g, look.tint.b], k * 3);
     looks.set([look.cell, look.roughness, look.f0, (look.mirror ? -1 : 1) * look.room], k * 4);
     rooms.set([w, h, look.sill, look.seed], k * 4);
+    homes.set([home, look.flags ?? 0], k * 2);
   }
   g.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   g.setAttribute('look', new THREE.BufferAttribute(looks, 4));
   g.setAttribute('room', new THREE.BufferAttribute(rooms, 4));
+  g.setAttribute('home', new THREE.BufferAttribute(homes, 2));
   return g;
 }
 
 /** At night: 0 by day, 1 at full night (setWindowNight). */
 const night = { value: 0 };
+/** Seconds, for the televisions' flicker. */
+const clock = { value: 0 };
 
 /**
  * How dark it is, from 0 (day) to 1 (night): about half the rooms behind the village's windows light up
@@ -207,11 +218,82 @@ const night = { value: 0 };
  */
 export function setWindowNight(amount: number): void {
   night.value = Math.min(1, Math.max(0, Number.isFinite(amount) ? amount : 0));
+  clock.value = (performance.now() / 1000) % 3600;
+  poolMat.visible = rooms && night.value > 0.02; // the porch lights' pools: Medium and up, from dusk
+  poolMat.color.setScalar(night.value);
 }
 
 /** The glass materials made so far, to switch the rooms behind them with the graphics preset. */
 const made: THREE.Material[] = [];
 let rooms = true;
+
+/**
+ * The light of the porch lamps by the front doors on what is round them: a soft pool on the ground and the step, and a
+ * wash up and down the wall round the lamp. Light added to what is drawn there (additive, drawn after the rest, no
+ * depth written), its strength per corner falling to nothing at the edge: one draw call for the whole village, drawn
+ * only from dusk on Medium and up (setWindowNight, setWindowDetail). No real light, no shadow.
+ */
+const poolMat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -4 });
+poolMat.visible = false;
+poolMat.name = 'porch_pools';
+poolMat.userData.noRay = true; // world/tiles.ts: its meshes are never hit by a shot
+poolMat.userData.noGroundShade = true; // and throw no shade on the ground's bake (world/groundShade.ts)
+
+/** The pools' material (one for every tile). */
+export function porchPoolMaterial(): THREE.Material {
+  return poolMat;
+}
+
+/** The pool's warm light at its middle (linear, times the night): its brightest point well under 1, far under 65504. */
+const POOL = new THREE.Color(1.0, 0.6, 0.3).multiplyScalar(0.32);
+
+/**
+ * A porch lamp's light round it: `lamp` the lamp's place on the wall (facing `n`, the wall along `d`), `foot` the door's
+ * foot on the wall's line, `ground` the ground's height there. A disc on the ground in front of the door, a smaller one
+ * at the door's foot (on a step, where there is one), and an oval on the wall round the lamp; position and colour only.
+ */
+export function porchPool(lamp: THREE.Vector3, n: THREE.Vector3, d: THREE.Vector3, foot: THREE.Vector3, ground: number): THREE.BufferGeometry {
+  const pos: number[] = [];
+  const col: number[] = [];
+  const SIDES = 14;
+  /**
+   * A fan round `c` in the plane of `u` and `v` (radii ru, rv), its middle at `k` of the full light: a ring at 45 % of
+   * the radius at a third of it, then nothing at the rim, so it fades out softly with no edge.
+   */
+  const disc = (c: THREE.Vector3, u: THREE.Vector3, v: THREE.Vector3, ru: number, rv: number, k: number) => {
+    const at = (i: number, f: number) => c.clone().addScaledVector(u, f * ru * Math.cos((i / SIDES) * Math.PI * 2)).addScaledVector(v, f * rv * Math.sin((i / SIDES) * Math.PI * 2));
+    const put = (p: THREE.Vector3, w: number) => {
+      pos.push(p.x, p.y, p.z);
+      col.push(POOL.r * k * w, POOL.g * k * w, POOL.b * k * w);
+    };
+    for (let i = 0; i < SIDES; i++) {
+      // Wound to face the normal u x v (up for the ground, out of the wall for the wall's).
+      put(c, 1);
+      put(at(i, 0.45), 0.33);
+      put(at(i + 1, 0.45), 0.33);
+      for (const [p, w] of [[at(i, 0.45), 0.33], [at(i, 1), 0], [at(i + 1, 1), 0], [at(i, 0.45), 0.33], [at(i + 1, 1), 0], [at(i + 1, 0.45), 0.33]] as const) put(p, w);
+    }
+  };
+  const flatU = d.clone();
+  const flatV = n.clone();
+  if (flatU.clone().cross(flatV).y < 0) flatU.negate(); // u x v points up
+  const wallU = d.clone();
+  const wallV = new THREE.Vector3(0, 1, 0);
+  if (wallU.clone().cross(wallV).dot(n) < 0) wallU.negate(); // u x v points out of the wall
+  const under = lamp.clone().setY(0);
+  disc(under.clone().addScaledVector(n, 0.55).setY(ground + 0.03), flatU, flatV, 1.5, 1.1, 0.8);
+  disc(foot.clone().addScaledVector(n, 0.25).setY(foot.y + 0.012), flatU, flatV, 0.75, 0.3, 0.8);
+  disc(lamp.clone().addScaledVector(n, 0.02).setY(lamp.y - 0.2), wallU, wallV, 0.9, 1.5, 0.9);
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  return g;
+}
+
+/** A porch lamp's glass (world/surroundings.ts): no room behind, frosted by day, lit at night if `lit`. */
+export function lampGlassLook(lit: boolean): PaneLook {
+  return { cell: COVER.none, tint: new THREE.Color('#ffffff'), roughness: 0.3, f0: 0.06, mirror: false, room: 1, sill: 0, seed: 0.5, home: 0.5, flags: lit ? 6 : 2 };
+}
 
 /**
  * Rooms behind the glass (a box seen through the window, worked out per pixel of glass) on Medium and up;
@@ -220,6 +302,7 @@ let rooms = true;
 export function setWindowDetail(on: boolean): void {
   if (on === rooms) return;
   rooms = on;
+  poolMat.visible = on && night.value > 0.02;
   for (const m of made) {
     if (on) m.defines = { ...m.defines, ROOMS: '' };
     else delete m.defines?.ROOMS;
@@ -257,9 +340,10 @@ export function paneMaterial(): THREE.MeshStandardMaterial {
   m.onBeforeCompile = (shader) => {
     shader.uniforms.coverings = { value: coverings() };
     shader.uniforms.windowNight = night;
+    shader.uniforms.windowTime = clock;
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nattribute vec4 look;\nattribute vec4 room;\nvarying vec4 vLook;\nvarying vec4 vRoom;\nvarying vec2 vPane;\n#ifdef ROOMS\nvarying vec3 vRay;\n#endif')
-      .replace('#include <uv_vertex>', '#include <uv_vertex>\nvLook = look;\nvRoom = room;\nvPane = uv;')
+      .replace('#include <common>', '#include <common>\nattribute vec4 look;\nattribute vec4 room;\nattribute vec2 home;\nvarying vec4 vLook;\nvarying vec4 vRoom;\nvarying vec2 vHome;\nvarying vec2 vPane;\n#ifdef ROOMS\nvarying vec3 vRay;\n#endif')
+      .replace('#include <uv_vertex>', '#include <uv_vertex>\nvLook = look;\nvRoom = room;\nvHome = home;\nvPane = uv;')
       .replace(
         '#include <project_vertex>',
         `#include <project_vertex>
@@ -277,8 +361,10 @@ export function paneMaterial(): THREE.MeshStandardMaterial {
       .replace('#include <common>', `#include <common>
         uniform sampler2D coverings;
         uniform float windowNight;
+        uniform float windowTime;
         varying vec4 vLook;
         varying vec4 vRoom;
+        varying vec2 vHome;
         varying vec2 vPane;
         #ifdef ROOMS
         varying vec3 vRay;
@@ -299,13 +385,27 @@ export function paneMaterial(): THREE.MeshStandardMaterial {
           vec4 r = fract(seed * vec4(17.31, 31.7, 57.13, 91.9) + vec4(0.0, 0.13, 0.71, 0.37));
           vec3 wall = WALLS[int(r.x * 7.999)];
           float through = abs(vLook.x - float(${COVER.venetian})) < 0.5 ? 0.2 : 1.0; // light through the covering at night
-          if (r.w < 0.1) {
+          // The evening, house by house and room by room: about one house in seven has nobody in (all dark); downstairs
+          // more rooms light up as it gets dark, upstairs few at dusk and some more by full night.
+          float home = vHome.x;
+          float upper = mod(vHome.y, 2.0);
+          float share = upper > 0.5 ? mix(0.06, 0.3, windowNight * windowNight) : mix(0.3, 0.66, windowNight);
+          float on = windowNight * step(0.14, home) * step(fract(seed * 7.31 + home * 3.7), share);
+          // Its light: warm (most), a neutral white, a cool white; a few dim (a lamp in the next room); in about one
+          // lit room in twenty downstairs a television's blue flicker.
+          float tint = fract(seed * 13.7 + home * 1.3);
+          vec3 lamp = tint < 0.55 ? vec3(1.0, 0.55, 0.24) : tint < 0.85 ? vec3(1.0, 0.74, 0.47) : vec3(0.8, 0.86, 1.0);
+          lamp *= fract(seed * 23.1) < 0.2 ? 0.3 : 0.7 + 0.6 * fract(seed * 41.3);
+          float tv = (1.0 - upper) * step(fract(seed * 53.7 + home * 9.1), 0.05);
+          float flick = 0.55 + 0.45 * fract(sin(floor(windowTime * 6.0 + seed * 91.0) * 12.9898) * 43758.5453);
+          lamp = mix(lamp, vec3(0.3, 0.45, 1.0) * flick, tv * 0.8);
+          // Curtains: about one room in ten by day; at night most lit rooms upstairs and a third downstairs, glowing.
+          float drawn = step(fract(seed * 61.3 + home * 5.1), upper > 0.5 ? 0.7 : 0.3) * step(0.5, on);
+          if (r.w < 0.1 || drawn > 0.5) {
             cover = vec3(1.0, 0.0, 0.62 + 0.38 * (0.5 + 0.5 * cos(p.x * 50.0 + r.y * 6.0)));
             through = 1.0;
           }
-          // The light at night, warm, a few rooms a cooler white; on in about half the rooms.
-          vec3 lamp = mix(vec3(1.0, 0.55, 0.24), vec3(1.0, 0.8, 0.58), r.z * r.z);
-          float on = windowNight * step(seed, 0.5);
+          float spot = 0.0; // a lamp seen in the room, brighter than the rest
           vec3 albedo;
           float day;  // how much of the daylight through the window reaches that spot
           float glow; // and of the lamp at night
@@ -337,6 +437,12 @@ export function paneMaterial(): THREE.MeshStandardMaterial {
               vec2 s = vec2(abs(q.x - px), abs(y - 1.6)); // from the picture's middle
               if (r.w > 0.25 && y < 0.8 && s.x < 0.95) albedo = mix(vec3(0.09, 0.08, 0.07), vec3(0.42, 0.38, 0.33), fract(r.w * 13.0));
               else if (r.x > 0.3 && s.x < 0.38 && s.y < 0.28) albedo = s.x < 0.34 && s.y < 0.24 ? vec3(0.55, 0.42, 0.28) * fract(r.w * 29.0) + 0.1 : vec3(0.06);
+              // A standing or table lamp against it: its shade.
+              vec2 shade = vec2(q.x - mix(lo.x + 0.4, hi.x - 0.4, fract(r.x * 5.3)), y - mix(1.0, 1.5, fract(r.y * 3.7))) / vec2(0.17, 0.12);
+              if (dot(shade, shade) < 1.0) {
+                albedo = vec3(0.85, 0.8, 0.7);
+                spot = 1.0;
+              }
             } else if (t == t3.x) {
               // A side wall, with a door in some rooms.
               albedo = wall * 0.9;
@@ -357,10 +463,12 @@ export function paneMaterial(): THREE.MeshStandardMaterial {
             glow = ao / (1.0 + 0.35 * dot(toLamp, toLamp));
           }
           #else
-          // Low and phones: a flat back wall in the room's colour, lighter towards the top.
+          // Low and phones: a flat back wall in the room's colour, lighter towards the top, and the lamp's light in a patch.
           albedo = wall;
           day = 0.45 + 0.4 * vPane.y;
           glow = 0.35 + 0.25 * vPane.y;
+          vec2 spotAt = (vPane - vec2(mix(0.25, 0.75, fract(r.x * 5.3)), 0.45)) * vRoom.xy;
+          spot = 0.5 * (1.0 - smoothstep(0.05, 0.3, length(spotAt)));
           #endif
           // By day the room is lit through the window and seen through two panes: dim. It is shaded here as if it lay on
           // the glass, in the sun that falls on the wall: at 0.3 a window in the sun came out a light grey panel, far
@@ -373,8 +481,16 @@ export function paneMaterial(): THREE.MeshStandardMaterial {
           diffuseColor.rgb = mix(mix(room, sheer, cover.g), cloth, cover.r) * reveal;
           // At night the lamp lights the room, and shines through nets, curtains and roller blinds; venetian
           // blinds show only their dim outer side. Well under what half floats hold (65504).
-          vec3 lit = mix(mix(albedo * glow, vec3(0.5) * cover.b, cover.g), (vColor.rgb * 0.45 + 0.05) * cover.b * through, cover.r);
+          // Drawn curtains glow most where the lamp stands behind them.
+          vec2 fromLamp = (p - vec2(mix(0.25, 0.75, fract(r.x * 5.3)), mix(0.3, 0.55, fract(r.y * 3.7)))) * vRoom.xy;
+          float behind = 0.25 + 1.1 * exp(-2.5 * dot(fromLamp, fromLamp));
+          vec3 lit = mix(mix(albedo * glow + spot * 2.5, vec3(0.5) * cover.b, cover.g), (vColor.rgb * 0.45 + 0.05) * cover.b * through * behind, cover.r);
           totalEmissiveRadiance += lamp * lit * on * reveal * 1.8;
+          // A wall lamp's glass by a front door: frosted by day, lit warm at night where its house has it on.
+          if (vHome.y > 1.5) {
+            diffuseColor.rgb = vec3(0.7, 0.69, 0.66);
+            totalEmissiveRadiance = vec3(1.0, 0.62, 0.3) * 6.0 * windowNight * step(3.5, vHome.y);
+          }
         }`,
       )
       .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = vLook.y;')

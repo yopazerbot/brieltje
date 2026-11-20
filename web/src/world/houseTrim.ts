@@ -6,7 +6,7 @@ import { brickLook, Houses, isBrick } from './facadeLook';
 import { houseStyle, PLINTH_BRICK_SHADE, rollerDown, type HouseStyle } from './houseStyle';
 import { cutAt, planSteps, type BasePlan, type OpeningTop } from './housePlan';
 import { inside, stable } from './houseKeys';
-import { COVER, paneGeometry, type PaneLook } from './windows';
+import { COVER, lampGlassLook, paneGeometry, porchPool, type PaneLook } from './windows';
 // The game's own south (its map's), so the panels face the sun at midday.
 import { SOUTH } from '../ui/bigmap';
 
@@ -516,7 +516,7 @@ export function roofExtras(r: RoofSpec, f: RoofFrame, style: HouseStyle, taken: 
 }
 
 /** A roof window's glass: nothing hung behind it, a dark room with its light off (a seed over one half), glossy. */
-const ROOF_PANE: PaneLook = { cell: COVER.none, tint: new THREE.Color('#ffffff'), roughness: 0.05, f0: 0.2, mirror: false, room: 0.1, sill: 0, seed: 0.9 };
+const ROOF_PANE: PaneLook = { cell: COVER.none, tint: new THREE.Color('#ffffff'), roughness: 0.05, f0: 0.2, mirror: false, room: 0.1, sill: 0, seed: 0.9, home: 0.05, flags: 1 };
 
 /** A quad of four corners (in order round it), facing n: the frames' attributes. */
 function slopeQuad(v: THREE.Vector3[], n: THREE.Vector3, colour: THREE.Color): THREE.BufferGeometry {
@@ -743,7 +743,7 @@ export interface OpeningContext {
  * `n`: the wall's direction (d x up = n) and its outside; `mid` the opening's middle. `back`: how far the window sits
  * back from the wall's face (world/housePlan.ts `planReveals`): the roller shutter goes with it, in front of the glass.
  */
-export function openingTrim(o: Opening, d: THREE.Vector3, n: THREE.Vector3, w: number, mid: THREE.Vector3, ctx: OpeningContext, back = 0): { flat: THREE.BufferGeometry[]; solid: THREE.BufferGeometry[] } {
+export function openingTrim(o: Opening, d: THREE.Vector3, n: THREE.Vector3, w: number, mid: THREE.Vector3, ctx: OpeningContext, back = 0): { flat: THREE.BufferGeometry[]; solid: THREE.BufferGeometry[]; glass?: THREE.BufferGeometry[]; pool?: THREE.BufferGeometry } {
   // The wall block the opening is in (a house is often blocks stacked on each other: the one at its height).
   const [wx, wz] = [mid.x - n.x * 0.3, mid.z - n.z * 0.3];
   const house = ctx.houses.wallAt(wx, wz, mid.y);
@@ -764,6 +764,7 @@ export function openingTrim(o: Opening, d: THREE.Vector3, n: THREE.Vector3, w: n
   for (const s of planSteps(o, ctx.houses, ctx.groundAt)) {
     solid.push(box(out((s.from + s.to) / 2, (s.top + s.bottom) / 2), d, n, w + 0.3, s.top - s.bottom, s.to - s.from, new THREE.Color('#6b7177')));
   }
+  if (o.k === 'd') return { flat: parts, solid, ...doorExtras(o, d, n, w, mid, ctx, back, style, parts, solid) };
   if (o.k !== 'w') return { flat: parts, solid };
   const upper = y0 - ctx.groundAt(mid.x, mid.z) > 2;
   if (style.shutters && !upper && w < 1.9 && h < 1.9) {
@@ -790,6 +791,81 @@ export function openingTrim(o: Opening, d: THREE.Vector3, n: THREE.Vector3, w: n
     }
   }
   return { flat: parts, solid };
+}
+
+/**
+ * By a front door (on the ground floor), by its house's style: a letterbox in the door, a wall lamp beside it (its glass
+ * lit at night where the house has it on, with its light's pool: world/windows.ts `porchPool`), two flower pots either
+ * side, now and then a bench against the wall. Each only where the wall goes on beside the door and no other opening
+ * is in the way. Adds to `flat` and `solid`; returns the lamp's glass and pool.
+ */
+function doorExtras(o: Opening, d: THREE.Vector3, n: THREE.Vector3, w: number, mid: THREE.Vector3, ctx: OpeningContext, back: number, style: HouseStyle,
+  flat: THREE.BufferGeometry[], solid: THREE.BufferGeometry[]): { glass: THREE.BufferGeometry[]; pool?: THREE.BufferGeometry } {
+  const [y0, y1] = o.y;
+  const glass: THREE.BufferGeometry[] = [];
+  const ground = ctx.groundAt(mid.x + n.x * 1.2, mid.z + n.z * 1.2);
+  if (y0 - ground > 1.3) return { glass }; // an upstairs door (onto a balcony): none of these
+  const out = (k: number, y: number) => mid.clone().addScaledVector(n, k).setY(y);
+  const wallAt = (p: THREE.Vector3) => ctx.houses.holds(p.x - n.x * 0.15, p.z - n.z * 0.15, p.y);
+  if (style.door.letterbox) {
+    // A brushed steel flap on the door's face (the panel's face 6 cm in front of the frame's back).
+    const at = out(0.065 - back, y0 + 0.82);
+    solid.push(box(at, d, n, 0.3, 0.07, 0.012, new THREE.Color('#a3a5a6')));
+    flat.push(face(at.clone().addScaledVector(n, 0.0065).setY(y0 + 0.81), d, n, 0.24, 0.018, new THREE.Color('#1c1c1c')));
+  }
+  let pool: THREE.BufferGeometry | undefined;
+  const sides = stable(mid.x, mid.z, 5) < 0.5 ? [-1, 1] : [1, -1];
+  let used = 0;
+  if (style.door.lamp) {
+    for (const side of sides) {
+      const y = y0 + Math.min(1.95, y1 - y0 + 0.05);
+      const at = out(0, y).addScaledVector(d, side * (w / 2 + 0.34));
+      if (!wallAt(at) || !wallAt(at.clone().setY(y + 0.3)) || blocked(ctx.list, o, at, d, n, 0.3, y - 0.3, y + 0.3)) continue;
+      const metal = new THREE.Color('#2b2c2e');
+      solid.push(box(at.clone().addScaledVector(n, 0.015), d, n, 0.11, 0.22, 0.03, metal)); // back plate
+      solid.push(box(at.clone().addScaledVector(n, 0.06).setY(y + 0.07), d, n, 0.04, 0.04, 0.07, metal)); // arm
+      solid.push(box(at.clone().addScaledVector(n, 0.12).setY(y + 0.135), d, n, 0.2, 0.04, 0.2, metal)); // cap
+      solid.push(box(at.clone().addScaledVector(n, 0.12).setY(y - 0.115), d, n, 0.16, 0.03, 0.16, metal)); // foot
+      const look = lampGlassLook(style.door.lit);
+      const seed = at.x + at.z * 1.7;
+      glass.push(paneGeometry(at.clone().addScaledVector(n, 0.195).setY(y + 0.01), d, n, 0.14, 0.21, look, seed));
+      for (const s of [-1, 1]) {
+        const sideN = d.clone().multiplyScalar(s);
+        glass.push(paneGeometry(at.clone().addScaledVector(n, 0.12).addScaledVector(d, s * 0.075).setY(y + 0.01), n.clone().multiplyScalar(-s), sideN, 0.14, 0.21, look, seed + s));
+      }
+      if (style.door.lit) pool = porchPool(at.clone().addScaledVector(n, 0.12), n, d, out(0, y0), ground);
+      used = side;
+      break;
+    }
+  }
+  // Two flower pots either side of the door, on the ground, clear of the step.
+  if (style.door.pots) {
+    for (const side of [-1, 1]) {
+      const at = out(0.3, 0).addScaledVector(d, side * (w / 2 + 0.45));
+      const g = ctx.groundAt(at.x, at.z);
+      if (!ctx.houses.holds(at.x - n.x * 0.45, at.z - n.z * 0.45, g + 0.5) || blocked(ctx.list, o, at, d, n, 0.4, g, g + 1)) continue;
+      const big = 0.28 + 0.1 * stable(at.x, at.z, 6);
+      solid.push(box(at.clone().setY(g + big * 0.55), d, n, big, big * 1.1, big, new THREE.Color(stable(at.x, at.z, 7) < 0.6 ? '#9c5137' : '#4a4d50')));
+      const leaves = new THREE.IcosahedronGeometry(big * 0.72, 0).toNonIndexed();
+      leaves.deleteAttribute('uv');
+      leaves.scale(1, 0.8 + 0.6 * stable(at.x, at.z, 8), 1).translate(at.x, g + big * 1.1 + big * 0.35, at.z);
+      solid.push(colourAll(leaves, new THREE.Color(stable(at.x, at.z, 9) < 0.7 ? '#3d5e2f' : '#556b2a')));
+    }
+  }
+  // Now and then a wooden bench against the wall, on the side away from the lamp.
+  if (style.door.bench) {
+    const side = used ? -used : sides[0];
+    const at = out(0.3, 0).addScaledVector(d, side * (w / 2 + 1.05));
+    const g = ctx.groundAt(at.x, at.z);
+    const clear = [-0.6, 0, 0.6].every((k) => ctx.houses.holds(at.x + d.x * k - n.x * 0.45, at.z + d.z * k - n.z * 0.45, g + 0.8));
+    if (clear && !blocked(ctx.list, o, at, d, n, 1.5, g, g + 1.2)) {
+      const wood = new THREE.Color('#7a5a3e');
+      solid.push(box(at.clone().setY(g + 0.45), d, n, 1.3, 0.05, 0.38, wood)); // seat
+      solid.push(box(at.clone().addScaledVector(n, -0.17).setY(g + 0.72), d, n, 1.3, 0.22, 0.04, wood)); // back
+      for (const k of [-0.55, 0.55]) solid.push(box(at.clone().addScaledVector(d, k).setY(g + 0.21), d, n, 0.06, 0.44, 0.34, new THREE.Color('#2f3032')));
+    }
+  }
+  return { glass, pool };
 }
 
 /** Whether another opening on the same wall overlaps a leaf shutter `width` wide, centred at `at`, between heights y0 and y1. */
