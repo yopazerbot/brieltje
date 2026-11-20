@@ -33,7 +33,7 @@
 import { randomInt } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { WebSocketServer } from 'ws';
-import { Modes } from './modes.mjs';
+import { KINDS, Modes } from './modes.mjs';
 import { bruteDamage, hurtBy, newBrute, stepBrute } from '../shared/brutes.mjs';
 import { makeTerrain } from '../shared/terrain.mjs';
 import { loadBounds } from '../shared/bounds.mjs';
@@ -1391,7 +1391,9 @@ export class Game {
       this.nextRoomMode = now + ROOM_MODE_MS;
       this.modes.start(m.kind, name, this.room.arena.id);
     } else if (m.t === 'mode' && !this.room && player.role === 'admin' && typeof m.kind === 'string') {
-      // `place`: where Zombies is played (shared/arenas.mjs; an unknown one plays at home).
+      // `place`: where Zombies is played (shared/arenas.mjs; an unknown one plays at home). The admin's own Stop or game
+      // calls off the host's countdown (server/host.mjs callOff): it would replace it ten seconds later.
+      if (m.kind === 'free' || Object.hasOwn(KINDS, m.kind)) this.host?.callOff();
       this.modes.start(m.kind, name, typeof m.place === 'string' ? m.place.slice(0, 30) : 'house');
     } else if (m.t === 'zwave' && player.role === 'admin') {
       const zombies = this.modes.zombies;

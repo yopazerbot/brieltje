@@ -351,11 +351,10 @@ export class Host {
         return this.startIn(e, by);
       }
       case 'cancel':
-        if (this.countdown) clearTimeout(this.countdown.timer);
-        this.countdown = null;
-        g.broadcast({ t: 'announce', text: '', ms: 0 });
+        this.callOff(true);
         return { ok: true };
       case 'stop':
+        this.callOff(); // a game counting down goes too: Stop means nothing plays (before, it started 10 s later anyway)
         g.hub?.duel?.stop(by); // the Zombies duel: both rooms at once
         g.modes.start('free', by);
         return { ok: true };
@@ -425,6 +424,7 @@ export class Host {
     if (this.countdown) clearTimeout(this.countdown.timer);
     const until = Date.now() + COUNTDOWN_MS;
     const timer = setTimeout(() => {
+      if (this.countdown?.timer !== timer) return; // called off or replaced meanwhile: never a stale start
       this.countdown = null;
       if (!duel) return this.game.modes.start(e.kind === 'assault' ? 'flag' : e.kind, by, e.place, { minutes: e.minutes, goal: e.goal, look: e.look, defend: e.defend }); // Attack and defend: a flag game of its own
       const r = duel.start(e, by);
@@ -434,6 +434,19 @@ export class Host {
     this.countdown = { kind: e.kind, until, timer };
     this.game.broadcast({ t: 'announce', code: 'nextGame', args: { kind: e.kind }, text: `Next: ${KINDS[e.kind] ?? (e.kind === 'assault' ? ASSAULT_TITLE : 'Zombies duel')}`, ms: COUNTDOWN_MS, count: true });
     return { ok: true };
+  }
+
+  /**
+   * The game counting down called off (the host's Cancel and Stop, the admin's own Stop or game from the in-game menu:
+   * game.mjs): its timer cleared, and every page told by the empty announcement that takes their countdown's bar away.
+   * Nothing counting down: nothing happens, and nobody's bar is touched (an announcement of the host's stays), unless
+   * `always` (Cancel, as before). The programme's place stays where Next put it, as with Cancel.
+   */
+  callOff(always = false) {
+    const was = !!this.countdown;
+    if (was) clearTimeout(this.countdown.timer);
+    this.countdown = null;
+    if (was || always) this.game.broadcast({ t: 'announce', text: '', ms: 0 });
   }
 
   /** Everyone here on a team, as evenly as can be, in random order, the extra ones on any team (the host not counted). */
