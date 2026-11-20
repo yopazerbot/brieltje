@@ -2014,6 +2014,7 @@ const spiritFight = new SpiritFight({
   scene, renderer, camera, ground: groundY, trees: house.surroundings?.trees ?? [], addBlock: (p) => world.addPrisms([p]), send: (m) => net.send(m),
   hurt: (hp, x, z) => (combat.hitFrom(Math.atan2(-(x - player.x), -(z - player.z)) - player.yaw), soloHurt(hp, t('char.spirit'), { ...SPIRIT.wake, fx: SPIRIT.grove.x, fz: SPIRIT.grove.z })),
   marker: () => combat.hitMarker(false), giveLauncher: (n) => weapon.giveLauncher(n),
+  launcherLeft: (n) => (weapon.lobSpare = Math.max(0, n - weapon.ammo.launcher)), // together: the server's count (server/spiritLauncher.mjs)
 });
 weapon.onSpiritHit = (part, point, w) => spiritFight.shot(part, point, w);
 spiritFight.onEngaged = (on) => combat.setActive((!!me || !!solo || on) && weapon.enabled); // your health shows while you fight it alone

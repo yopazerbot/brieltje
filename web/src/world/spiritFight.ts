@@ -28,6 +28,8 @@ import { SpiritSound, type SpiritCue } from './spiritSound';
  *   the grenade launcher lying where it came apart; walk into it to take it.
  * - Together the server runs it: the page only draws what `sp` and `spe` say (smoothed between the five `sp` a
  *   second), and tells the server which parts each of your shots hit (`sphit`). It never decides a hit's effect.
+ *   Its launcher too is the server's (server/spiritLauncher.mjs): drawn lying where `sgl` and `welcome.spirit.gl` say,
+ *   in your hands only when the server says it is yours (`sgl` left), with the server's count.
  * Both draw from the same view (spiritView alone, readSpirit together), so they look and sound the same.
  *
  * Open world only: nothing in a room (no `welcome.spirit`) or while any game is played (Zombies alone too).
@@ -69,8 +71,10 @@ export interface SpiritHost {
   hurt: (damage: number, x: number, z: number) => void;
   /** Alone: a hit of yours counted (the hit marker) */
   marker: () => void;
-  /** Alone: the grenade launcher into your hands with `n` grenades */
+  /** The grenade launcher into your hands with `n` grenades (0: out of them) */
   giveLauncher: (n: number) => void;
+  /** Together: the launcher you hold has `n` grenades left, as the server counts them */
+  launcherLeft: (n: number) => void;
 }
 
 /** You, each frame. */
@@ -152,9 +156,13 @@ export class SpiritFight {
   private lastShot: THREE.Vector3 | null = null;
   private pending = new Map<WeaponId, Map<number, number>>();
   private flushing = false;
-  /** Alone: the launcher lying where it came apart */
+  /** The launcher lying where it came apart (together: where the server says) */
   drop: { x: number; y: number; z: number; until: number; group: THREE.Group } | null = null;
   private says: { text: string; until: number }[] = [];
+  /** Together: the grenades of the launcher the server says you hold, or null */
+  private mine: number | null = null;
+  private meAt = { x: 0, z: 0 };
+  private control: Control = 'kbm';
   private pings: number[] = [];
   private engaged = false;
   /** Called when you start or stop fighting it alone (main.ts shows your health meanwhile) */
@@ -197,26 +205,98 @@ export class SpiritFight {
     host.addBlock(this.sign.block());
   }
 
-  private get now(): number {
+  /** ms on the fight's clock: the page's own together, the fight's alone */
+  get now(): number {
     return this.together ? performance.now() : this.clock;
   }
 
-  /** `welcome.spirit` on joining somewhere: missing in a room. Checked as `sp` (readSpirit). Its launcher (`gl`) is a later step's. */
+  /** `welcome.spirit` on joining somewhere: missing in a room. Checked as `sp` (readSpirit); its launcher `gl` as `sgl` drop. */
   welcome(spirit: unknown): void {
+    this.runner(true); // a welcome is the server's: together from now (before the next frame says so)
     this.room = !spirit || typeof spirit !== 'object';
     this.wire = null;
     this.prev = null;
     this.fx.clear();
-    if (!this.room) this.receive(spirit);
+    this.takeAway();
+    this.mine = null; // the guns come with the welcome: the server hands the launcher back if it is still yours
+    if (this.room) return;
+    this.receive(spirit);
+    const gl = (spirit as { gl?: unknown }).gl;
+    if (gl && typeof gl === 'object' && 'ms' in gl) this.launcher({ ...(gl as Record<string, unknown>), e: 'drop' });
   }
 
-  /** A message of the fight from the server: `sp`, `spe` (and `sgl`, a later step's). Anything malformed is ignored. */
+  /** A message of the fight from the server: `sp`, `spe`, `sgl`. Anything malformed is ignored. */
   message(m: unknown): void {
     if (!m || typeof m !== 'object') return;
     const k = (m as { t?: unknown }).t;
     if (k === 'sp') this.receive(m);
     else if (k === 'spe') this.effect(m as Record<string, unknown>);
-    // `sgl` (the launcher together) is the server's later step: nothing drawn for it yet.
+    else if (k === 'sgl') this.launcher(m as Record<string, unknown>);
+  }
+
+  /**
+   * Together, `sgl`: the launcher lies somewhere (`drop`), someone else took it (`taken`), yours has `n` left (`left`,
+   * to you alone: the first one puts it in your hands), or it is gone. Fields checked before use; names only as text.
+   */
+  private launcher(m: Record<string, unknown>): void {
+    const paint = paintball.on;
+    switch (m.e) {
+      case 'drop': {
+        const at = spot(m);
+        if (!at || !fin(m.ms) || m.ms < 0 || m.ms > SPIRIT.launcher.lie * 1000) return;
+        this.outOfHands();
+        this.leave(at, m.ms);
+        return;
+      }
+      case 'taken': {
+        const d = this.drop;
+        const near = !!d && Math.hypot(this.meAt.x - d.x, this.meAt.z - d.z) < LINE_NEAR;
+        this.takeAway();
+        if (near && typeof m.name === 'string' && m.name.length > 0 && m.name.length <= 40) this.say(t(paint ? 'sgl.takenPaint' : 'sgl.taken', { name: m.name }));
+        return;
+      }
+      case 'left': {
+        if (!fin(m.n) || m.n < 0 || m.n > SPIRIT.launcher.rounds) return;
+        const n = Math.floor(m.n);
+        if (n === 0) {
+          if (this.mine !== null) this.say(t(paint ? 'sgl.emptyPaint' : 'sgl.empty'));
+          this.outOfHands();
+          return;
+        }
+        if (this.mine === null) {
+          this.takeAway();
+          this.host.giveLauncher(n);
+          this.gift(n);
+        } else this.host.launcherLeft(n);
+        this.mine = n;
+        return;
+      }
+      case 'gone':
+        this.takeAway();
+        this.outOfHands();
+        return;
+      default:
+    }
+  }
+
+  /** Together: the launcher out of your hands (it fell, it is empty, it is gone). */
+  private outOfHands(): void {
+    if (this.mine !== null) this.host.giveLauncher(0);
+    this.mine = null;
+  }
+
+  /** One line for a moment (the launcher's). */
+  private say(text: string): void {
+    this.says = [{ text, until: performance.now() / 1000 + SAY }];
+  }
+
+  /** The launcher just came into your hands with `n` grenades: the line, then how to fire it. */
+  private gift(n: number): void {
+    const c = this.control;
+    this.says = [
+      { text: t(paintball.on ? 'sgl.takenYouPaint' : 'sgl.takenYou', { n }), until: performance.now() / 1000 + SAY },
+      { text: t(`sgl.hint.${c}` as 'sgl.hint.kbm', { shoot: key('shoot', c), weapons: key('weapons', c) }), until: 0 },
+    ];
   }
 
   private receive(m: unknown): void {
@@ -326,10 +406,14 @@ export class SpiritFight {
     }
   }
 
-  /** Alone: beaten, it leaves the grenade launcher lying where it came apart, on a low glowing ring. */
-  private leave(at: { x: number; y: number; z: number }): void {
+  /**
+   * Beaten, it leaves the grenade launcher lying where it came apart, on a low glowing ring, for `ms` (together where
+   * the server says: on the ground there, or on the floor it fell on when that is higher).
+   */
+  private leave(at: { x: number; y: number; z: number }, ms = SPIRIT.launcher.lie * 1000): void {
     this.takeAway();
-    const y = this.host.ground(at.x, at.z);
+    const floor = this.host.ground(at.x, at.z);
+    const y = at.y > floor + 0.5 ? at.y : floor;
     const group = new THREE.Group();
     const ring = new THREE.Mesh(new THREE.RingGeometry(0.55, 0.72, 40), new THREE.MeshBasicMaterial({ color: new THREE.Color(1.6, 2.0, 1.75), transparent: true, opacity: 0.75, depthWrite: false, blending: THREE.AdditiveBlending }));
     ring.rotation.x = -Math.PI / 2;
@@ -347,7 +431,7 @@ export class SpiritFight {
     group.position.set(at.x, y, at.z);
     group.traverse((o) => (o.userData.ignoreRay = true));
     this.host.scene.add(group);
-    this.drop = { x: at.x, y, z: at.z, until: this.clock + SPIRIT.launcher.lie * 1000, group };
+    this.drop = { x: at.x, y, z: at.z, until: this.now + ms, group };
     this.fx.drop = { x: at.x, y, z: at.z };
   }
 
@@ -365,25 +449,23 @@ export class SpiritFight {
     this.fx.drop = null;
   }
 
-  /** Alone: walked into the launcher, armed and on foot: yours, with its grenades. */
+  /** The launcher lying turns over its ring. Alone: walked into it, armed and on foot, it is yours (together the server says). */
   private stepDrop(me: SpiritMe, dt: number): void {
     const d = this.drop;
     if (!d) return;
-    if (this.clock >= d.until || this.together) {
+    const now = this.now;
+    if (now >= d.until) {
       this.takeAway();
       return;
     }
-    d.group.children[1].position.y = 0.4 + Math.sin(this.clock / 600) * 0.04;
+    d.group.children[1].position.y = 0.4 + Math.sin(now / 600) * 0.04;
     d.group.children[1].rotation.y += dt * 0.4;
+    if (this.together) return;
     const L = SPIRIT.launcher;
     if (!me.fighter || Math.hypot(me.x - d.x, me.z - d.z) > L.across / 2 + 0.35 || Math.abs(me.feet - d.y) > L.high) return;
     this.takeAway();
     this.host.giveLauncher(L.rounds);
-    const now = performance.now() / 1000;
-    this.says = [
-      { text: t(paintball.on ? 'sgl.takenYouPaint' : 'sgl.takenYou', { n: L.rounds }), until: now + SAY },
-      { text: t(`sgl.hint.${me.control}` as 'sgl.hint.kbm', { shoot: key('shoot', me.control), weapons: key('weapons', me.control) }), until: 0 },
-    ];
+    this.gift(L.rounds);
   }
 
   /** The aim assist's targets (controls/aimAssist.ts): the open heart and the lit lights, within 60 m. */
@@ -408,22 +490,28 @@ export class SpiritFight {
     return !!v && !this.last.absent && this.last.dist < LINE_NEAR && (v.mode === 'fight' || v.mode === 'mend');
   }
 
+  /** Joined or left (`together`): the other runner starts from nothing. */
+  private runner(together: boolean): void {
+    if (together === this.together) return;
+    this.together = together;
+    this.sim = newSpirit(SPIRIT);
+    this.wire = null;
+    this.room = false;
+    this.prev = null;
+    this.hurtAt = -Infinity;
+    this.takeAway();
+    this.outOfHands(); // together it was the server's: not kept for playing alone
+    this.fx.clear();
+  }
+
   /** Each frame, after you moved. */
   update(dt: number, camera: THREE.Camera, me: SpiritMe): void {
-    const together = me.connected || !!this.fake;
-    if (together !== this.together) {
-      // Joined or left: the other runner starts from nothing.
-      this.together = together;
-      this.sim = newSpirit(SPIRIT);
-      this.wire = null;
-      this.room = false;
-      this.prev = null;
-      this.hurtAt = -Infinity;
-      this.takeAway();
-      this.fx.clear();
-    }
+    this.runner(me.connected || !!this.fake);
+    const together = this.together;
     const g = SPIRIT.grove;
     const dist = Math.hypot(me.x - g.x, me.z - g.z);
+    this.meAt = { x: me.x, z: me.z };
+    this.control = me.control;
     const absent = me.game || (together && this.room);
     this.last.dist = dist;
     this.last.absent = absent;
@@ -503,7 +591,7 @@ export class SpiritFight {
     this.sound.update(camDist, this.heart.x, this.heart.y, this.heart.z, awake, v ? spiritLook(v, now, SPIRIT).anger : 0, show && !!v && v.mode !== 'gone' && v.mode !== 'apart');
     if (v && show) this.pingLights(v, time);
 
-    if (!together) this.stepDrop(me, dt);
+    this.stepDrop(me, dt);
     const engaged = !together && !absent && awake && me.armed && dist < LINE_NEAR;
     if (engaged !== this.engaged) {
       this.engaged = engaged;
@@ -718,7 +806,7 @@ export function spiritDev(f: SpiritFight, render: (kind: SpiritCue | 'presence')
         clock: f.clock, held: f.held,
         heart: f.heartBox.visible ? f.heartBox.position.toArray() : null,
         lights: f.lightBoxes.map((b) => (b.visible ? b.position.toArray() : null)),
-        drop: f.drop && { x: f.drop.x, y: f.drop.y, z: f.drop.z, left: f.drop.until - f.clock },
+        drop: f.drop && { x: f.drop.x, y: f.drop.y, z: f.drop.z, left: f.drop.until - f.now },
         look: !!f.look, heartShown: f.look?.heartShown ?? 0, nodes: f.sound.nodes,
       };
     },
