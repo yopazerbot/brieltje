@@ -627,7 +627,7 @@ export class ZombieGame {
     const w = m.w;
     const spec = g.weaponSpec(w);
     const pierce = spec?.pierce ?? 1;
-    if (!spec || spec.rocket || !Array.isArray(m.hits) || !m.hits.length || m.hits.length > (pierce > 1 ? pierce : MAX_HITS)) return;
+    if (!spec || spec.rocket || spec.lob || !Array.isArray(m.hits) || !m.hits.length || m.hits.length > (pierce > 1 ? pierce : MAX_HITS)) return;
     if (!p.alive || !p.state?.armed || !p.weapons.has(w) || p.state.w !== w || g.inCar(name) || g.calm(p)) return;
     if (this.horde.phase === 'over' || now < (p.nextZombie || 0)) return;
     const seen = new Set();

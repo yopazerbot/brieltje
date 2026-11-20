@@ -384,7 +384,7 @@ const ROOM_REFUSED = new Set(['furn', 'tesla', 'clown', 'rules', 'mood', 'moodsk
  * when a type Game.handle reads is in neither list.
  */
 export const HELI_REFUSED = new Set(['hit', 'rocket', 'nade', 'boom', 'shot', 'crack', 'vil', 'cat', 'clownhit', 'zhit', 'zitem', 'zbuy', 'revive', 'pickup', 'coin', 'tag', 'kickball',
-  'glass', 'door', 'furn', 'tesla', 'clown', 'claymore', 'turret', 'stakes', 'placement', 'car', 'horse', 'bike', 'bell', 'spawn', 'chute', 'unstuck', 'vhit', 'asup', 'sphit']);
+  'glass', 'door', 'furn', 'tesla', 'clown', 'claymore', 'turret', 'stakes', 'placement', 'car', 'horse', 'bike', 'bell', 'spawn', 'chute', 'unstuck', 'vhit', 'asup', 'sphit', 'gl']);
 
 /** The ids a `door` message may carry: the house data's and the end house's door ids (letters, digits, dots and dashes), at most 40 characters. */
 export const DOOR_ID = /^[A-Za-z0-9.-]{1,40}$/;
@@ -970,7 +970,7 @@ export class Game {
     }
     if (!m || typeof m !== 'object') return;
     if (m.t === 'state' ? ++player.states > 30 : ++player.others > 40) return;
-    if ((this.modes.noShooting || this.host?.holds(player)) && ['hit', 'vhit', 'rocket', 'nade', 'boom', 'shot', 'crack', 'vil', 'sphit'].includes(m.t)) return; // no fighting during a party game or a freeze
+    if ((this.modes.noShooting || this.host?.holds(player)) && ['hit', 'vhit', 'rocket', 'nade', 'boom', 'shot', 'crack', 'vil', 'sphit', 'gl'].includes(m.t)) return; // no fighting during a party game or a freeze
     // A room changes nothing of the open world and holds its players at its place (server/rooms.mjs).
     if (this.room && ROOM_REFUSED.has(m.t)) return;
     if (this.room?.duel && (m.t === 'mode' || m.t === 'zwave')) return; // a duel room's game is the host's alone (server/duel.mjs)
@@ -1356,6 +1356,8 @@ export class Game {
       this.rocket(name, player, m, now);
     } else if (m.t === 'nade') {
       this.throwNade(name, player, m, now);
+    } else if (m.t === 'gl') {
+      this.spirit?.launcher.fire(name, player, m, now); // the Brook Spirit's grenade launcher (server/spiritLauncher.mjs: every check)
     } else if (m.t === 'boom') {
       this.boom(name, player, m, now);
     } else if (m.t === 'hit' && typeof m.target === 'string' && Object.hasOwn(WEAPONS, m.w)) {
@@ -2348,7 +2350,7 @@ export class Game {
   hit(name, shooter, targetName, w, body, head, now) {
     const spec = WEAPONS[w];
     const target = this.players.get(targetName);
-    if (spec.rocket) return; // rockets hurt through their blast (see rocket)
+    if (spec.rocket || spec.lob) return; // rockets and the launcher's grenades hurt through their blast (see rocket, boom)
     if (!target || target === shooter || this.roundOver || !shooter.weapons.has(w) || shooter.state?.w !== w) return;
     if (this.modes.friends(name, targetName)) return; // the same team
     if (!this.gate.mayHurt(shooter, target)) return; // one of them inside a home the other may not see into
@@ -2440,7 +2442,8 @@ export class Game {
    * or floor, spared (a browser can only spare people this way, never hurt more).
    */
   boom(name, p, m, now) {
-    const i = p.thrown.findIndex((g) => now - g.at > (GRENADE.fuse - 1) * 1000 && now - g.at < (GRENADE.fuse + 3) * 1000);
+    if (m.l) return void this.spirit?.launcher.boom(name, p, m, now); // the grenade launcher's (server/spiritLauncher.mjs), never a hand grenade's
+    const i = p.thrown.findIndex((g) => !g.lob && now - g.at > (GRENADE.fuse - 1) * 1000 && now - g.at < (GRENADE.fuse + 3) * 1000);
     if (i < 0) return;
     const g = p.thrown.splice(i, 1)[0];
     const at = blastPoint(g, where(m), GRENADE); // never further than the throw could reach

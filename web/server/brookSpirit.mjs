@@ -18,6 +18,7 @@
 // Nothing is stored or logged: a restart brings it back asleep at once.
 import { readFileSync } from 'node:fs';
 import { blastSpirit, hurtSpirit, newSpirit, spiritPart, spiritWire, stepSpirit } from '../shared/brookSpirit.mjs';
+import { SpiritLauncher } from './spiritLauncher.mjs';
 import { trunkRadius } from '../shared/trees.mjs';
 import { TICK_MS } from '../shared/wire.mjs';
 
@@ -106,8 +107,10 @@ export class BrookSpirit {
     this.ticks = 0;
     /** The last time it was beaten: { by (everyone who hurt it, most first), drop (the hover point nearest), at }. */
     this.beaten = null;
-    /** Called with `beaten` when it is beaten (the launcher's drop hooks in here). */
-    this.onBeaten = null;
+    /** The grenade launcher it leaves (server/spiritLauncher.mjs): stepped from tick, fired from game.mjs `gl` and `boom`. */
+    this.launcher = new SpiritLauncher(game, this.d.launcher);
+    /** Called with `beaten` when it is beaten: the launcher's drop. */
+    this.onBeaten = (b) => this.launcher.drop(b);
   }
 
   key() {
@@ -141,6 +144,7 @@ export class BrookSpirit {
   /** One step from the game's tick: absent (reset, asleep) while any game runs. */
   tick(now) {
     if (++this.ticks % 200 === 0) for (const [k, t] of this.clocks) if (t <= now) this.clocks.delete(k);
+    this.launcher.step(now); // a game starting takes it away too
     if (this.game.modes.active) {
       if (this.s.mode !== 'asleep') this.s = newSpirit(this.d);
       this.at = now;
@@ -294,8 +298,8 @@ export class BrookSpirit {
     return { spawn: 0, x: w.x, y: w.y, z: w.z, face: [this.d.grove.x, this.d.grove.z] };
   }
 
-  /** `welcome.spirit`: the spirit as `sp` carries it. */
+  /** `welcome.spirit`: the spirit as `sp` carries it, and its launcher (`gl`). */
   view(now) {
-    return spiritWire(this.s, now);
+    return { ...spiritWire(this.s, now), gl: this.launcher.view(now) };
   }
 }

@@ -174,7 +174,7 @@ export class VehicleDamage {
     if (!this.live || g.roundOver || g.room) return;
     if (!KINDS.has(m.kind) || typeof m.id !== 'string' || !ID.test(m.id) || typeof m.w !== 'string' || !Object.hasOwn(this.weapons, m.w)) return;
     const spec = this.weapons[m.w];
-    if (spec.rocket || !Number.isInteger(m.n) || m.n < 1 || m.n > spec.pellets) return; // a rocket hurts through its blast
+    if (spec.rocket || spec.lob || !Number.isInteger(m.n) || m.n < 1 || m.n > spec.pellets) return; // a rocket or the launcher's grenade hurts through its blast
     const s = p.state;
     if (!s || !p.alive || !s.armed || !p.weapons?.has(m.w) || s.w !== m.w || g.inCar(name) || g.fightCalm(p)) return;
     if (now < (p.nextHit || 0)) return; // the one clock of all hits (Game.hit): a shot counts once, on a player or a vehicle
