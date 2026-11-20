@@ -468,7 +468,7 @@ export function paneMaterial(): THREE.MeshStandardMaterial {
           day = 0.45 + 0.4 * vPane.y;
           glow = 0.35 + 0.25 * vPane.y;
           vec2 spotAt = (vPane - vec2(mix(0.25, 0.75, fract(r.x * 5.3)), 0.45)) * vRoom.xy;
-          spot = 0.5 * (1.0 - smoothstep(0.05, 0.3, length(spotAt)));
+          spot = 0.22 * exp(-4.0 * dot(spotAt, spotAt)); // soft: a lamp somewhere in the room, no shape
           #endif
           // By day the room is lit through the window and seen through two panes: dim. It is shaded here as if it lay on
           // the glass, in the sun that falls on the wall: at 0.3 a window in the sun came out a light grey panel, far
