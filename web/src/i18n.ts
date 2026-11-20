@@ -3116,7 +3116,7 @@ export function portalNames(p: { id: string; name: string }): string[] {
 /** Who did it, for the kill feed and the death screen: a player's name, or one of the game's own ("a strongman"). */
 export function whoName(name: string): string {
   // Player names are 2 to 20 letters, digits, - or _ (server/auth.mjs): never one of these.
-  const own: Record<string, PlainKey> = { 'a strongman': 'char.strongman', 'a clown': 'char.clown', 'a cat': 'char.cat', 'a zombie': 'char.zombie', 'a big zombie': 'char.bigZombie' };
+  const own: Record<string, PlainKey> = { 'a strongman': 'char.strongman', 'a clown': 'char.clown', 'a cat': 'char.cat', 'a zombie': 'char.zombie', 'a big zombie': 'char.bigZombie', 'the brook spirit': 'char.spirit' };
   return Object.hasOwn(own, name) ? t(own[name]) : playerName(name);
 }
 
