@@ -1098,6 +1098,7 @@ export class Car {
       regen: Math.min(1, Math.max(0, (-this.along * Math.sign(this.speed)) / 6)),
       skid: Math.max(paved, rough), rough: rough > paved || this.rough.filter(Boolean).length > 2,
       slide: local ? Math.max(this.slideF, this.slideR) : Math.abs(this.side),
+      air: this.flying,
     });
     this.lastX = this.x;
     this.lastY = this.y;

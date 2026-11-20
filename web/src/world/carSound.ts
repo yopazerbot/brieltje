@@ -5,7 +5,7 @@ import { sound } from '../sound';
  *
  * - the electric motor's whine, two thin notes whose pitch follows the speed, louder on the pedal and a
  *   little when it slows down on the motor;
- * - the tyres rolling, a rushing that rises with speed and gets rougher off the paving;
+ * - the tyres rolling, a rushing that rises with speed and gets rougher off the paving, silent in the air;
  * - the wind round the body at high speed;
  * - a squeal while the tyres slide (world/carBody.ts: skid), a scrub instead on grass or gravel;
  * - a thump when it goes over a kerb or runs into something.
@@ -58,6 +58,8 @@ export interface CarNoise {
   slide?: number;
   /** On grass, earth or gravel rather than paving */
   rough: boolean;
+  /** Off the ground (world/carBody.ts rideHeight): the tyres touch nothing, so they are still */
+  air?: boolean;
 }
 
 export class CarSound {
@@ -80,16 +82,17 @@ export class CarSound {
     a.whine2.frequency.setTargetAtTime(f * 3.02, t, 0.05);
     const pull = 0.35 + 0.65 * Math.max(n.load, 0.6 * n.regen);
     a.motor.gain.setTargetAtTime(Math.min(0.035, 0.002 + v * 0.0012) * pull * (v > 0.3 ? 1 : 0), t, 0.08);
-    // The tyres: a low rush that opens up with speed; off the paving louder and duller.
+    // The tyres: a low rush that opens up with speed; off the paving louder and duller. In the air they fade out
+    // (about a tenth of a second) and come back as it lands (the thump is world/car.ts landed).
     a.roll.frequency.setTargetAtTime((n.rough ? 160 : 250) + v * (n.rough ? 45 : 70), t, 0.1);
-    a.road.gain.setTargetAtTime(Math.min(n.rough ? 0.2 : 0.14, v * (n.rough ? 0.011 : 0.0065)), t, 0.1);
+    a.road.gain.setTargetAtTime(n.air ? 0 : Math.min(n.rough ? 0.2 : 0.14, v * (n.rough ? 0.011 : 0.0065)), t, n.air ? 0.04 : 0.1);
     // The wind: only at speed, rising with its square.
     a.windBand.frequency.setTargetAtTime(500 + v * 18, t, 0.2);
     a.wind.gain.setTargetAtTime(0.07 * Math.min(1, (v / 55) ** 2), t, 0.2);
     // Sliding: a squeal on paving, a scrub on grass or gravel. The faster the rubber slides over the road,
     // the louder it screeches and the lower and rougher it gets (a locked wheel's long howl), its upper note
     // coming in as it gets hard.
-    const s = Math.min(1, Math.max(0, n.skid));
+    const s = n.air ? 0 : Math.min(1, Math.max(0, n.skid)); // nothing to slide on in the air
     const slide = Math.min(15, Math.max(0, n.slide ?? 3 * s));
     a.squeal.frequency.setTargetAtTime(880 - slide * 12 + v * 4, t, 0.08);
     a.squeal2.frequency.setTargetAtTime((880 - slide * 12 + v * 4) * 1.49, t, 0.08);

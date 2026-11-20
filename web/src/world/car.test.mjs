@@ -553,8 +553,13 @@ function flight(car, v, seconds, input = { throttle: 0, brake: 0, steer: 0, hand
 test('off a 1 m ledge at 20 m/s it flies about 0.45 s and lands about 9 m on, its speed and heading kept, the nose down a little', (t) => {
   const car = vehicle(specs.cars.tesla, (x, z) => ({ y: z > -5 ? 1 : 0, mat: 'asphalt' }));
   car.y = 1;
+  const heard = [];
+  car.noise.update = (n) => heard.push([car.air, !!n.air]);
   const f = flight(car, 20, 2);
   assert.ok(f.off && f.on, 'it took off and landed');
+  // Its sound is told it is in the air while it is (the tyres go still, world/carSound.ts), and back on the ground after.
+  assert.ok(heard.some(([a]) => a) && heard.every(([a, n]) => a === n), 'the tyres hear when it flies');
+  assert.equal(heard.at(-1)[1], false, 'rolling again after');
   const air = f.on.t - f.off.t;
   assert.ok(Math.abs(air - 0.45) < 0.04, `in the air ${air.toFixed(3)} s`);
   assert.ok(Math.abs(f.off.z - f.on.z - 9) < 0.6, `flew ${(f.off.z - f.on.z).toFixed(2)} m`);
