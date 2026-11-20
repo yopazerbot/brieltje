@@ -86,7 +86,12 @@ export class Host {
   joined(name, player) {
     this.evening.add(name);
     this.knocking.delete(name);
-    if (this.teamCount && !(name in this.teams) && player.role !== 'admin') this.teams[name] = this.smallestTeam();
+    const fresh = this.teamCount && !(name in this.teams) && player.role !== 'admin';
+    if (fresh) this.teams[name] = this.smallestTeam();
+    // Told their team: a newcomer and every page with them (the lists of the others' pages and the hall screen); someone
+    // back, their page alone (its welcome forgot it). Before, a newcomer was never told until the host changed the teams.
+    if (fresh) this.tellTeams();
+    else if (this.teamCount) this.game.send(player.ws, this.teamsMsg());
     if (this.frozen) this.game.send(player.ws, { t: 'freeze', on: true, text: this.frozen.text });
   }
 
@@ -470,6 +475,10 @@ export class Host {
 
   /** Every page told tonight's teams. */
   tellTeams() {
-    this.game.broadcast({ t: 'eveningteams', count: this.teamCount, teams: Object.fromEntries(Object.entries(this.teams).map(([n, i]) => [n, EVENING_TEAMS[i].id])) });
+    this.game.broadcast(this.teamsMsg());
+  }
+
+  teamsMsg() {
+    return { t: 'eveningteams', count: this.teamCount, teams: Object.fromEntries(Object.entries(this.teams).map(([n, i]) => [n, EVENING_TEAMS[i].id])) };
   }
 }
