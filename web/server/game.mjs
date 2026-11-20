@@ -2922,10 +2922,10 @@ export class Game {
     this.vehicleDamage.tick(now); // a burning vehicle burns down, a wreck goes and comes back (server/vehicleDamage.mjs)
     this.helis.tick(now); // a game or the rule off empties the helicopters; one left without a pilot goes home (server/helis.mjs)
     this.pings(); // the watch views too, when nobody plays (they would fall silent)
+    this.spirit?.tick(now); // the Brook Spirit (server/brookSpirit.mjs): its fighters, its attacks, `sp` to the pages near; with nobody left it mends and sleeps
     if (!this.players.size) return;
     this.fenceAll();
     this.stepBrutes(now);
-    this.spirit?.tick(now); // the Brook Spirit (server/brookSpirit.mjs): its fighters, its attacks, `sp` to the pages near
     this.football.tick(this.players, now, (n) => this.onFoot(n), (p, msg) => this.send(p.ws, msg));
     this.snapshot(now);
   }

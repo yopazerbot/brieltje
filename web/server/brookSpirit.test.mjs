@@ -511,6 +511,21 @@ test('`sp` goes to the pages near and the watch views, 5 a second while awake; n
   assert.equal(t.sent.get('far').filter((m) => m.t === 'spe').length, 0, 'nor its one-shot effects');
 });
 
+test('everyone gone mid-fight: it mends and falls asleep, and the watch views see it (no frozen fight on the hall screen)', () => {
+  const t = fighting(['ann']);
+  t.watch();
+  hit(t, 'ann', { w: 'rifle', h: [[0, 1]] });
+  t.game.players.delete('ann'); // the last player leaves
+  t.out.length = 0;
+  t.sent.get('watch').length = 0;
+  t.tick((DATA.mend.reset + 2) * 1000);
+  assert.equal(t.s().mode, 'asleep', 'asleep again with nobody there');
+  assert.equal(t.s().hp, t.s().max);
+  const all = t.out.filter((m) => m.t === 'sp').map((m) => m.s[0]);
+  assert.ok(all.includes(2) && all.at(-1) === 0, `mending, then asleep, told to everyone (watch views too): ${all}`);
+  assert.ok(t.sent.get('watch').filter((m) => m.t === 'sp').length > 10, 'and its moves meanwhile to the watch view');
+});
+
 test('a flier or a shooter past the leash is told why, at most once every 5 s; others are not', () => {
   const t = fighting(['ann'], { others: ['fly', 'far', 'dead'] });
   t.put('fly', G.x + 3, G.z);
