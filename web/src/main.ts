@@ -2412,14 +2412,14 @@ grenades.onPane = (i, at, from) => {
   net.send({ t: 'glass', i });
   return true;
 };
-grenades.onExplode = (at) => {
+grenades.onExplode = (at, lob) => {
   explode(at, true, 'grenade');
   if (!net.connected) return;
   const cover = [...online.keys()].filter((name) => {
     const p = avatars.position(name);
     return !!p && p.distanceTo(at) < GRENADE.radius + 1 && world.blocked(at, { x: p.x, y: p.y + 0.9, z: p.z });
   });
-  net.send({ t: 'boom', x: at.x, y: at.y, z: at.z, cover });
+  net.send({ t: 'boom', x: at.x, y: at.y, z: at.z, cover, ...(lob ? { l: 1 } : {}) }); // `l`: the grenade launcher's (its own count on the server)
 };
 /** Pull the trigger: recoil, and the shot (or rocket) for the others. */
 function fire(): void {
@@ -2429,10 +2429,15 @@ function fire(): void {
   player.yaw += shot.yaw;
   if (solo) solo.horde.noise(player.x, player.z, weapon.current, performance.now(), SOLO_ME); // gunfire draws the zombies (together the server does this)
   // Smoke at the muzzle: from every shot of the big guns, now and then from the others (not paint guns).
-  if (!paintball.on && !shot.rocket && (weapon.current === 'shotgun' || weapon.current === 'sniper' || Math.random() < 0.3)) effects.muzzleSmoke(weapon.muzzlePoint());
+  if (!paintball.on && !shot.rocket && (weapon.current === 'shotgun' || weapon.current === 'sniper' || shot.lob || Math.random() < 0.3)) effects.muzzleSmoke(weapon.muzzlePoint());
   rumble(weapon.current === 'pistol' ? 0.25 : 0.6, 0.6, weapon.current === 'rifle' ? 50 : 90);
   if (shot.rocket) fireRocket(shot.rocket.from, shot.rocket.to);
-  else net.send({ t: 'shot', w: weapon.current, x: player.x, y: player.feet + 1.5, z: player.z, ...(shot.tracer ? { tx: Math.round(shot.tracer.x * 100) / 100, ty: Math.round(shot.tracer.y * 100) / 100, tz: Math.round(shot.tracer.z * 100) / 100 } : {}) }); // `tx`..: where a tracer goes, for the others to see
+  else if (shot.lob) {
+    // The grenade launcher: its grenade flies and goes off here (onExplode); the server is told where it left.
+    const at = grenades.launch(shot.lob.from, shot.lob.vel, camera.getWorldPosition(new THREE.Vector3()));
+    const v = shot.lob.vel;
+    net.send({ t: 'gl', x: at.x, y: at.y, z: at.z, vx: v.x, vy: v.y, vz: v.z });
+  } else net.send({ t: 'shot', w: weapon.current, x: player.x, y: player.feet + 1.5, z: player.z, ...(shot.tracer ? { tx: Math.round(shot.tracer.x * 100) / 100, ty: Math.round(shot.tracer.y * 100) / 100, tz: Math.round(shot.tracer.z * 100) / 100 } : {}) }); // `tx`..: where a tracer goes, for the others to see
   life.scare(camera.getWorldPosition(new THREE.Vector3()));
 }
 /** The bazooka is the admin's, and anyone's playing alone; in Steal the flag nobody's but the rack's (server/flagBazooka.mjs). */
@@ -3005,7 +3010,7 @@ net.onMessage = (m: ServerMsg) => {
       break;
     }
     case 'blast':
-      if (m.w === 'grenade') grenades.landed(m.by);
+      if (m.w === 'grenade') grenades.landed(m.by, new THREE.Vector3(m.x, m.y, m.z));
       // 'wreck': a destroyed car or helicopter (server/vehicleDamage.mjs), a grenade's size; nothing of it is this page's to tell.
       explode(new THREE.Vector3(m.x, m.y, m.z), m.by === me?.username && m.w !== 'wreck', m.w === 'grenade' || m.w === 'wreck' ? 'grenade' : 'bazooka');
       break;
@@ -3014,8 +3019,15 @@ net.onMessage = (m: ServerMsg) => {
       break;
     case 'nade': {
       const from = new THREE.Vector3(m.x, m.y, m.z);
-      grenades.thrown(m.name, from, new THREE.Vector3(m.vx, m.vy, m.vz));
-      weapon.remoteThrow(from);
+      const vel = new THREE.Vector3(m.vx, m.vy, m.vz);
+      if ('l' in m && m.l) {
+        // From the grenade launcher: fired, not thrown.
+        grenades.launched(m.name, from, vel);
+        weapon.remoteShot(from, 'launcher');
+      } else {
+        grenades.thrown(m.name, from, vel);
+        weapon.remoteThrow(from);
+      }
       break;
     }
     case 'join':
@@ -5081,6 +5093,8 @@ if (import.meta.env.DEV) {
       effects,
       grenades,
       throwGrenade,
+      /** Alone only: the grenade launcher with `n` grenades in your hands (false, and nothing, when playing together). */
+      giveLauncher: (n = SPECS.launcher.lob!.rounds) => !net.connected && (weapon.giveLauncher(n), true),
       pickups,
       goals,
       cats,

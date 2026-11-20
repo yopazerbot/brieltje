@@ -5,6 +5,7 @@ import type { World } from './collision';
 import { waterLevel } from './water';
 import SPEC from '../../shared/grenade.json';
 import { LOOT } from '../../shared/loot.mjs';
+import WEAPONS from '../../shared/weapons.json';
 
 /**
  * Hand grenades (G, or R1 on the controller). Everyone carries two; a thrown one is back
@@ -15,8 +16,12 @@ import { LOOT } from '../../shared/loot.mjs';
  * throw and are taken away when their blast arrives.
  * In paintball (paintball.ts) each is a paint balloon in a bright colour that bounces with a
  * squelch, and its blast is a splash of paint (effects.ts); it flies and counts the same.
+ * The grenade launcher's grenades (launch) fly the same arc but go off where they first touch
+ * anything: a wall, the ground, a pane, the water; at the latest after its `flight` or `range`.
  */
 export const GRENADE = SPEC as { carry: number; back: number; fuse: number; speed: number; radius: number; damage: number };
+/** The grenade launcher's grenade (shared/weapons.json): its longest flight (s) and reach (m). */
+const LOB = (WEAPONS as { launcher: { lob: { flight: number; range: number } } }).launcher.lob;
 
 const R = 0.045; // m, radius of the ball it collides as
 const BOUNCE = 0.32; // share of the speed into a surface that comes back
@@ -44,6 +49,25 @@ function model(): THREE.Group {
     });
   }
   return template.clone();
+}
+
+const UP = new THREE.Vector3(0, 1, 0);
+let shellTemplate: THREE.Group | null = null;
+/** The grenade launcher's grenade in flight: a 40 mm round head with a brass band, its nose along +y. */
+function shell(): THREE.Group {
+  if (!shellTemplate) {
+    shellTemplate = new THREE.Group();
+    const prof: [number, number][] = [[0, -0.035], [0.0188, -0.035], [0.0188, 0], [0.016, 0.012], [0.0105, 0.022], [0.004, 0.028], [0, 0.029]]; // radius, height
+    const head = new THREE.Mesh(new THREE.LatheGeometry(prof.map(([r, y]) => new THREE.Vector2(r, y)), 12), body);
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.0194, 0.0194, 0.006, 12), steel);
+    band.position.y = -0.038;
+    shellTemplate.add(head, band);
+    shellTemplate.traverse((o) => {
+      o.castShadow = true;
+      o.userData.ignoreRay = true;
+    });
+  }
+  return shellTemplate.clone();
 }
 
 const balloonShape = new THREE.SphereGeometry(R * 1.25, 14, 10).scale(1, 1.15, 1);
@@ -79,12 +103,16 @@ interface Live {
   still: boolean;
   /** In a pond or a ditch: it sinks slowly */
   wet: boolean;
+  /** A grenade launcher's: where it left the muzzle (it goes off on first contact) */
+  lob: THREE.Vector3 | null;
+  /** Touched something: it goes off (yours) or waits for its blast (another's) */
+  hit: boolean;
 }
 
 export class Grenades {
   readonly group = new THREE.Group();
-  /** One of yours went off at `at`. */
-  onExplode: (at: THREE.Vector3) => void = () => {};
+  /** One of yours went off at `at`; `lob`: one from the grenade launcher. */
+  onExplode: (at: THREE.Vector3, lob: boolean) => void = () => {};
   /** One of yours hit window pane `index` fast at `at`, coming from `from`: true when it broke (the grenade flies on). */
   onPane: (index: number, at: THREE.Vector3, from: THREE.Vector3) => boolean = () => false;
   /** One (anyone's) went into the water at `at` at `speed` m/s: a plop (world/splashes.ts). */
@@ -138,9 +166,29 @@ export class Grenades {
     this.add(from, vel, by);
   }
 
-  /** Their grenade went off: take it away (the oldest of theirs). */
-  landed(by: string): void {
-    const i = this.live.findIndex((g) => g.by === by);
+  /**
+   * Fire one of yours from the grenade launcher: from `from` at `vel` (m/s); from `eye` instead when a wall is
+   * closer than the muzzle. It goes off where it first touches anything. Where it left, for the server.
+   */
+  launch(from: THREE.Vector3, vel: THREE.Vector3, eye?: THREE.Vector3): THREE.Vector3 {
+    const start = eye && (this.world.blocked(eye, from) || this.world.collide(eye, from, R)) ? eye.clone() : from.clone();
+    this.add(start, vel, null, true);
+    return start;
+  }
+
+  /** Someone else fired one from the grenade launcher. */
+  launched(by: string, from: THREE.Vector3, vel: THREE.Vector3): void {
+    this.add(from, vel, by, true);
+  }
+
+  /** Their grenade went off (at `at`, when told): take it away, the one of theirs nearest the blast (else the oldest). */
+  landed(by: string, at?: THREE.Vector3): void {
+    let i = -1;
+    for (let k = 0; k < this.live.length; k++) {
+      if (this.live[k].by !== by) continue;
+      if (i < 0 || (at && this.live[k].pos.distanceToSquared(at) < this.live[i].pos.distanceToSquared(at))) i = k;
+      if (!at) break;
+    }
     if (i >= 0) this.remove(i);
   }
 
@@ -149,27 +197,37 @@ export class Grenades {
     for (let i = this.live.length - 1; i >= 0; i--) {
       const g = this.live[i];
       g.age += dt;
-      // Others' grenades wait for their blast from the server (at most 2 s more).
-      if (g.age >= GRENADE.fuse + (g.by ? 2 : 0)) {
+      // Others' grenades wait for their blast from the server (at most 2 s more). The launcher's go off on first
+      // contact, or in the air at the end of their flight or reach; another's that touched something stays there
+      // until its blast comes (landed).
+      const done = !g.lob ? g.age >= GRENADE.fuse + (g.by ? 2 : 0)
+        : g.by ? g.age >= LOB.flight + 2
+        : g.hit || g.age >= LOB.flight || g.pos.distanceTo(g.lob) >= LOB.range;
+      if (done) {
         const at = g.pos.clone();
         this.remove(i);
-        if (!g.by) this.onExplode(at);
+        if (!g.by) this.onExplode(at, !!g.lob);
         continue;
       }
-      if (!g.still) this.fly(g, dt);
+      if (!g.still && !g.hit) this.fly(g, dt);
       g.mesh.position.copy(g.pos);
+      if (g.lob && !paintball.on) {
+        if (!g.hit && g.vel.lengthSq() > 0.01) g.mesh.quaternion.setFromUnitVectors(UP, this.t.copy(g.vel).normalize());
+        continue;
+      }
       g.mesh.rotation.x += g.spin.x * dt;
       g.mesh.rotation.y += g.spin.y * dt;
       g.mesh.rotation.z += g.spin.z * dt;
     }
   }
 
-  private add(from: THREE.Vector3, vel: THREE.Vector3, by: string | null): void {
-    const mesh = paintball.on ? balloon() : model();
+  private add(from: THREE.Vector3, vel: THREE.Vector3, by: string | null, lob = false): void {
+    const mesh = paintball.on ? balloon() : lob ? shell() : model();
     mesh.position.copy(from);
     this.group.add(mesh);
-    const spin = new THREE.Vector3(-8 - Math.random() * 4, (Math.random() - 0.5) * 4, (Math.random() - 0.5) * 3);
-    this.live.push({ mesh, pos: from.clone(), vel: vel.clone(), spin, age: 0, by, still: false, wet: false });
+    // A launcher's grenade doesn't tumble: it keeps its nose along its flight (update).
+    const spin = lob ? new THREE.Vector3() : new THREE.Vector3(-8 - Math.random() * 4, (Math.random() - 0.5) * 4, (Math.random() - 0.5) * 3);
+    this.live.push({ mesh, pos: from.clone(), vel: vel.clone(), spin, age: 0, by, still: false, wet: false, lob: lob ? from.clone() : null, hit: false });
   }
 
   private remove(i: number): void {
@@ -188,6 +246,12 @@ export class Grenades {
         // Into the water: a plop, and from now on the water holds it back and it sinks slowly.
         g.wet = true;
         this.onWater(new THREE.Vector3(g.pos.x, level, g.pos.z), g.vel.length());
+        if (g.lob) {
+          // A launcher's grenade goes off at the water's face.
+          g.pos.y = level;
+          g.hit = true;
+          return;
+        }
       }
       if (g.wet) {
         g.vel.multiplyScalar(Math.exp(-h * 3.5));
@@ -200,6 +264,12 @@ export class Grenades {
       if (!hit) {
         g.pos.copy(this.next);
         continue;
+      }
+      if (g.lob) {
+        // A launcher's grenade: it goes off here, where it touched (yours: main.ts tells the server).
+        if (!g.by && hit.index >= 0) this.onPane(hit.index, this.next, g.pos);
+        g.hit = true;
+        return;
       }
       if (!g.by && hit.index >= 0 && g.vel.length() > 6 && this.onPane(hit.index, this.next, g.pos)) {
         g.vel.multiplyScalar(0.8);

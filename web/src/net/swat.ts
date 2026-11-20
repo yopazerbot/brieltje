@@ -121,7 +121,7 @@ const CROUCH_LEAN = 0.45; // rad the upper body leans forward crouching
 const TWIST = 1.05; // rad the upper body turns before the legs step round (standing)
 const MAX_TWIST = 1.4;
 /** Long guns are drawn a little smaller in the figures' hands: the model's arms are short. */
-const GUN_SCALE: Record<WeaponId, number> = { pistol: 1, rifle: 0.85, shotgun: 0.85, sniper: 0.82, bazooka: 0.85 };
+const GUN_SCALE: Record<WeaponId, number> = { pistol: 1, rifle: 0.85, shotgun: 0.85, sniper: 0.82, bazooka: 0.85, launcher: 0.85 };
 /** The palette's columns: what each part of the model is painted with. */
 const SLOT = { main: 0, dark: 1, skin: 2, visor: 3, helmet: 4 } as const;
 const SLOTS = 8;

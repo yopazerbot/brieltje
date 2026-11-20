@@ -22,7 +22,8 @@ import { WIND_PUSH, windAt } from './world/wind';
  * slide kicks back and locks open when it is empty, the shotgun's pump and
  * the sniper rifle's bolt are worked by hand after each shot, a reload drops
  * the magazine and the left hand brings a new one (the shotgun's hand loads
- * shells one by one, the bazooka's a new rocket). The gun moves like it has
+ * shells one by one, the bazooka's a new rocket, the grenade launcher breaks
+ * open for a grenade). The gun moves like it has
  * weight: it lags behind when you turn, tilts when you step sideways, bobs
  * with your steps, dips when you land, is carried low while sprinting and
  * springs back after each shot; switching lowers one gun and raises the next.
@@ -34,7 +35,7 @@ import { WIND_PUSH, windAt } from './world/wind';
  * a paintball you see fly (effects.ts); the hits are the same.
  */
 
-export type WeaponId = 'pistol' | 'rifle' | 'shotgun' | 'sniper' | 'bazooka';
+export type WeaponId = 'pistol' | 'rifle' | 'shotgun' | 'sniper' | 'bazooka' | 'launcher';
 interface Spec {
   name: string;
   slot: number;
@@ -55,18 +56,24 @@ interface Spec {
   admin?: boolean;
   /** A rocket instead of bullets: m/s, blast radius (m), damage at the centre, range (m) */
   rocket?: { speed: number; radius: number; damage: number; range: number };
+  /**
+   * A grenade launcher's lobbed grenade instead of bullets (world/grenades.ts launch): it leaves the muzzle along
+   * the view at `speed` m/s plus `lift` m/s up and goes off where it first touches anything, at the latest after
+   * `flight` s or `range` m; `rounds` grenades come with the launcher, and it holds one at a time
+   */
+  lob?: { speed: number; lift: number; rounds: number; flight: number; range: number };
 }
 export const SPECS = WEAPONS as Record<WeaponId, Spec>;
 export const WEAPON_IDS = Object.keys(SPECS) as WeaponId[];
 
 /** How fast each gun comes up to the eye (1/s): the pistol at once, the long and heavy ones slower. */
-const AIM_SPEED: Record<WeaponId, number> = { pistol: 20, rifle: 14, shotgun: 12, sniper: 9, bazooka: 8 };
+const AIM_SPEED: Record<WeaponId, number> = { pistol: 20, rifle: 14, shotgun: 12, sniper: 9, bazooka: 8, launcher: 11 };
 const NO_DRIFT = new THREE.Vector2();
 /**
  * How fast you walk with each gun, of your free pace: the pistol hardly counts, the long and heavy ones
  * do. Aiming slows you a quarter more (carrySpeed).
  */
-const WEIGHT: Record<WeaponId, number> = { pistol: 1, rifle: 0.94, shotgun: 0.93, sniper: 0.87, bazooka: 0.8 };
+const WEIGHT: Record<WeaponId, number> = { pistol: 1, rifle: 0.94, shotgun: 0.93, sniper: 0.87, bazooka: 0.8, launcher: 0.9 };
 /**
  * The sniper rifle's bullet, m/s. Slower than a real one (about 800) so that its flight shows at the
  * distances this village has: 100 m takes a quarter of a second and drops 34 cm, 190 m takes half a
@@ -83,7 +90,7 @@ const BULLET_LOOK = 20;
 const COVER: Record<string, number> = { hedge: 1.6, nb_hedge: 1.6, oak: 0.2, walnut: 0.2, fence: 0.2 };
 
 /** Muzzle flash length per gun, in metres. */
-const FLASH: Record<WeaponId, number> = { pistol: 0.16, rifle: 0.26, shotgun: 0.34, sniper: 0.32, bazooka: 0.45 };
+const FLASH: Record<WeaponId, number> = { pistol: 0.16, rifle: 0.26, shotgun: 0.34, sniper: 0.32, bazooka: 0.45, launcher: 0.2 };
 
 /**
  * Paintball's toy look: each gun in bright colours instead of black metal. Each of the models'
@@ -103,9 +110,10 @@ const TOY: Record<WeaponId, Record<Role, string>> = {
   shotgun: { body: GUN_PAINT.shotgun, trim: '#ffd23f', deep: '#ff7a1a', lens: '#8fe9ff' },
   sniper: { body: GUN_PAINT.sniper, trim: '#f4f4ee', deep: '#ffd23f', lens: '#8fe9ff' },
   bazooka: { body: GUN_PAINT.bazooka, trim: '#ffd23f', deep: '#9d5cff', lens: '#8fe9ff' },
+  launcher: { body: GUN_PAINT.launcher, trim: '#9d5cff', deep: '#2f6fe0', lens: '#8fe9ff' },
 };
 /** Each paint hopper's colour: one that stands out on its gun (a lighter one turns skin-coloured in the sun). */
-const HOPPER: Record<WeaponId, string> = { pistol: '#2f8cff', rifle: '#9d5cff', shotgun: '#ff7a1a', sniper: '#ffd23f', bazooka: '#ffd23f' };
+const HOPPER: Record<WeaponId, string> = { pistol: '#2f8cff', rifle: '#9d5cff', shotgun: '#ff7a1a', sniper: '#ffd23f', bazooka: '#ffd23f', launcher: '#ff4fa3' }; // the launcher's: its paint balloons
 /** The materials that change, with their toy colour and their own look (colour, metalness, roughness). */
 const toyParts: { m: THREE.MeshStandardMaterial; color: string; rough: number; real: [THREE.Color, number, number] }[] = [];
 /** The hoppers' and tanks' materials: shown in paintball only. */
@@ -341,6 +349,9 @@ interface ViewModel {
   /** The loaded models' other moving parts, and the hands (each moved from where it rests: userData.rest) */
   slide?: THREE.Object3D;
   rocket?: THREE.Object3D;
+  /** The grenade launcher's barrel (it breaks open about its pivot, the hinge pin) and the grenade it loads */
+  barrel?: THREE.Object3D;
+  round?: THREE.Object3D;
   shell?: THREE.Object3D;
   handR?: THREE.Object3D;
   handL?: THREE.Object3D;
@@ -398,6 +409,14 @@ function buildViewModel(id: WeaponId): ViewModel {
     leftHand = new THREE.Vector3(0, -0.02, -0.3);
     hip = new THREE.Vector3(0.065, -0.05, -0.12);
     ads = new THREE.Vector3(0, -0.035, -0.1);
+  } else if (id === 'launcher') {
+    // A short fat barrel on a receiver, a fore grip under it, a stock.
+    gun.add(tube(0.027, -0.12, -0.42, metal, 0, 0.07), box(0.056, 0.1, 0.16, metal, 0, 0.05, -0.02), grip);
+    gun.add(box(0.036, 0.13, 0.24, olive, 0, 0.0, 0.2), box(0.03, 0.09, 0.04, dark, 0, -0.01, -0.3));
+    muzzle.position.set(0, 0.07, -0.43);
+    leftHand = new THREE.Vector3(0, -0.02, -0.3);
+    hip = new THREE.Vector3(0.06, -0.068, -0.12);
+    ads = new THREE.Vector3(0, -0.03, -0.1);
   } else {
     gun.add(box(0.05, 0.07, 0.3, olive, 0, 0.02, -0.1), grip, tube(0.011, -0.25, -0.9, metal, 0, 0.035));
     gun.add(box(0.045, 0.085, 0.3, olive, 0, -0.005, 0.18), tube(0.024, -0.02, -0.3, dark, 0, 0.1), tube(0.02, -0.299, -0.305, lens, 0, 0.1));
@@ -454,6 +473,7 @@ const HIP: Record<WeaponId, [number, number, number]> = {
   shotgun: [0.05, -0.046, -0.095],
   sniper: [0.05, -0.046, -0.095],
   bazooka: [0.072, -0.048, -0.1],
+  launcher: [0.054, -0.05, -0.095],
 };
 
 /** From the hip the gun is drawn as with a 54 degree view instead of 72: its own depth this much shorter. */
@@ -491,6 +511,16 @@ const AWAY = new THREE.Vector3(-0.06, -0.26, 0.12);
 const AWAY_LOW = new THREE.Vector3(-0.03, -0.12, 0.05);
 const PORT = new THREE.Vector3(0, -0.042, -0.16);
 const ROCKET_HOLD = new THREE.Vector3(0, -0.046, -0.06);
+/**
+ * The grenade launcher's reload: how far its barrel tips down open (rad), how far behind the open breech the hand
+ * brings a grenade before pushing it in (m), and where the hand holds it, from the grenade's middle.
+ */
+const OPEN = 0.85;
+const ROUND_BACK = 0.13;
+const ROUND_HOLD = new THREE.Vector3(0, -0.03, 0);
+const X_AXIS = new THREE.Vector3(1, 0, 0);
+const _q = new THREE.Quaternion();
+const _r = new THREE.Quaternion();
 const _left = new THREE.Vector3();
 const _out = new THREE.Vector3();
 const _a = new THREE.Vector3();
@@ -503,6 +533,7 @@ const VOICE: Record<WeaponId, { len: number; f0: number; f1: number; thump: numb
   shotgun: { len: 0.45, f0: 2600, f1: 150, thump: 80, gain: 0.7 },
   sniper: { len: 0.7, f0: 6500, f1: 180, thump: 65, gain: 0.8 },
   bazooka: { len: 0.9, f0: 1800, f1: 120, thump: 55, gain: 0.7 },
+  launcher: { len: 0.32, f0: 1100, f1: 110, thump: 92, gain: 0.8 }, // a hollow thump: no crack (sound)
 };
 /** The rocket's explosion. */
 const BOOM = { len: 1.6, f0: 2400, f1: 50, thump: 42, gain: 1.0 };
@@ -516,9 +547,10 @@ const POP: Record<WeaponId, { len: number; f: number; thump: number; gain: numbe
   shotgun: { len: 0.22, f: 900, thump: 120, gain: 0.6 },
   sniper: { len: 0.18, f: 1200, thump: 140, gain: 0.55 },
   bazooka: { len: 0.35, f: 500, thump: 80, gain: 0.7 },
+  launcher: { len: 0.26, f: 420, thump: 75, gain: 0.7 },
 };
 /** How big each gun's paint splats are (m across); the shotgun's eight are smaller. */
-const SPLAT: Record<WeaponId, number> = { pistol: 0.5, rifle: 0.45, shotgun: 0.32, sniper: 0.65, bazooka: 0.9 };
+const SPLAT: Record<WeaponId, number> = { pistol: 0.5, rifle: 0.45, shotgun: 0.32, sniper: 0.65, bazooka: 0.9, launcher: 0.9 };
 
 /** Whether a hit landed on the lower two fifths of its hit box: the legs of a body's box. */
 function lowOnBox(hit: THREE.Intersection): boolean {
@@ -573,6 +605,8 @@ export interface Shot {
   tracer?: THREE.Vector3;
   /** Bazooka: the rocket leaves the tube here and flies to `to` */
   rocket?: { from: THREE.Vector3; to: THREE.Vector3 };
+  /** Grenade launcher: the grenade leaves the gun here at this speed (m/s) */
+  lob?: { from: THREE.Vector3; vel: THREE.Vector3 };
 }
 
 /**
@@ -781,6 +815,8 @@ export class Weapon {
       m.bolt = part('bolt');
       m.slide = part('slide');
       m.rocket = part('rocket');
+      m.barrel = part('barrel');
+      m.round = part('round');
       m.handR = part('handR');
       m.handL = part('handL');
       m.shell = hands.getObjectByName('shotgun_shell');
@@ -927,12 +963,40 @@ export class Weapon {
 
   /** Steal the flag's bazooka from the rack (server/flagBazooka.mjs): the rockets it has left, as the server counts; null otherwise. */
   rocketsLeft: number | null = null;
+  /** The grenade launcher's grenades besides the one in it (it comes with SPECS.launcher.lob.rounds; nothing refills them). */
+  lobSpare = 0;
 
   get status(): string {
     if (!this.enabled) return '';
     if (this.reloading > 0) return t(paintball.on ? 'paint.refilling' : 'weapon.reloading');
     if (this.current === 'bazooka' && this.rocketsLeft !== null) return t(paintball.on ? 'fbz.ammoPaint' : 'fbz.ammo', { n: this.rocketsLeft });
+    // The grenade launcher: the grenades it has left in all, of those it came with.
+    if (this.spec.lob) return `${this.lobLeft} / ${this.spec.lob.rounds}`;
     return `${this.ammo[this.current]} / ${this.magOf(this.current)}`;
+  }
+
+  /** The grenade launcher's grenades left: the one in it and the spare ones. */
+  get lobLeft(): number {
+    return this.ammo.launcher + this.lobSpare;
+  }
+
+  /**
+   * The grenade launcher is yours with `rounds` grenades (one in it, the rest spare), and in your hands; 0 or less
+   * takes it away. Together the server decides who has it and how many (a later step); alone the page.
+   */
+  giveLauncher(rounds: number): void {
+    const n = Math.max(0, Math.floor(rounds));
+    if (n <= 0) {
+      this.owned.delete('launcher');
+      this.lobSpare = 0;
+      if (this.current === 'launcher') this.select('pistol');
+      return;
+    }
+    this.owned.add('launcher');
+    this.ammo.launcher = 1;
+    this.lobSpare = n - 1;
+    if (this.current === 'launcher') this.reloading = 0;
+    this.select('launcher');
   }
 
   /** For the weapon list on screen. */
@@ -943,7 +1007,7 @@ export class Weapon {
   /** Full magazines (after respawning). */
   refill(): void {
     for (const w of WEAPON_IDS) {
-      this.ammo[w] = this.magOf(w);
+      if (!SPECS[w].lob) this.ammo[w] = this.magOf(w); // the launcher's grenades are counted, never refilled
       this.bloom[w] = 0;
     }
     this.reloading = 0;
@@ -1032,9 +1096,10 @@ export class Weapon {
 
   reload(): void {
     if (this.enabled && this.reloading <= 0 && this.ammo[this.current] < this.magOf(this.current)) {
+      if (this.spec.lob && this.lobSpare <= 0) return; // the grenade launcher's last grenade is gone: nothing to load
       // A magazine with rounds left comes out quicker than an empty gun is made ready again
       // (not the shotgun, loaded shell by shell, nor the bazooka).
-      const quick = this.ammo[this.current] > 0 && this.current !== 'shotgun' && this.current !== 'bazooka';
+      const quick = this.ammo[this.current] > 0 && this.current !== 'shotgun' && this.current !== 'bazooka' && !this.spec.lob;
       this.reloadTime = this.spec.reload * (quick ? 0.8 : 1);
       this.reloading = this.reloadTime;
       this.sound('reload');
@@ -1080,6 +1145,16 @@ export class Weapon {
       const to = hit ? hit.point.clone() : this.raycaster.ray.at(spec.rocket.range, new THREE.Vector3());
       if (this.ammo[this.current] === 0) this.reload();
       return { pitch: spec.kick, yaw: 0, rocket: { from, to } };
+    }
+    if (spec.lob) {
+      // No bullets: a grenade lobbed along the view from the muzzle (as it would be at the gun's real size), a
+      // little up on top; aim high for far. Then the barrel breaks open for the next, if there is one.
+      this.camera.updateMatrixWorld();
+      const q = this.camera.getWorldQuaternion(new THREE.Quaternion());
+      const vel = new THREE.Vector3(0, 0, -1).applyQuaternion(q).multiplyScalar(spec.lob.speed);
+      vel.y += spec.lob.lift;
+      if (this.ammo[this.current] === 0) this.reload();
+      return { pitch: spec.kick, yaw: (Math.random() - 0.5) * spec.kick * 0.25, lob: { from: this.muzzlePoint(), vel } };
     }
 
     const spread = this.spread;
@@ -1285,7 +1360,7 @@ export class Weapon {
    */
   get spread(): number {
     const spec = this.spec;
-    if (spec.rocket) return 0;
+    if (spec.rocket || spec.lob) return 0;
     // The sniper rifle is only accurate through the scope; aiming steadies the others.
     let spread = this.current === 'sniper'
       ? (this.aim > 0.85 ? .015 * Math.max(0, this.spreadMul - 1) : spec.hipSpread ?? 0.09)
@@ -1368,7 +1443,12 @@ export class Weapon {
     this.cycleTime = Math.max(0, this.cycleTime - dt);
     if (this.reloading > 0) {
       this.reloading -= dt;
-      if (this.reloading <= 0) this.ammo[this.current] = this.magOf(this.current);
+      if (this.reloading <= 0 && spec.lob) {
+        // The grenade launcher loads one of its spare grenades.
+        const load = Math.min(this.lobSpare, this.magOf(this.current) - this.ammo[this.current]);
+        this.lobSpare -= load;
+        this.ammo[this.current] += load;
+      } else if (this.reloading <= 0) this.ammo[this.current] = this.magOf(this.current);
     }
     // It closes again once you let go. (It used to close faster than held fire could open it, so it never showed.)
     if (this.sinceShot > 0.15) for (const w of WEAPON_IDS) this.bloom[w] = Math.max(0, this.bloom[w] - dt * 0.06);
@@ -1464,14 +1544,16 @@ export class Weapon {
     const raised = 1 - (1 - this.raise) * (1 - this.raise); // eased: quick at first, settling in
     pos.x += across * 0.0045 * bob + this.lag.x * 0.0022 * loose - this.sprint * 0.012;
     pos.y += step * 0.0045 * bob - (1 - raised) * 0.08 - this.lag.y * 0.0018 * loose + breathe * 0.0012 + this.dip * 0.3 - this.sprint * 0.022;
-    pos.z += this.recoil[0] * (spec.pellets > 1 || this.current === 'sniper' ? 1.4 : 1);
+    pos.z += this.recoil[0] * (spec.pellets > 1 || this.current === 'sniper' || spec.lob ? 1.4 : 1);
 
     // Reload (p from 0 to 1): the gun comes in towards the middle, muzzle up a little, turned to show where it loads.
     const p = this.reloading > 0 ? 1 - this.reloading / this.reloadTime : 0;
     const hold = this.reloading > 0 ? smooth(0, 0.14, p) * (1 - smooth(0.84, 1, p)) : 0;
     const tube = this.current === 'bazooka';
-    pos.x -= hold * (tube ? 0.004 : 0.012);
-    pos.y += hold * (tube ? -0.02 : 0.01);
+    // The grenade launcher: brought in and turned over, its breech towards you, so you see the barrel break open.
+    const lob = !!spec.lob;
+    pos.x -= hold * (tube ? 0.004 : lob ? 0.028 : 0.012);
+    pos.y += hold * (tube ? -0.02 : lob ? -0.004 : 0.01);
     // From the hip the gun is drawn as with a 54 degree view, as shooters do (less stretch: the gun's back
     // end no longer huge, its muzzle no longer tiny): its place `near` times further off here, then the whole of it
     // squeezed along the view by as much (the scale below), the gun's own depth shorter. Aimed, as before.
@@ -1479,11 +1561,11 @@ export class Weapon {
     pos.z *= near;
     m.root.position.copy(pos);
     m.root.rotation.set(
-      this.recoil[1] + hold * (tube ? -0.15 : 0.2) - (1 - raised) * 0.6 - this.lag.y * 0.012 * loose + breathe * 0.004 - this.sprint * 0.32 + step * 0.012 * bob,
-      0.02 * (1 - this.aim) - this.lag.x * 0.016 * loose + this.sprint * 0.55 + hold * (tube ? 0 : 0.15),
+      this.recoil[1] + hold * (tube ? -0.15 : lob ? 0.25 : 0.2) - (1 - raised) * 0.6 - this.lag.y * 0.012 * loose + breathe * 0.004 - this.sprint * 0.32 + step * 0.012 * bob,
+      0.02 * (1 - this.aim) - this.lag.x * 0.016 * loose + this.sprint * 0.55 + hold * (tube ? 0 : lob ? 0.2 : 0.15),
       this.recoil[2] * 2 - this.tilt * 0.06 + this.sprint * 0.22 - across * 0.025 * bob,
     );
-    m.gun.rotation.z = hold * (tube ? -0.1 : 0.4);
+    m.gun.rotation.z = hold * (tube ? -0.1 : lob ? 0.35 : 0.4);
     // Standing still with nothing to do, you turn the gun over in your hands now and then and look at it.
     const idle = moving < 0.05 && !aiming && this.reloading <= 0 && this.sinceShot > 6 && this.shown === this.current && !look?.air;
     this.idle = idle ? this.idle + dt : 0;
@@ -1524,7 +1606,7 @@ export class Weapon {
    * from where it rests every frame, so nothing adds up. Only what is drawn: the gun on show.
    */
   private animateParts(m: ViewModel, p: number): void {
-    for (const o of [m.mag, m.pump, m.bolt, m.slide, m.rocket, m.handR, m.handL]) {
+    for (const o of [m.mag, m.pump, m.bolt, m.slide, m.rocket, m.barrel, m.round, m.handR, m.handL]) {
       if (!o) continue;
       o.position.copy(o.userData.rest as THREE.Vector3);
       if (o.userData.restQ) o.quaternion.copy(o.userData.restQ as THREE.Quaternion);
@@ -1573,6 +1655,7 @@ export class Weapon {
     }
     // The bazooka's rocket: gone with the shot, back as the reload brings a new one.
     if (m.rocket) m.rocket.visible = !empty || (reloading && p > 0.42);
+    if (m.barrel) return this.breakOpen(m, reloading ? p : -1, empty);
     if (!reloading) return;
     const out = _out.fromArray((m.mag?.userData.out as number[] | undefined) ?? [0, -1, 0]);
     if (m.mag) {
@@ -1616,6 +1699,63 @@ export class Weapon {
     if (left && m.handL) m.handL.position.add(left);
   }
 
+  /**
+   * The grenade launcher's reload (`p` 0..1, -1 when there is none): the left hand pulls the barrel down open by
+   * its fore grip, lets go, fetches a grenade from below, pushes it into the open breech, takes the grip again and
+   * swings the barrel shut. The barrel turns about its pivot, the hinge pin; what it carries (the grip, the hand
+   * on it, the grenade in it) turns with it.
+   */
+  private breakOpen(m: ViewModel, p: number, empty: boolean): void {
+    const barrel = m.barrel!;
+    const hinge = barrel.userData.rest as THREE.Vector3;
+    const open = p < 0 ? 0 : smooth(0.06, 0.2, p) * (1 - smooth(0.8, 0.9, p));
+    const turn = _q.setFromAxisAngle(X_AXIS, -OPEN * open); // the muzzle down
+    barrel.quaternion.premultiply(turn);
+    /** A point carried by the barrel: where `rest` is when it is shut, turned with it about the hinge. */
+    const carried = (rest: THREE.Vector3, out: THREE.Vector3) => out.copy(rest).sub(hinge).applyQuaternion(turn).add(hinge);
+    // The grenade in the open breech, `back` m behind its place along the barrel.
+    const round = m.round;
+    const slid = (back: number, out: THREE.Vector3) => {
+      _out.copy(round!.userData.rest as THREE.Vector3).z += back;
+      return carried(_out, out);
+    };
+    const hand = m.handL;
+    if (round) round.visible = p < 0 ? !empty : p >= 0.46;
+    if (!hand || p < 0) return;
+    const rest = hand.userData.rest as THREE.Vector3;
+    const restQ = hand.userData.restQ as THREE.Quaternion;
+    const grip = holdPoint(hand, _b).sub(rest); // the hold, from the wrist
+    // Where the wrist is to hold the grenade at `at`.
+    const holding = (at: THREE.Vector3, out: THREE.Vector3) => out.copy(at).sub(ROUND_HOLD).sub(grip);
+    const onGrip = carried(rest, _left);
+    const away = _a.copy(rest).add(AWAY);
+    const toRound = holding(slid(ROUND_BACK, _out), new THREE.Vector3());
+    let onBarrel = 1; // how much the hand turns with the barrel: on its grip, or not
+    if (p < 0.2) hand.position.copy(onGrip);
+    else if (p < 0.32) {
+      onBarrel = 1 - smooth(0.2, 0.32, p);
+      hand.position.copy(onGrip).lerp(away, smooth(0.2, 0.32, p));
+    } else if (p < 0.46) {
+      onBarrel = 0;
+      hand.position.copy(away);
+    } else if (p < 0.62) {
+      onBarrel = 0;
+      hand.position.copy(away).lerp(toRound, smooth(0.46, 0.6, p));
+    } else if (p < 0.72) {
+      onBarrel = 0;
+      hand.position.copy(holding(slid(ROUND_BACK * (1 - smooth(0.62, 0.72, p)), _out), _out));
+    } else if (p < 0.8) {
+      onBarrel = smooth(0.72, 0.8, p);
+      hand.position.copy(holding(slid(0, _out), _out)).lerp(onGrip, smooth(0.72, 0.8, p));
+    } else hand.position.copy(onGrip);
+    hand.quaternion.copy(restQ).premultiply(_r.identity().slerp(turn, onBarrel));
+    if (!round || p < 0.46) return;
+    // The grenade: in the hand until it goes in, then slid home, and in the barrel as it swings shut.
+    if (p < 0.62) round.position.copy(hand.position).add(grip).add(ROUND_HOLD);
+    else round.position.copy(slid(ROUND_BACK * (1 - smooth(0.62, 0.72, p)), _out));
+    round.quaternion.copy(turn).multiply(round.userData.restQ as THREE.Quaternion);
+  }
+
   /** A bullet that passed close by you: a short hiss falling in pitch, in your ears (`near` 0..1: how close). */
   whizz(near: number): void {
     const ctx = sound.context();
@@ -1647,7 +1787,7 @@ export class Weapon {
   /** Short synthesized sounds: no audio files to download. */
   private sound(kind: 'shot' | 'empty' | 'reload' | 'cycle' | 'throw', volume = 1, at?: THREE.Vector3, w: WeaponId = this.current, voice = VOICE[w]): void {
     const ctx = sound.context();
-    const dest = at ? sound.at(at.x, at.y, at.z, w === 'sniper' || w === 'shotgun' ? 8 : w === 'bazooka' ? 14 : 4) : sound.out();
+    const dest = at ? sound.at(at.x, at.y, at.z, w === 'sniper' || w === 'shotgun' || w === 'launcher' ? 8 : w === 'bazooka' ? 14 : 4) : sound.out();
     if (!ctx || !dest) return;
     const t = ctx.currentTime;
     const master = ctx.createGain();
@@ -1710,8 +1850,22 @@ export class Weapon {
       thump.start(t0);
       thump.stop(t0 + 0.2);
       if (voice === VOICE[w]) {
+        if (w === 'launcher') {
+          // The grenade launcher's hollow thump: no crack, but the tube ringing low for a moment as the grenade leaves it.
+          const ring = ctx.createBufferSource();
+          ring.buffer = noiseBuffer(ctx, 'tube', 0.16, (s) => Math.pow(1 - s, 3));
+          const band = ctx.createBiquadFilter();
+          band.type = 'bandpass';
+          band.Q.value = 7;
+          band.frequency.setValueAtTime(330, t0);
+          band.frequency.exponentialRampToValueAtTime(190, t0 + 0.16);
+          const rg = ctx.createGain();
+          rg.gain.value = 2.2 * dull;
+          ring.connect(band).connect(rg).connect(out);
+          ring.start(t0);
+        }
         // The crack: a few milliseconds of bright noise, only from near by.
-        if (far < 60) {
+        if (far < 60 && w !== 'launcher') {
           const crack = ctx.createBufferSource();
           crack.buffer = noiseBuffer(ctx, 'crack', 0.02, (s) => Math.pow(1 - s, 2));
           const high = ctx.createBiquadFilter();
@@ -1770,6 +1924,7 @@ export class Weapon {
         shotgun: [0.18, 0.36, 0.54, 0.72].map((s) => [s * r, 650]),
         sniper: [[0.13 * r, 500], [0.64 * r, 700], [0.8 * r, 420], [0.9 * r, 620]],
         bazooka: [[0.62 * r, 400]],
+        launcher: [[0.06 * r, 950], [0.19 * r, 260], [0.7 * r, 520], [0.89 * r, 340]], // the latch, the barrel dropping open, the grenade in, shut
       };
       const clicks = kind === 'empty' ? [[0, 900]] : kind === 'cycle' ? [[0, 420], [0.12, 620]] : reload[this.current];
       for (const [at2, f] of clicks) {
