@@ -16,6 +16,10 @@ import type { TileKind } from './houseStyle';
  * the slope (weather, batches of tiles), so a roof is not one flat colour. Also Medium and up only.
  *
  * The kind rides per vertex (a byte, `tile`) with the roof's colour and gloss: still one draw call per tile.
+ *
+ * A roof is one sheet drawn from both sides, so from under the eaves you saw its underside, and on it the tiles'
+ * courses (seen under a bungalow's overhang, 20 Nov 2026). Its back faces are now a soffit: boards along the eaves,
+ * painted or stained, flat and without the tiles' texture, on every preset.
  */
 
 /** The byte each kind is stored as (0 to 1), and the plain one (ridge rows: the wash only, no courses). */
@@ -35,10 +39,14 @@ export function setRoofDetail(on: boolean): void {
   }
 }
 
-/** Kept up to date with three.js's chunk: the tangent-space normal map, with the relief mixed in near the eye. */
+/**
+ * Kept up to date with three.js's chunk: the tangent-space normal map, with the relief mixed in near the eye. The
+ * underside (the back faces: the overhang seen from under the eaves) is the soffit's smooth boards: no tiles in its
+ * shading, and a painted board's sheen.
+ */
 const NORMAL_MAPS = THREE.ShaderChunk.normal_fragment_maps.replace(
   'mapN.xy *= normalScale;',
-  'mapN.xy *= normalScale;\n#ifdef ROOF_RELIEF\nmapN = normalize( mix( mapN, rlN, rlNear ) );\n#endif',
+  'mapN.xy *= normalScale;\n#ifdef ROOF_RELIEF\nmapN = normalize( mix( mapN, rlN, rlNear ) );\n#endif\nif ( ! gl_FrontFacing ) { mapN = vec3( 0.0, 0.0, 1.0 ); roughnessFactor = 0.8; }',
 );
 
 const FRAGMENT_PARS = /* glsl */ `
@@ -64,8 +72,19 @@ float rlNoise( vec2 p ) {
 const RELIEF = /* glsl */ `
 vec3 rlN = vec3( 0.0, 0.0, 1.0 );
 float rlNear = 0.0;
+if ( ! gl_FrontFacing ) {
+  // The underside of the overhang, seen from under the eaves: a soffit of boards along the eaves (13 cm, a dark joint
+  // between them that fades out before it is a pixel wide), painted white or anthracite or stained wood by the roof's
+  // colour, never the tiles. On every preset: the tiles' texture is replaced, nothing is added.
+  float sfPick = rlHash( floor( vColor.rg * 255.0 + 0.5 ) + floor( vColor.b * 255.0 + 0.5 ) * 7.0 );
+  vec3 sfPaint = sfPick < 0.55 ? vec3( 0.55, 0.53, 0.5 ) : sfPick < 0.8 ? vec3( 0.04, 0.042, 0.045 ) : vec3( 0.19, 0.095, 0.042 );
+  float sfV = vTileUv.y / 0.13;
+  float sfPx = fwidth( sfV );
+  float sfJoint = 1.0 - smoothstep( 0.0, 0.05 + sfPx, min( fract( sfV ), 1.0 - fract( sfV ) ) );
+  diffuseColor.rgb = sfPaint * ( 0.96 + 0.08 * rlHash( vec2( floor( sfV ), 3.0 ) ) ) * ( 1.0 - 0.5 * sfJoint * clamp( ( 0.5 - sfPx ) * 3.0, 0.0, 1.0 ) );
+}
 #ifdef ROOF_RELIEF
-{
+if ( gl_FrontFacing ) {
   float kind = floor( vTile * 4.0 + 0.5 ); // 0 pantile, 1 flat, 2 slate, 3 concrete, 4 plain
   vec2 uv = vTileUv;
   // A course's width across and its height up the slope (the pantiles' as the texture's, so the two meet).
