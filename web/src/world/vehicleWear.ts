@@ -118,6 +118,8 @@ function paintedOf(m: THREE.Material, color: THREE.Color): THREE.Material {
 
 export class VehicleWear {
   private wear = new Map<string, Wear>();
+  /** When a shot of yours last met each vehicle (performance.now()) */
+  private mineAt = new Map<string, number>();
   private pending = new Map<string, { k: Kind; id: string; w: string; n: number }>();
   private flushing = false;
   private swapTimer = 0;
@@ -125,7 +127,8 @@ export class VehicleWear {
   private readonly label = document.createElement('span');
   private readonly fill = document.createElement('i');
   private readonly v = new THREE.Vector3();
-  private readonly ray = new THREE.Raycaster();
+  /** Its rays may pass sprites on a vehicle (a rider's name), which three.js only tests with a camera (as effects.ts does) */
+  private readonly ray = Object.assign(new THREE.Raycaster(), { camera: new THREE.PerspectiveCamera() });
   /** Whether a hit of yours on a vehicle can count now (a team match: main.ts asks games). */
   live: () => boolean = () => false;
   /** Whether you may damage it: nobody of your team (nor you) sits in it (main.ts asks games.friend). */
@@ -165,10 +168,11 @@ export class VehicleWear {
    * nobody of your team in it, it is counted; the shot's pellets go to the server together once the shot is done.
    */
   shot(on: THREE.Object3D, w: string): void {
-    if (!this.live()) return;
     const who = VehicleWear.owner(on);
     if (!who) return;
     const key = `${who.k}:${who.id}`;
+    this.mineAt.set(key, performance.now()); // its splats are where your paint landed: none more from the damage it tells
+    if (!this.live()) return;
     if ((this.wear.get(key)?.st ?? 0) >= STAGE.wreck) return;
     const v = this.find(who.k, who.id);
     if (!v || v.riders.some((n) => n !== null && this.friendly(n)) || this.ownTeam(who.k, who.id)) return;
@@ -189,6 +193,7 @@ export class VehicleWear {
   reset(list: VehicleDamageMsg[] | undefined): void {
     for (const [key, w] of this.wear) {
       this.dress(w, false);
+      this.unpaint(w);
       this.wear.delete(key);
     }
     for (const m of list ?? []) this.set(m, true);
@@ -208,12 +213,21 @@ export class VehicleWear {
     if (st === STAGE.whole && hp >= 100) {
       if (old) {
         this.dress(old, false);
+        this.unpaint(old);
         this.wear.delete(key);
       }
       return null;
     }
     const w: Wear = old ?? { k, id: m.id, hp, st, since: 0, smoke: 0, flame: 0, drip: 0, crackle: 0, color: new THREE.Color(anyPaint()) };
     const changed = !old || old.st !== st;
+    const lost = (old?.hp ?? 100) - hp;
+    const v = this.find(k, m.id);
+    if (v) this.effects.splats.pinVehicle(v.group); // its paint stays until it is whole again
+    // The child-friendly look: paint where it was hit, for every page (the server tells the damage, not where it landed):
+    // a splat for every few points it lost, unless your own shot just put its paint there.
+    if (paintball.on && !quiet && v && lost > 0 && st < STAGE.wreck && performance.now() - (this.mineAt.get(key) ?? -1e9) > 1500) {
+      this.splat(v, Math.max(1, Math.min(4, Math.round(lost / 8))), true);
+    }
     w.hp = hp;
     w.st = st;
     if (changed) w.since = 0;
@@ -241,22 +255,50 @@ export class VehicleWear {
     if (w.st === STAGE.fire) whoomp(at);
   }
 
-  /** `n` splats of paint on its body, where rays from round it meet it. */
-  private splat(v: WearTarget, n: number): void {
+  /**
+   * `n` splats of paint on its body, where rays from round it meet it: across its sides and ends at the height a
+   * paintball comes in, along its length. `burst`: the drops and sound of each (a hit; a new stage has its own sound).
+   */
+  private splat(v: WearTarget, n: number, burst = false): void {
     v.group.updateMatrixWorld(true);
-    const box = new THREE.Box3().setFromObject(v.group);
+    const box = new THREE.Box3();
+    // Its body only: not the riders and their name tags, paint already on it, nor a helicopter's rotors (they reach far round it).
+    const rotor = (o: THREE.Object3D) => {
+      for (let p: THREE.Object3D | null = o; p && p !== v.group; p = p.parent) if (/rotor/i.test(p.name)) return true;
+      return false;
+    };
+    v.group.traverseVisible((o) => {
+      if (o instanceof THREE.Mesh && o.userData.vehicle && o.geometry && !rotor(o)) box.expandByObject(o, false);
+    });
+    if (box.isEmpty()) return;
     const mid = box.getCenter(new THREE.Vector3());
-    const r = box.getSize(new THREE.Vector3()).length() / 2 + 1;
+    const size = box.getSize(new THREE.Vector3());
+    const r = size.length() / 2 + 1;
+    const nose = new THREE.Vector3(-Math.sin(v.yaw), 0, -Math.cos(v.yaw));
+    const len = Math.max(size.x, size.z);
     for (let i = 0; i < n; i++) {
       const a = Math.random() * Math.PI * 2;
-      const from = new THREE.Vector3(mid.x + Math.cos(a) * r, mid.y + (Math.random() * 0.8 + 0.1) * r * 0.6, mid.z + Math.sin(a) * r);
-      this.ray.set(from, mid.clone().sub(from).normalize());
+      const to = mid.clone().addScaledVector(nose, (Math.random() - 0.5) * len * 0.6);
+      to.y = box.min.y + size.y * (0.3 + Math.random() * 0.45);
+      const from = to.clone().add(new THREE.Vector3(Math.cos(a) * r, (Math.random() - 0.3) * 0.8, Math.sin(a) * r));
+      this.ray.set(from, to.clone().sub(from).normalize());
       this.ray.far = r * 2;
-      const hit = this.ray.intersectObject(v.group, true).find((h) => h.face && !h.object.userData.ignoreRay && shown(h.object));
+      const hit = this.ray.intersectObject(v.group, true).find((h) => h.face && h.object.userData.vehicle && !h.object.userData.ignoreRay && shown(h.object) && !rotor(h.object));
       if (!hit || !hit.face) continue;
       const normal = hit.face.normal.clone().transformDirection(hit.object.matrixWorld);
-      this.effects.splats.add(hit.point, normal, new THREE.Color(anyPaint()), 0.55 + Math.random() * 0.35, hit.object, this.ray.ray.direction);
+      const color = new THREE.Color(anyPaint());
+      this.effects.splats.add(hit.point, normal, color, 0.55 + Math.random() * 0.35, hit.object, this.ray.ray.direction);
+      if (burst) {
+        this.effects.splash(hit.point, normal, color, 0.5);
+        splatSound(hit.point);
+      }
     }
+  }
+
+  /** Whole again (or this page starts over): its paint goes. */
+  private unpaint(w: Wear): void {
+    const v = this.find(w.k, w.id);
+    if (v) this.effects.splats.clearVehicle(v.group);
   }
 
   /** Its parts as a wreck (burnt, or covered in paint), or back as they were. */
@@ -265,7 +307,7 @@ export class VehicleWear {
     if (!v) return;
     v.setGone(wreck && w.st === STAGE.gone); // gone: not drawn, no block to bump into, no way in, not on the maps
     v.group.traverse((o) => {
-      if (!(o instanceof THREE.Mesh) || Array.isArray(o.material)) return;
+      if (!(o instanceof THREE.Mesh) || Array.isArray(o.material) || o.userData.splats) return; // the paint on it stays paint
       const mat = o.material as THREE.Material;
       const own = mat.userData[WEAR_MAT] ? (o.userData.wearOwn as THREE.Material | undefined) : mat;
       if (!own) return;

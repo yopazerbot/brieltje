@@ -9,11 +9,12 @@ import { splatSheet } from './sprites';
  * and what they leave. On walls, floors and the ground a splat, stretched where the ball came in
  * at an angle; they stay a while and then fade, all in one instanced draw call (the oldest makes
  * room for the newest, and the fading is worked out on the graphics card, so it costs nothing
- * per frame). On a door or a car the splat is a small mesh of its own on it, so it swings or
- * drives off with it. On players a splat goes on the figure itself (paintOn.ts) and stays until
- * they are back in the game; on clowns and strongmen a blob of paint sticks to the body part
- * that was hit, moves with it and shrinks away after a few seconds. No lights, no new shaders:
- * the splats are the standard material with the fade added.
+ * per frame). On a door or a passing car the splat is a small mesh of its own on it, so it swings
+ * or drives off with it; on the game's cars and helicopters they are one instanced draw on each,
+ * kept until it is whole again. On players a splat goes on the figure itself (paintOn.ts) and
+ * stays until they are back in the game; on clowns and strongmen a blob of paint sticks to the
+ * body part that was hit, moves with it and shrinks away after a few seconds. No lights, no new
+ * shaders: the splats are the standard material with the fade added.
  */
 
 const MAX = 120; // splats on walls and floors at once
@@ -23,6 +24,13 @@ const FADE = 5; // s it takes to fade away after that
 const BLOBS = 40; // blobs of paint on figures at once
 const BLOB_STAY = 8; // s before a blob shrinks away
 const BALLS = 48;
+const ON_VEHICLE = 32; // splats on one car or helicopter of the game (the oldest makes room)
+
+/** The game's car or helicopter (its group, with userData.car or .heli) a mesh is part of; null for a door or traffic. */
+function vehicleOf(o: THREE.Object3D): THREE.Object3D | null {
+  for (let p: THREE.Object3D | null = o; p; p = p.parent) if (typeof p.userData.car === 'string' || typeof p.userData.heli === 'string') return p;
+  return null;
+}
 /** How fast the paintballs fly (m/s): about a real one's speed, slow enough to see them go. */
 export const BALL_SPEED = 75;
 
@@ -116,6 +124,7 @@ export class Splats {
   private ballMesh: THREE.InstancedMesh;
   private nextBall = 0;
   private m = new THREE.Matrix4();
+  private inv = new THREE.Matrix4();
   private q = new THREE.Quaternion();
   private v = new THREE.Vector3();
   private s = new THREE.Vector3();
@@ -194,6 +203,8 @@ export class Splats {
     this.v.copy(point).addScaledVector(normal, 0.004);
     const cell = Math.floor(Math.random() * 4);
     const [u, w] = cellOffset(cell);
+    const vehicle = on?.userData.vehicle ? vehicleOf(on) : null;
+    if (vehicle) return this.onVehicle(vehicle, color, u, w);
     if (on?.userData.door || on?.userData.vehicle) {
       const geo = new THREE.PlaneGeometry(1, 1);
       geo.setAttribute('aSplat', new THREE.Float32BufferAttribute([u, w, clock.value, u, w, clock.value, u, w, clock.value, u, w, clock.value], 3));
@@ -248,6 +259,62 @@ export class Splats {
     on.attach(mesh);
     this.blobs.push({ mesh, age: 0, scale: mesh.scale.clone() });
     if (this.blobs.length > BLOBS) this.blobs.shift()!.mesh.removeFromParent();
+  }
+
+  /**
+   * A splat (placed in this.v, this.q, this.s as for a wall) on a car or helicopter of the game: its own paint, one
+   * instanced draw call on the vehicle's group whatever the number of splats, kept until it is whole again (clearVehicle).
+   */
+  private onVehicle(group: THREE.Object3D, color: THREE.Color, u: number, w: number): void {
+    let m = group.userData.paintSplats as THREE.InstancedMesh | undefined;
+    if (!m) {
+      const geo = new THREE.PlaneGeometry(1, 1);
+      geo.setAttribute('aSplat', new THREE.InstancedBufferAttribute(new Float32Array(ON_VEHICLE * 3), 3));
+      m = new THREE.InstancedMesh(geo, this.mesh.material, ON_VEHICLE);
+      m.setColorAt(0, color);
+      m.count = 0;
+      m.frustumCulled = false;
+      m.renderOrder = 1;
+      // No ray stops on it (raycast is empty). Not marked ignoreRay: a car let go of frees its meshes marked so, with
+      // their material, and this one's material is the splats' own, shared (car.ts dispose).
+      m.userData.splats = true; // not one of the vehicle's own parts (vehicleWear.ts dress leaves it be)
+      m.userData.next = 0;
+      m.raycast = () => {};
+      group.add(m);
+      group.userData.paintSplats = m;
+    }
+    const i = m.userData.next as number;
+    m.userData.next = (i + 1) % ON_VEHICLE;
+    m.count = Math.max(m.count, i + 1);
+    group.updateWorldMatrix(true, false);
+    m.setMatrixAt(i, this.m.compose(this.v, this.q, this.s).premultiply(this.inv.copy(group.matrixWorld).invert()));
+    m.setColorAt(i, color);
+    // Damaged in a team match (pinVehicle): born far ahead of the clock, so it never fades; else it fades as on a wall.
+    (m.geometry.attributes.aSplat as THREE.InstancedBufferAttribute).setXYZ(i, u, w, group.userData.paintKeep ? 1e9 : clock.value);
+    m.instanceMatrix.needsUpdate = true;
+    m.instanceColor!.needsUpdate = true;
+    m.geometry.attributes.aSplat.needsUpdate = true;
+  }
+
+  /** A vehicle took damage in a team match (world/vehicleWear.ts): its paint stays, what is on it already too, until it is whole again. */
+  pinVehicle(group: THREE.Object3D): void {
+    group.userData.paintKeep = true;
+    const m = group.userData.paintSplats as THREE.InstancedMesh | undefined;
+    if (!m) return;
+    const cells = m.geometry.attributes.aSplat as THREE.InstancedBufferAttribute;
+    for (let i = 0; i < m.count; i++) if (cells.getZ(i) + STAY > clock.value) cells.setZ(i, 1e9); // not those faded already
+    cells.needsUpdate = true;
+  }
+
+  /** A vehicle is whole again (or this page starts over): its paint goes. */
+  clearVehicle(group: THREE.Object3D): void {
+    delete group.userData.paintKeep;
+    const m = group.userData.paintSplats as THREE.InstancedMesh | undefined;
+    if (!m) return;
+    m.removeFromParent();
+    m.geometry.dispose();
+    m.dispose();
+    delete group.userData.paintSplats;
   }
 
   private dropLoose(k: number): void {
