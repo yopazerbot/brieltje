@@ -7,12 +7,13 @@ small pictures there: each view once in clay (one grey material, to judge the sh
 final materials.
 
 Our own design, no brand, maker or marking on it. A near-future tool held like the game's carbine,
-86 cm long. It reads from back to front: the energy cell where a magazine would sit, the receiver that
+84 cm long. It reads from back to front: the energy cell where a magazine would sit, the receiver that
 holds the capacitor (the round housing on its left side, with the charge read-out above it), a power
 junction on top with two armoured cables, the beam tube in the fore-end (a lit core inside a copper
-coil, seen through three windows), the finned heat shroud, and the ringed emitter with its lens deep
-inside. A skeleton stock, a low sight with a rectangular window. Bevelled edges, a few materials, no
-textures, under 15 000 triangles.
+coil, seen through three windows), the finned heat shroud with a collar on its face, and the ringed
+emitter with its lens deep inside (dark glass, a lit point behind it). A skeleton stock with a cheek
+rest, a ribbed rubber butt pad, a hinge at the receiver and a sling loop; a slim eight-sided sight on two
+clamps. Bevelled edges, a few materials, no textures, under 18 000 triangles.
 
 Frame in the GLB, as tools/weapons.py: the barrel along -z, up +y, right +x, metres, the origin where
 the web of the right hand sits on the grip. Nodes:
@@ -22,12 +23,15 @@ the web of the right hand sits on the grip. Nodes:
                     (unit, the GLB's frame), as the magazines have
     laser_muzzle    where the beam leaves (the emitter's front face, on the bore's axis)
     laser_sight     a point on the line of sight (the sight's reticle)
-The lit parts have materials of their own, so the game can light them: LaserLens (the emitter's lens),
-LaserGlow (the beam tube's core, the charge read-out, the cell's windows and charge marks) and
-LaserReticle (the sight's dot). LaserAccent is the one accent colour: the copper coil, the selector,
-the cell's latch, a band on the emitter. The others carry the names tools/weapons.py uses (Steel, Dark,
-Polymer, Grip, Lens), so the game's gun finish (web/src/world/gunSurface.ts) takes them as it does
-for the other guns; the shading per corner it reads is baked here the same way (bake_shade).
+The lit parts have materials of their own, so the game can light them: LaserLens (the lit point behind the
+emitter's glass), LaserGlow (the beam tube's core, the charge read-out, the cell's windows and charge marks)
+and LaserReticle (the sight's dot); LaserGlass is the emitter's dark glass. LaserAccent is the one accent
+colour: the copper coil, the selector, the cell's latch, a band on the emitter. The two big surfaces have
+names of their own, LaserAnodised (the dark, glossy upper, shroud, emitter and sight) and LaserPolymer
+(the paler, matt lower, grip, handguard, stock and cell): the game's gun finish (web/src/world/gunSurface.ts)
+has no entry for them yet and keeps their values. The small parts carry the names tools/weapons.py uses
+(Steel, Dark, Grip, Lens), so that finish takes them as it does for the other guns; the shading per
+corner it reads is baked here the same way (bake_shade).
 No hands in this file: where they go is in the hands' comment below.
 Inside Blender the barrel runs along +y and up is +z; the exporter turns that into the above.
 """
@@ -70,17 +74,20 @@ def material(name, color, rough=0.5, metal=0.0, alpha=1.0, glow="", strength=1.0
     return m
 
 
-# The shared names take the game's finish for them (gunSurface.ts LOOKS); the colours here are that finish,
-# so the pictures show the gun about as the game will. The emissive strengths stay small: the game keeps
-# everything in half-float targets and adds its own bloom.
+# The shared names take the game's finish for them (gunSurface.ts LOOKS); the colours here are that finish.
+# The two big surfaces have names of their own, so the split between them shows: a dark, glossy anodised
+# upper against a paler, matt polymer (the game's finish has no entry for them yet; it keeps these values).
+# The emissive strengths stay small: the game keeps everything in half-float targets and adds its own bloom.
 M = {
-    "Steel": material("Steel", "#4d5056", 0.3, 1.0),        # anodised metal: upper receiver, shroud, emitter, fins
-    "Dark": material("Dark", "#2a2c30", 0.42, 0.7),         # rails, the bore, small hardware, the stock adaptor
-    "Polymer": material("Polymer", "#232426", 0.6, 0.0),    # lower receiver, grip, fore-end, stock, the cell's body
-    "Grip": material("Grip", "#202123", 0.88, 0.0),         # rubber: grip panels, pads, the cables' sleeves
+    "Anod": material("LaserAnodised", "#23272e", 0.2, 0.9),     # the upper, the shroud, the emitter, the sight
+    "Steel": material("Steel", "#4d5056", 0.3, 1.0),            # bright metal: the capacitor, fins, ferrules, knobs, the trigger
+    "Dark": material("Dark", "#2a2c30", 0.42, 0.7),             # rails, the bore, small hardware, the stock's joint
+    "Polymer": material("LaserPolymer", "#35373a", 0.82, 0.0),  # lower receiver, grip, handguard, stock, the cell's body
+    "Grip": material("Grip", "#202123", 0.88, 0.0),             # rubber: grip panels, pads, the butt pad, the cables' sleeves
     "Lens": material("Lens", "#7fa6b4", 0.05, 0.0, alpha=0.16),  # the sight's window: you look through it
     "LaserAccent": material("LaserAccent", "#b4642c", 0.32, 0.9),  # anodised copper: the coil, selector, latch, a band
-    "LaserLens": material("LaserLens", "#0b2a36", 0.04, 0.0, glow="#3fc8ff", strength=2.5),
+    "LaserGlass": material("LaserGlass", "#0a1c26", 0.03, 0.0, alpha=0.5),  # the emitter's lens: dark glass you see into
+    "LaserLens": material("LaserLens", "#0b2a36", 0.3, 0.0, glow="#3fc8ff", strength=4.0),  # the lit point deep behind it
     "LaserGlow": material("LaserGlow", "#5fd4ff", 0.3, 0.0, glow="#52ccff", strength=2.0),
     "LaserReticle": material("LaserReticle", "#06141a", 0.5, 0.0, glow="#7fe8ff", strength=3.0),
 }
@@ -124,7 +131,7 @@ def bevel(obj, width, segments=2, angle=35):
     shade(obj)
     if width > 0:
         apply_mod(obj, "BEVEL", width=width, segments=segments, limit_method="ANGLE", angle_limit=math.radians(angle),
-                  harden_normals=True, miter_outer="MITER_ARC")
+                  harden_normals=True)
     return obj
 
 
@@ -184,6 +191,13 @@ def rbox(cx, cz, w, h, y0, y1, ang):
     return o
 
 
+def zbox(cx, cy, w, d, z0, z1, ang):
+    """A box to cut with, w across (x) and d long (y), centred on (cx, cy), turned by `ang` round the upright."""
+    o = prism("cutbox", [(cy - d / 2, z0), (cy + d / 2, z0), (cy + d / 2, z1), (cy - d / 2, z1)], w / 2, M["Dark"], 0, x=cx)
+    o.data.transform(Matrix.Translation((cx, cy, 0)) @ Matrix.Rotation(ang, 4, "Z") @ Matrix.Translation((-cx, -cy, 0)))
+    return o
+
+
 def chamfers(half, ztop, zbot, top, bot, y0, y1):
     """Cutters that chamfer the long edges of a part `half` wide between zbot and ztop: `top` and `bot` the
     chamfers' legs on the upper and lower edges (0: none). A part reads far less like a box with them."""
@@ -195,11 +209,14 @@ def chamfers(half, ztop, zbot, top, bot, y0, y1):
     return out
 
 
-def lathe(name, prof, mats, sides=24, at=(0.0, 0.0, 0.0), axis="y", turn=0.0, seg_mat=None, smooth_angle=35):
+def lathe(name, prof, mats, sides=24, at=(0.0, 0.0, 0.0), axis="y", turn=0.0, seg_mat=None, smooth_angle=35, loop=False):
     """Turn a profile [(t, r), ...] round an axis through `at` ('y' along the barrel, 'x' across, 'z' up).
     The solid lies to the right of the profile as it is walked (walk the outside from back to front, the
     inside from front to back), and each face is turned to face away from it. A point with r = 0 closes the
-    surface there. `seg_mat`: the material index of each step of the profile (all 0 without)."""
+    surface there; `loop` joins the last point back to the first (a tube with a wall). `seg_mat`: the
+    material index of each step of the profile (all 0 without)."""
+    if loop:
+        prof = list(prof) + [prof[0]]
     ax = {"y": (Vector((1, 0, 0)), Vector((0, 1, 0)), Vector((0, 0, 1))),
           "x": (Vector((0, 1, 0)), Vector((1, 0, 0)), Vector((0, 0, 1))),
           "z": (Vector((1, 0, 0)), Vector((0, 0, 1)), Vector((0, 1, 0)))}[axis]
@@ -207,7 +224,10 @@ def lathe(name, prof, mats, sides=24, at=(0.0, 0.0, 0.0), axis="y", turn=0.0, se
     c0 = Vector(at)
     bm = bmesh.new()
     rings = []
-    for t, r in prof:
+    for i, (t, r) in enumerate(prof):
+        if loop and i == len(prof) - 1:
+            rings.append(rings[0])
+            continue
         if r <= 0:
             rings.append([bm.verts.new(c0 + A * t)])
             continue
@@ -310,7 +330,7 @@ def gl(v):
 def screw(x, y, z, s, r=0.0021):
     """A socket-head screw on a side face at x (s: which side, -1 left, +1 right), its head standing 1 mm proud."""
     h = 0.0011 * s
-    return lathe("screw", [(0, 0), (0, r), (h, r * 0.8), (h, 0)] if s > 0 else [(h, 0), (h, r * 0.8), (0, r), (0, 0)], M["Dark"], 8, (x, y, z), "x")
+    return lathe("screw", [(0, 0), (0, r), (h, r * 0.8), (h, 0)] if s > 0 else [(h, 0), (h, r * 0.8), (0, r), (0, 0)], M["Dark"], 6, (x, y, z), "x")
 
 
 # ---- The laser rifle -------------------------------------------------------------------------
@@ -320,7 +340,7 @@ def screw(x, y, z, s, r=0.0021):
 
 B = 0.058   # the beam's axis: the tube, the bore, the lens
 GRIP = Vector((0, -0.042, 0.006))
-SIGHT = Vector((0, 0.0238, 0.1125))
+SIGHT = Vector((0, 0.036, 0.1125))
 body = []
 
 SLANT = 0.375  # the design's one slant: windows, fins and vents lean forward by this much per unit of height
@@ -336,15 +356,16 @@ for k in range(4):
     y = 0.0 + k * 0.014
     upper_cuts.append(dark(prism("vent", [(y, 0.043), (y + 0.006, 0.043), (y + 0.006 + 0.022 * SLANT, 0.065), (y + 0.022 * SLANT, 0.065)], 0.003, M["Dark"], 0,
                                  x=0.0165)))
-for s in (-1, 1):  # a panel seam, 1 mm wide and deep
-    upper_cuts.append(dark(prism("seam", [(-0.100, 0.029), (-0.099, 0.029), (-0.099 + 0.052 * SLANT, 0.081), (-0.100 + 0.052 * SLANT, 0.081)], 0.001,
-                                 M["Dark"], 0, x=s * 0.0165)))
-body.append(prism("upper", [(-0.112, 0.030), (0.152, 0.030), (0.152, 0.080), (-0.104, 0.080), (-0.112, 0.073)], 0.0165, M["Steel"], 0.0016, 2,
+for s in (-1, 1):  # panel seams, 1 mm wide and deep: one behind the capacitor, one ahead of the read-out's end
+    for y0 in (-0.100, 0.104):
+        upper_cuts.append(dark(prism("seam", [(y0, 0.029), (y0 + 0.001, 0.029), (y0 + 0.001 + 0.052 * SLANT, 0.081), (y0 + 0.052 * SLANT, 0.081)], 0.001,
+                                     M["Dark"], 0, x=s * 0.0165)))
+body.append(prism("upper", [(-0.112, 0.030), (0.152, 0.030), (0.152, 0.080), (-0.104, 0.080), (-0.112, 0.073)], 0.0165, M["Anod"], 0.0016, 2,
                   cuts=upper_cuts))
 fore_cuts = chamfers(0.023, 0.080, 0.044, 0.0048, 0.0, 0.1, 0.35)
 for y0, y1 in ((0.175, 0.203), (0.211, 0.239), (0.247, 0.275)):
     fore_cuts.append(dark(prism("win", [(y0, 0.0495), (y1, 0.0495), (y1 + 0.023 * SLANT, 0.0725), (y0 + 0.023 * SLANT, 0.0725)], 0.05, M["Dark"], 0)))
-body.append(prism("upperfore", [(0.140, 0.044), (0.300, 0.044), (0.300, 0.080), (0.140 + 0.036 * SLANT, 0.080)], 0.023, M["Steel"], 0.0016, 2,
+body.append(prism("upperfore", [(0.140, 0.044), (0.300, 0.044), (0.300, 0.080), (0.140 + 0.036 * SLANT, 0.080)], 0.023, M["Anod"], 0.0016, 1,
                   cuts=fore_cuts))
 # The capacitor on the left side (the side the player sees): a long round housing in a cradle cut into the
 # receiver, its end cap and three bands; above it the charge read-out, five lit bars in a dark frame.
@@ -360,7 +381,7 @@ for k in range(5):
                       M["LaserGlow"], 0.0002, 1, x=-0.0179))
 for y, z in ((-0.095, 0.072), (0.150, 0.072), (0.150, 0.041), (-0.095, 0.041)):
     body.append(screw(0.0165, y, z, 1))
-for y, z in ((-0.095, 0.072), (0.150, 0.072)):
+for y, z in ((-0.095, 0.072), (0.150, 0.072), (0.072, 0.0715), (0.094, 0.0715), (0.072, 0.041), (0.094, 0.041), (0.150, 0.041)):
     body.append(screw(-0.0165, y, z, -1))
 
 # Lower receiver with the cell's well and its flared lip; the grip, trigger guard and trigger.
@@ -390,23 +411,37 @@ for s in (-1, 1):
     body.append(prism("selector", [(-0.031, 0.016), (-0.012, 0.0205), (-0.011, 0.0245), (-0.031, 0.0235)], 0.0009, M["LaserAccent"], 0.0004, 1,
                       x=s * 0.0172))
 
-# Skeleton stock: a top bar for the cheek, a strut down to the toe, a butt pad; an adaptor at the receiver.
-body.append(block("adaptor", -0.0165, 0.0165, -0.124, -0.106, 0.024, 0.076, M["Dark"], 0.0018, 2))
-# Moulded like a beam: each bar recessed 1 mm on both sides inside a 4 to 6 mm rim.
-lo = lambda y: 0.016 + 0.4424 * (y + 0.108)    # the strut's lower edge
-hi = lambda y: 0.026 + 0.4416 * (y + 0.146)    # its upper edge (the hole's)
-stock_insets = []
+# Skeleton stock, 2 cm shorter than the carbine's so the weight sits forward: a slim top bar with a rubber cheek
+# rest, a strut down to the toe, a butt bar with three slanted lightening slots, a ribbed rubber butt pad, a
+# sling loop under the toe. At the receiver a dark joint block with a hinge on the right (its knuckles and pin)
+# and a screw on the left. Each bar is recessed 1 mm on both sides inside a rim, as a moulded beam is.
+SH = 0.0135  # the stock's half width
+body.append(block("joint", -0.0165, 0.0165, -0.124, -0.106, 0.024, 0.076, M["Dark"], 0.0018, 2))
+for z0, z1 in ((0.026, 0.040), (0.060, 0.074)):
+    body.append(ring("knuckle", z0, z1, 0.0052, M["Dark"], (0.0168, -0.115, 0), 16, "z", 0.0006))
+body.append(ring("hingepin", 0.022, 0.078, 0.0028, M["Steel"], (0.0168, -0.115, 0), 12, "z", 0.0005))
+body.append(screw(-0.0165, -0.115, 0.050, -1, 0.0026))
+lo = lambda y: 0.016 + 0.4455 * (y + 0.108)    # the strut's lower edge
+hi = lambda y: lo(y) + 0.020                   # its upper edge (the hole's)
+hole = [(-0.146, 0.062), (-0.299, 0.062), (-0.306, 0.055), (-0.306, hi(-0.306) + 0.005), (-0.300, hi(-0.300)), (-0.146, hi(-0.146)),
+        (-0.140, hi(-0.140) + 0.007), (-0.140, 0.056)]
+stock_cuts = [prism("cuthole", hole, 0.05, M["Dark"], 0)]
+for z0 in (-0.050, -0.018, 0.014):  # lightening slots through the butt bar, in the design's slant
+    stock_cuts.append(prism("slot", [(-0.331, z0), (-0.3255, z0), (-0.3255 + 0.022 * SLANT, z0 + 0.022), (-0.331 + 0.022 * SLANT, z0 + 0.022)], 0.05, M["Dark"], 0))
 for s in (-1, 1):
-    for pts in ([(-0.352, -0.052), (-0.338, -0.046), (-0.338, 0.050), (-0.352, 0.056)],
-                [(-0.150, 0.0625), (-0.316, 0.0625), (-0.316, 0.0740), (-0.150, 0.0740)],
-                [(-0.165, lo(-0.165) + 0.0055), (-0.296, lo(-0.296) + 0.0055), (-0.296, hi(-0.296) - 0.0055), (-0.165, hi(-0.165) - 0.0055)]):
-        stock_insets.append(prism("inset", pts, 0.001, M["Dark"], 0, x=s * 0.0155))
-hole = [(-0.146, 0.0585), (-0.318, 0.0585), (-0.330, 0.050), (-0.330, -0.046), (-0.322, -0.051), (-0.300, -0.042), (-0.146, 0.026), (-0.140, 0.034), (-0.140, 0.052)]
-body.append(prism("stock", [(-0.108, 0.078), (-0.24, 0.078), (-0.30, 0.0805), (-0.352, 0.0805), (-0.358, 0.075), (-0.358, -0.073), (-0.351, -0.080),
-                            (-0.326, -0.080), (-0.20, -0.004), (-0.108, 0.016)],
-                  0.0155, M["Polymer"], 0.003, 2, cuts=[prism("cuthole", hole, 0.05, M["Dark"], 0)] + stock_insets))
-body.append(prism("cheek", [(-0.185, 0.0775), (-0.300, 0.0800), (-0.300, 0.0835), (-0.192, 0.0812)], 0.0125, M["Grip"], 0.0012, 2))
-body.append(prism("pad", [(-0.3575, 0.0805), (-0.371, 0.0795), (-0.373, -0.0785), (-0.3575, -0.0805)], 0.0168, M["Grip"], 0.003, 2))
+    for pts in ([(-0.150, 0.0655), (-0.296, 0.0655), (-0.296, 0.0745), (-0.150, 0.0745)],
+                [(-0.168, lo(-0.168) + 0.005), (-0.284, lo(-0.284) + 0.005), (-0.284, hi(-0.284) - 0.005), (-0.168, hi(-0.168) - 0.005)]):
+        stock_cuts.append(prism("inset", pts, 0.001, M["Dark"], 0, x=s * SH))
+body.append(prism("stock", [(-0.108, 0.078), (-0.330, 0.078), (-0.338, 0.071), (-0.338, -0.066), (-0.331, -0.074), (-0.310, -0.074),
+                            (-0.108, 0.016)], SH, M["Polymer"], 0.0028, 2, cuts=stock_cuts))
+body.append(prism("cheek", [(-0.172, 0.0772), (-0.300, 0.0772), (-0.300, 0.0815), (-0.292, 0.0848), (-0.205, 0.0848), (-0.172 - 0.006, 0.0812)],
+                  0.0118, M["Grip"], 0.0014, 1,  # three slanted grooves across its top, where the player looks down on it
+                  cuts=[dark(zbox(0, y, 0.032, 0.0014, 0.0838, 0.09, math.radians(-22))) for y in (-0.264, -0.246, -0.228)]))
+body.append(prism("pad", [(-0.3375, 0.0765), (-0.3500, 0.0750), (-0.3530, 0.0650), (-0.3530, -0.0640), (-0.3500, -0.0740), (-0.3375, -0.0770)], 0.0160,
+                  M["Grip"], 0.0025, 1, cuts=[dark(box(-0.02, 0.02, -0.356, -0.3515, z, z + 0.0028)) for z in (-0.044, -0.018, 0.008, 0.034)]))
+loop_pts = [(0, -0.286 + 0.0075 * math.sin(2 * math.pi * k / 16), lo(-0.286) - 0.0068 - 0.0075 * math.cos(2 * math.pi * k / 16)) for k in range(17)]
+body.append(sweep("sling", loop_pts, [0.0016] * len(loop_pts), M["Steel"], 6))
+body.append(block("slingbase", -0.006, 0.006, -0.296, -0.276, lo(-0.276) - 0.004, lo(-0.276) + 0.002, M["Dark"], 0.001, 1))
 
 # The rail over the receiver, and the sight on it: a clamp, a deck, a hood with a window, the dot.
 rail = [block("rail", -0.0105, 0.0105, -0.098, 0.100, 0.080, 0.084, M["Dark"], 0.0005, 1)]
@@ -415,14 +450,25 @@ while y + 0.005 < 0.100:
     rail.append(block("rail", -0.0105, 0.0105, y, y + 0.0052, 0.084, 0.0875, M["Dark"], 0))
     y += 0.010
 body += rail
-body.append(block("oclamp", -0.0128, 0.0128, -0.028, 0.040, 0.0840, 0.0935, M["Dark"], 0.0012, 2))
-body.append(ring("oknob", 0.0, 0.006, 0.0042, M["Steel"], (0.0128, 0.004, 0.0888), 14, "x"))
-body.append(block("odeck", -0.0185, 0.0185, -0.032, 0.044, 0.0935, 0.0985, M["Steel"], 0.0012, 2))
-for s in (-1, 1):  # the hood's front leans forward like the windows
-    body.append(prism("ohood", [(-0.032, 0.0985), (0.040, 0.0985), (0.040 + 0.030 * SLANT, 0.1285), (0.046, 0.1315), (-0.006, 0.1315), (-0.032, 0.1175)],
-                      0.0017, M["Steel"], 0.0007, 2, x=s * 0.0168))
-body.append(prism("oroof", [(-0.006, 0.1285), (0.040 + 0.030 * SLANT, 0.1285), (0.046, 0.1315), (-0.006, 0.1315)], 0.0185, M["Steel"], 0.0007, 2))
-body.append(block("owindow", -0.0151, 0.0151, 0.0236, 0.0242, 0.0985, 0.1285, M["Lens"], 0))
+# The sight: a base plate on the rail held by two clamps (each with its bolt on the right), a riser, and a slim
+# eight-sided tube with a bright bezel at each end, a sunshade over its front in the design's slant, an
+# adjustment turret on top and a battery cap on the left. The window you look through sits near its front,
+# the lit dot on it.
+SZ = SIGHT.z
+body.append(block("obase", -0.0112, 0.0112, -0.016, 0.046, 0.0875, 0.0905, M["Dark"], 0.0008, 1))
+for y0 in (-0.013, 0.032):
+    body.append(block("oclamp", -0.0138, 0.0138, y0, y0 + 0.011, 0.0815, 0.0925, M["Dark"], 0.0012, 2))
+    body.append(ring("obolt", 0.0, 0.0032, 0.0029, M["Steel"], (0.0138, y0 + 0.0055, 0.0868), 12, "x", 0.0005))
+body.append(prism("oriser", [(-0.008, 0.0905), (0.040, 0.0905), (0.040, 0.0965), (0.034, SZ - 0.0150), (-0.002, SZ - 0.0150), (-0.008, 0.0965)],
+                  0.0085, M["Anod"], 0.0012, 2))
+OT = (0, 0, SZ)
+body.append(lathe("otube", [(-0.012, 0.0158), (-0.012, 0.0176), (0.044, 0.0176), (0.044, 0.0158)], M["Anod"], 8, OT, turn=math.pi / 8, loop=True))
+for t0 in (-0.0135, 0.0425):
+    body.append(lathe("obezel", [(t0, 0.0156), (t0, 0.0181), (t0 + 0.0030, 0.0181), (t0 + 0.0030, 0.0156)], M["Steel"], 8, OT, turn=math.pi / 8, loop=True))
+body.append(prism("oshade", [(0.030, SZ + 0.0150), (0.046, SZ + 0.0150), (0.046 + 0.006 * SLANT, SZ + 0.0190), (0.030, SZ + 0.0190)], 0.0105, M["Anod"], 0.0008, 1))
+body.append(ring("oturret", SZ + 0.0150, SZ + 0.0215, 0.0050, M["Steel"], (0, 0.012, 0), 16, "z", 0.0008))
+body.append(ring("ocap", -0.0215, -0.0150, 0.0048, M["Steel"], (0, 0.014, SZ - 0.002), 16, "x", 0.0008))
+body.append(lathe("owindow", [(SIGHT.y, 0), (SIGHT.y, 0.0157), (SIGHT.y + 0.0006, 0.0157), (SIGHT.y + 0.0006, 0)], M["Lens"], 8, OT, turn=math.pi / 8))
 body.append(lathe("odot", [(0.0, 0), (0.0, 0.0008), (0.0003, 0)], M["LaserReticle"], 10, (SIGHT.x, SIGHT.y - 0.0001, SIGHT.z)))
 # The power junction on the receiver's top, ahead of the rail: two armoured cables run from it along the
 # fore-end's top, a few millimetres clear of it, into the shroud: rubber sleeves, metal ferrules, a clamp halfway.
@@ -436,9 +482,9 @@ for s in (-1, 1):
     x = s * 0.0118
     n = 10
     pts = [(x, 0.150 + 0.138 * i / n, sag(0.150 + 0.138 * i / n)) for i in range(n + 1)]
-    body.append(sweep("cable", pts, [0.0045] * len(pts), M["Grip"], 9))
-    body.append(ring("ferrule", 0.141, 0.153, 0.0057, M["Steel"], (x, 0, CZ), 14))
-    body.append(ring("ferrule", 0.2865, 0.2985, 0.0057, M["Steel"], (x, 0, CZ), 14))
+    body.append(sweep("cable", pts, [0.0045] * len(pts), M["Grip"], 8))
+    body.append(ring("ferrule", 0.141, 0.153, 0.0057, M["Steel"], (x, 0, CZ), 12))
+    body.append(ring("ferrule", 0.2865, 0.2985, 0.0057, M["Steel"], (x, 0, CZ), 12))
     for y in (0.1545, 0.2830):
         body.append(lathe("crimp", [(y, 0), (y, 0.0051), (y + 0.0018, 0.0051), (y + 0.0018, 0)], M["Dark"], 9, (x, 0, sag(y))))
 body.append(block("clamp", -0.0186, 0.0186, 0.215, 0.225, sag(0.22) - 0.0052, sag(0.22) + 0.0052, M["Dark"], 0.0014, 2))
@@ -462,36 +508,49 @@ for i in range(turns * per + 1):
     a = 2 * math.pi * i / per
     yy = 0.172 + (0.290 - 0.172) * i / (turns * per)
     coil.append((0.0074 * math.cos(a), yy, B + 0.0074 * math.sin(a)))
-body.append(sweep("coil", coil, [0.00125] * len(coil), M["LaserAccent"], 6))
+body.append(sweep("coil", coil, [0.00125] * len(coil), M["LaserAccent"], 5))
 
-# The heat shroud: metal, a wedge underneath, chamfered and a little narrower to the front, open on both sides
-# in one slanted window and slotted on top; its slanted fins round the beam's core tube.
+# The heat shroud: anodised metal, a wedge underneath, a little narrower to the front, its long edges and its
+# front corners chamfered wide. Open on both sides in one slanted window and slotted on top; inside, slanted
+# fins round the beam's core tube, set 5 mm back from the sides so the window's edges throw shadow on them.
+SHW = lambda y: 0.027 - 0.0025 * (y - 0.298) / 0.12  # the shroud's half width
 shroud_cuts = [dark(prism("win", [(0.310, 0.030), (0.366, 0.030), (0.366 + 0.046 * SLANT, 0.076), (0.310 + 0.046 * SLANT, 0.076)], 0.05, M["Dark"], 0))]
-shroud_cuts += [dark(box(x - 0.0028, x + 0.0028, 0.318, 0.382, 0.07, 0.12)) for x in (-0.0125, 0.0, 0.0125)]
-shroud_cuts += chamfers(0.027, 0.096, 0.010, 0.0085, 0.006, 0.28, 0.44)
-body.append(prism("shroud", [(0.298, 0.010), (0.352, 0.010), (0.418, 0.033), (0.418, 0.082), (0.398, 0.093), (0.298, 0.096)],
-                  lambda y: 0.027 - 0.0025 * (y - 0.298) / 0.12, M["Steel"], 0.0020, 2, cuts=shroud_cuts))
+shroud_cuts += [dark(box(x - 0.0028, x + 0.0028, 0.318, 0.382, 0.07, 0.12)) for x in (-0.0095, 0.0, 0.0095)]
+shroud_cuts += chamfers(0.027, 0.093, 0.010, 0.0110, 0.0080, 0.28, 0.44)
+shroud_cuts += [zbox(s * SHW(0.418), 0.418, 0.007 * math.sqrt(2), 0.007 * math.sqrt(2), 0.0, 0.12, math.radians(45)) for s in (-1, 1)]
+body.append(prism("shroud", [(0.298, 0.010), (0.348, 0.010), (0.418, 0.029), (0.418, 0.087), (0.404, 0.094), (0.298, 0.096)],
+                  SHW, M["Anod"], 0.0020, 2, cuts=shroud_cuts))
 body.append(lathe("shcore", [(0.300, 0), (0.300, 0.0115), (0.418, 0.0115), (0.418, 0)], M["Dark"], 20, (0, 0, B)))
 for k in range(9):
     y = 0.3075 + k * 0.0074
-    body.append(prism("fin", [(y, 0.024), (y + 0.0021, 0.024), (y + 0.0021 + 0.060 * SLANT, 0.084), (y + 0.060 * SLANT, 0.084)], 0.0236,
-                      M["Steel"], 0.0004, 1))
+    body.append(prism("fin", [(y, 0.024), (y + 0.0024, 0.024), (y + 0.0024 + 0.060 * SLANT, 0.084), (y + 0.060 * SLANT, 0.084)], 0.0226,
+                      M["Steel"], 0.0005, 1))
 for s in (-1, 1):
-    body.append(screw(s * (0.027 - 0.0025 * 0.006 / 0.12), 0.304, 0.020, s))
-    body.append(screw(s * (0.027 - 0.0025 * 0.104 / 0.12), 0.402, 0.062, s))
-body.append(ring("bezel", 0.4175, 0.4195, 0.0236, M["Dark"], (0, 0, B), 24))
+    body.append(screw(s * SHW(0.304), 0.304, 0.020, s))
+    body.append(screw(s * SHW(0.402), 0.402, 0.062, s))
+# A collar round the emitter on the shroud's face: a dark flange, then a bright lip.
+body.append(lathe("collar", [(0.4170, 0), (0.4170, 0.0236), (0.4196, 0.0236), (0.4212, 0.0222), (0.4226, 0.0222), (0.4226, 0)], M["Dark"], 36, (0, 0, B)))
+body.append(ring("collarlip", 0.4224, 0.4246, 0.0204, M["Steel"], (0, 0, B), 36, chamfer=0.0005))
 
-# The emitter: a dark neck out of the shroud's face, two grooves, a copper band, a body that flares a little to
-# its crown; inside, the bore steps down in four focusing rings to the lens, 2.7 cm deep.
+# The emitter: a dark neck out of the collar, two grooves, a copper band, a body that flares a little to its
+# crown (48 sides: it reads round close up). Inside, the bore (32 sides) steps down in four focusing rings to the
+# lens 3 cm deep: dark glass in a bright retaining ring, and behind the glass the lit point the beam comes from.
 EM = [(0.416, 0), (0.416, 0.0180), (0.4255, 0.0180), (0.4255, 0.0212), (0.4275, 0.0220),
-      (0.4310, 0.0220), (0.4310, 0.0209), (0.4330, 0.0209), (0.4330, 0.0220), (0.4365, 0.0220), (0.4365, 0.0209), (0.4385, 0.0209), (0.4385, 0.0220),
+      (0.4330, 0.0220), (0.4330, 0.0209), (0.4355, 0.0209), (0.4355, 0.0220),
       (0.4420, 0.0220), (0.4420, 0.0224), (0.4460, 0.0224), (0.4460, 0.0220), (0.4700, 0.0233), (0.4820, 0.0244), (0.4860, 0.0238), (0.4885, 0.0220),
-      (0.4885, 0.0190), (0.4810, 0.0190), (0.4810, 0.0163), (0.4735, 0.0163), (0.4735, 0.0136), (0.4660, 0.0136), (0.4660, 0.0110), (0.4585, 0.0110),
-      (0.4585, 0)]
-EMM = [1, 1, 0, 0, 0, 1, 1, 1, 0, 1, 1, 1, 0, 2, 2, 2, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 1, 1]  # per step: 0 metal, 1 dark, 2 the copper band
+      (0.4885, 0.0190)]
+EMM = [1, 1, 0, 0, 0, 1, 1, 1, 0, 2, 2, 2, 0, 0, 0, 0, 0]  # per step: 0 anodised, 1 dark, 2 the copper band
+BORE = [(0.4885, 0.0190), (0.4810, 0.0190), (0.4810, 0.0163), (0.4735, 0.0163), (0.4735, 0.0136), (0.4660, 0.0136), (0.4660, 0.0110),
+        (0.4520, 0.0110), (0.4520, 0)]
+BOREM = [1, 0, 1, 0, 1, 0, 1, 1]  # walls dark, the focusing rings' faces bright
 MUZZLE = (0, 0.4885, B)
-body.append(lathe("emitter", EM, [M["Steel"], M["Dark"], M["LaserAccent"]], 24, (0, 0, B), seg_mat=EMM))
-body.append(lathe("lens", [(0.4586, 0.0110), (0.4601, 0.0099), (0.4613, 0.0075), (0.4620, 0.0038), (0.4622, 0)], M["LaserLens"], 24, (0, 0, B), smooth_angle=80))
+body.append(lathe("emitter", EM, [M["Anod"], M["Dark"], M["LaserAccent"]], 40, (0, 0, B), seg_mat=EMM))
+body.append(lathe("bore", BORE, [M["Steel"], M["Dark"]], 32, (0, 0, B), seg_mat=BOREM))
+body.append(lathe("lensring", [(0.4586, 0.0093), (0.4586, 0.0110), (0.4600, 0.0110), (0.4600, 0.0093)], M["Steel"], 32, (0, 0, B), loop=True))
+body.append(lathe("lens", [(0.4588, 0.0094), (0.4600, 0.0086), (0.4610, 0.0066), (0.4616, 0.0034), (0.4618, 0)], M["LaserGlass"], 32, (0, 0, B),
+                  smooth_angle=80))
+body.append(lathe("lenspoint", [(0.4522, 0), (0.4522, 0.0036), (0.4542, 0.0040), (0.4560, 0.0026), (0.4567, 0)], M["LaserLens"], 16, (0, 0, B),
+                  smooth_angle=80))
 
 # The energy cell: a squat polymer block raked a little forward, a metal collar where it leaves the well, its
 # latch in the accent colour, a lit window on each side and four charge marks on its back, a rubber base.
@@ -763,7 +822,7 @@ if PREVIEW:
         ("front34", lambda: look(C + Vector((-0.80, 1.00, 0.38)), C + Vector((0, 0.02, 0)))),
         ("rear34", lambda: look(C + Vector((-0.80, -1.05, 0.45)), C)),
         ("top", lambda: look(C + Vector((0, 0, 1.55)), C, 50, (0, 0, math.radians(90)))),
-        ("emitter", lambda: look(muzzle + Vector((-0.13, 0.20, 0.075)), muzzle + Vector((0, -0.045, 0)), 50)),
+        ("emitter", lambda: look(muzzle + Vector((-0.075, 0.21, 0.045)), muzzle + Vector((0, -0.05, 0)), 50)),
         ("cellgrip", lambda: look(Vector((-0.42, 0.02, 0.02)), Vector((0, 0.065, -0.045)), 50)),
     ]
     # As the player sees it from the hip (weapon.ts and tools/weapons.py: the carbine's place, the grip a quarter
@@ -778,6 +837,15 @@ if PREVIEW:
         cam.data.angle_y = math.radians(54)
         cam.data.clip_start = 0.07
     views.append(("hip_eye", hip))
+
+    def ads():  # aimed, as the carbine is (tools/weapons.py): the eye on the line of sight, 0.352 behind the grip
+        s = Vector(SIGHT) - GRIP
+        cam.location = Vector((s.x, -0.352, s.z))
+        cam.rotation_euler = (math.radians(90), 0, 0)
+        cam.data.sensor_fit = "VERTICAL"
+        cam.data.angle_y = math.radians(46.8)
+        cam.data.clip_start = 0.07
+    views.append(("ads_eye", ads))
 
     clay = bpy.data.materials.new("Clay")
     clay.use_nodes = True
