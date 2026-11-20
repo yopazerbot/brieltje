@@ -14,11 +14,11 @@ scene.updateMatrixWorld(true);
 // Each kind's models (world/undergrowth.ts MODELS) and the most triangles a near and a far copy may have: the woods
 // draw a few dozen near copies and a few thousand far ones, so these keep the undergrowth within its budget per preset.
 const MODELS = {
-  BrackenGreen: [2000, 100],
-  BrackenArch: [2000, 100],
-  BrackenFlat: [2000, 100],
-  Bramble1: [2400, 160],
-  Bramble2: [2400, 160],
+  BrackenGreen: [2000, 130],
+  BrackenArch: [2000, 130],
+  BrackenFlat: [2000, 130],
+  Bramble1: [2400, 240],
+  Bramble2: [2400, 240],
   Holly: [3000, 200],
   Hazel: [2000, 140],
   Beech: [2000, 180],

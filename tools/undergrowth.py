@@ -291,6 +291,7 @@ def frond(m, rng, base, heading, look, stipe, blade, pitch, droop, roll, flat=Fa
         for i in range(len(ids) - 1):
             m.face((ids[i][0], ids[i][1], ids[i + 1][1], ids[i + 1][0]), heading)
     pairs = 8
+    far = {-1: [], 1: []}
     for i in range(pairs):
         u = 0.03 + 0.84 * i / pairs
         a, t = at_along(mid, u)
@@ -314,13 +315,22 @@ def frond(m, rng, base, heading, look, stipe, blade, pitch, droop, roll, flat=Fa
             if m.near:
                 pinna(m, sub, a + s * sign * 0.003, fwd, n, plen, hang, base_c, pin_tip, flat)
             else:
-                # Far: each pinna one slim triangle, from the midrib out to its drooping end.
-                p_tip = a + fwd * plen - n * (hang * plen)
-                a2, _ = at_along(mid, min(1.0, u + 0.84 / pairs * 0.85))
-                pts = [a, p_tip, a2 + fwd * (plen * 0.08)]
+                far[sign].append((a, a + fwd * plen - n * (hang * plen), base_c, pin_tip, n))
+    if not m.near:
+        # Far: the blade filled from the midrib out to each pinna's drooping end, notched halfway to the next
+        # one, so a stand seen from 20 m reads as a russet mass with a ragged edge, not a few slim splinters.
+        # A little lighter than the near copy: the light through its leaflets is not there to lift it.
+        for side in far.values():
+            for i, (a, p_tip, base_c, pin_tip, n) in enumerate(side):
+                a2 = side[i + 1][0] if i + 1 < len(side) else at_along(mid, 0.9)[0]
+                nxt = side[i + 1][1] if i + 1 < len(side) else a2
+                notch = a2.lerp(p_tip.lerp(nxt, 0.5), 0.55)
+                pts = [a, p_tip, notch, a2]
                 if flat:
                     pts = [ground(p, 0.025) for p in pts]
-                m.face((m.v(pts[0], scale(base_c, 0.8)), m.v(pts[1], pin_tip), m.v(pts[2], base_c)), n)
+                ids = [m.v(pts[0], scale(base_c, 0.95)), m.v(pts[1], scale(pin_tip, 1.15)), m.v(pts[2], scale(base_c, 1.1)), m.v(pts[3], scale(base_c, 0.95))]
+                m.face((ids[0], ids[1], ids[2]), n)
+                m.face((ids[0], ids[2], ids[3]), n)
     # The blade's tip: a last small lobe.
     a, t = at_along(mid, 0.88)
     keep, m.keep = m.keep, 1.0
@@ -379,11 +389,12 @@ def bracken(look, seed, near):
         k = 0.85 + 0.3 * rng.random()
         roll = rng.uniform(-0.3, 0.3)
         if look == "green":
-            # Upright on its stalk, the blade held out almost level, arching a little at its tip.
-            frond(m, rng, base, heading, look, 0.45 * k, 0.6 * k, (84, 62, 18, -20), 0.16, roll)
+            # Upright on its stalk (as long as the blade or longer: 1 to 1.5 m in a stand), the blade held out
+            # almost level, arching a little at its tip.
+            frond(m, rng, base, heading, look, 0.74 * k, 0.62 * k, (86, 68, 16, -22), 0.16, roll)
         elif look == "arch":
             # Dead, the stalk bent over, the blade hanging down towards the ground.
-            frond(m, rng, base, heading, look, 0.5 * k, 0.62 * k, (78, 36, 2, -58), 0.45, roll * 1.6)
+            frond(m, rng, base, heading, look, 0.68 * k, 0.62 * k, (82, 40, 2, -58), 0.45, roll * 1.6)
         else:
             # Collapsed: lying on the floor, the pinnae flattened and crumpled.
             frond(m, rng, base, heading, look, 0.4 * k, 0.62 * k, (30, 6, 0, -4), 0.6, roll, flat=True)
@@ -398,7 +409,7 @@ LEAFLET = [(0.4, 0.3, 0.0)]  # ovate, broadest below the middle, pointed
 
 def bramble(seed, near):
     rng = random.Random(seed)
-    m = Mesh(f"Bramble{seed}", near, keep=0.35, grow=1.0, thin=0.02, seed=seed)
+    m = Mesh(f"Bramble{seed}", near, keep=0.25, grow=1.0, thin=0.02, seed=seed)
 
     def compound(p, t, sign, size, turned):
         """A leaf of three or five leaflets on a short stalk out to the side and up, turned to the light."""
@@ -448,7 +459,13 @@ def bramble(seed, near):
             pts.append(start + h * (reach * s) + Vector((0, 0, z + 0.005)))
         cane_c = vary(lin("#5a3434") if rng.random() < 0.75 else lin("#46522c"), rng, 0.1)
         cane_col = lambda p, d, t, c=cane_c: scale(c, 0.75 + 0.3 * t)  # noqa: E731
-        tube(m, pts, [0.008 - 0.004 * i / segs for i in range(segs + 1)], 3, cane_col)
+        if m.near:
+            tube(m, pts, [0.008 - 0.004 * i / segs for i in range(segs + 1)], 3, cane_col)
+        elif long:
+            # Far: the long canes as three-sided arches of two pieces, thick enough to stay on screen.
+            m.near = True
+            tube(m, [pts[0], pts[segs // 2], pts[-1]], [0.014, 0.012, 0.008], 3, cane_col)
+            m.near = False
         # The leaves: one every 10 cm or so along the cane, alternately to either side.
         length = sum((pts[i + 1] - pts[i]).length for i in range(segs))
         count = max(2, int(length * 0.85 / 0.1))
@@ -469,6 +486,12 @@ def bramble(seed, near):
             for j in range(3):
                 q, tt = at_along(shoot, 0.35 + 0.3 * j)
                 compound(q, tt, 1 if j % 2 else -1, rng.uniform(0.8, 1.05), turned_cane and rng.random() < 0.5)
+    if not m.near:
+        # Far: a low dark heap under it all, the shade inside a thicket, so the far copy reads as a mound.
+        top = m.v(Vector((0.05, -0.03, 0.3)), lin("#26341a"))
+        rim = [m.v(Vector((math.cos(a) * 0.75, math.sin(a) * 0.75, 0.02)), lin("#141c0e")) for a in (2 * math.pi * i / 6 for i in range(6))]
+        for i in range(6):
+            m.face((rim[i], rim[(i + 1) % 6], top), UP)
     return m
 
 
