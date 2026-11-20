@@ -77,7 +77,7 @@ test('Stop while a game plays and the next one counts down: both end, nothing st
 
 test('Stop with nothing counting down leaves an announcement of the host\'s alone; Cancel clears as before', (t) => {
   const s = setup(t);
-  s.act({ op: 'announce', text: 'Pizza in the kitchen', secs: 30 });
+  s.act({ op: 'announce', text: 'Food is ready outside', secs: 30 });
   s.act({ op: 'start', kind: 'tag', minutes: 5 });
   s.wait(10_000);
   const before = s.cleared().length; // the countdown ran out: nothing to clear
