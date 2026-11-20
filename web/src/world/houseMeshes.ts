@@ -313,6 +313,13 @@ function insideRings(x: number, z: number, rings: [number, number][][]): boolean
 
 /** Thin ground covers that lie just over the grass: kept on the ground's own surface (hugGround). */
 const HUGGING = new Set(['pave_light', 'pave_warm', 'pave_walk', 'gravel', 'track', 'road', 'forecourt']);
+/**
+ * The woods' floor, laid square by square on the grass's own grid and its diagonals, as the church square's clinkers:
+ * draped only every 16 m it lay up to 30 cm off the grass's 4 m grid, the lawn rose through the leaf litter in green
+ * patches and the grass blades and the woods' plants, on the grass's surface, stood over it or sank in. (The fields
+ * still lie every 16 m: on the grid too, their pieces would hold some 24 MB more over the whole map; the woods' 12.)
+ */
+const ON_GRID = new Set(['forest']);
 
 /** A piece's corner from hugGround: x, z and its weights on the triangle's three corners. */
 export type Hug = [number, number, number, number, number];
@@ -398,7 +405,7 @@ function ownLayer(p: Prism): [number, number] | undefined {
 export function coverAsk(p: Prism): CoverAsk | null {
   const own = p.d ? ownLayer(p) : undefined; // drapedGeometry's blocks (prismGeometry)
   if (!own) return null;
-  const precise = p.m === 'pave_grey';
+  const precise = p.m === 'pave_grey' || ON_GRID.has(p.m);
   return { tris: outlineTriangles(p, true), cell: precise ? terrain.step : p.d!, precise, rank: own[0], group: own[1] };
 }
 
@@ -412,7 +419,7 @@ function drapedGeometry(p: Prism): THREE.BufferGeometry {
   // hard cover laid on the grass (pavers, gravel, the streets' surfaces and their fills): draped only at its own
   // corners and every 8 m, the grass's 4 m grid rose through it on a bump and showed as green patches with hard
   // edges. Those are cut further where the ground isn't flat enough under a piece (hugGround), and only there.
-  const precise = p.m === 'pave_grey';
+  const precise = p.m === 'pave_grey' || ON_GRID.has(p.m);
   const hug = HUGGING.has(p.m) || p.m.startsWith('pf:');
   const own = ownLayer(p);
   const cell = precise ? terrain.step : p.d!;
