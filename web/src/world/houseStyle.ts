@@ -147,6 +147,51 @@ export function houseStyle(key: number, brick: string, rendered: boolean, pitche
   };
 }
 
+// Doors and garage doors (world/surroundings.ts). tools/facades.py makes up the colour of an outbuilding's garage door
+// (2.15 m high or less) from these three; a garage door seen from the road keeps the colour that was seen.
+export const GARAGE_MADE_UP = ['#ece8df', '#3a3c3f', '#7a5a3e'];
+/** RAL 7016, anthracite: a dark blue-grey, the darkest a door is painted here (never black). */
+export const ANTHRACITE = '#383e42';
+const WHITE_DOOR = '#ece8df';
+const WOOD_DOOR = '#7a5a3e';
+
+/** An sRGB hex colour in linear light, 0 to 1 a channel. */
+function linear(hex: string): [number, number, number] {
+  const v = parseInt(hex.slice(1), 16);
+  const c = (x: number) => (x / 255 <= 0.04045 ? x / 255 / 12.92 : ((x / 255 + 0.055) / 1.055) ** 2.4);
+  return [c((v >> 16) & 255), c((v >> 8) & 255), c(v & 255)];
+}
+
+/** Linear light back to sRGB hex. */
+function hex(rgb: [number, number, number]): string {
+  const c = (x: number) => Math.round(255 * Math.min(1, x <= 0.0031308 ? x * 12.92 : 1.055 * x ** (1 / 2.4) - 0.055));
+  return `#${rgb.map((x) => c(x).toString(16).padStart(2, '0')).join('')}`;
+}
+
+/** How light a colour is (its relative luminance, 0 to 1). */
+export function luminance(colour: string): number {
+  const [r, g, b] = linear(colour);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+/** A door's colour as drawn: one darker than anthracite lifted to anthracite's lightness, keeping its hue. */
+export function doorColour(colour: string): string {
+  const l = luminance(colour);
+  const floor = luminance(ANTHRACITE);
+  if (l >= floor) return colour.toLowerCase();
+  if (l < floor / 10) return ANTHRACITE; // black, or nearly: no hue to keep
+  const k = floor / l;
+  const [r, g, b] = linear(colour);
+  return hex([r * k, g * k, b * k]);
+}
+
+/** A made-up garage door's colour, agreeing with its frame: white with a pale frame, wood with a brown one, else anthracite. */
+export function garageColour(frame: string): string {
+  const [r, , b] = linear(frame);
+  if (luminance(frame) > 0.4) return WHITE_DOOR;
+  return r > 1.4 * b ? WOOD_DOOR : ANTHRACITE;
+}
+
 /**
  * How far a window's roller shutter is down (0 up, 1 fully down), by the window's own place (x, y, z in the model),
  * on a house that has roller shutters.

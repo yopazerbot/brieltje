@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
-  houseStyle, rollerDown, stable, CHIMNEY_SHARE, FLAT_EDGE, LEAF_SHUTTERS, LINTEL_SOLDIER, LINTEL_STONE, LINTEL_STONE_RENDERED, PLINTH_BRICK,
+  ANTHRACITE, doorColour, GARAGE_MADE_UP, garageColour, luminance, houseStyle, rollerDown, stable, CHIMNEY_SHARE, FLAT_EDGE, LEAF_SHUTTERS, LINTEL_SOLDIER, LINTEL_STONE, LINTEL_STONE_RENDERED, PLINTH_BRICK,
   PLINTH_CEMENT, PLINTH_PAINT, PLINTH_TAR, ROLLER_DOWN, ROLLER_HOUSES, ROLLER_PART, ROOF_WINDOWS, SOLAR_SHARE,
 } from './houseStyle.ts';
 
@@ -62,4 +63,26 @@ test('roller shutters: few windows have theirs down', () => {
   near(downs.filter((d) => d === 1).length / N, ROLLER_DOWN, 'fully down');
   near(downs.filter((d) => d > 0 && d < 1).length / N, ROLLER_PART, 'partly down');
   for (const d of downs) assert.ok(d === 0 || d === 1 || (d >= 0.3 && d <= 0.7));
+});
+
+test('no door or garage door is drawn darker than anthracite; lighter ones keep their colour', () => {
+  const village = JSON.parse(readFileSync(new URL('../data/village.json', import.meta.url), 'utf8'));
+  const ring = JSON.parse(readFileSync(new URL('../data/house_shell.json', import.meta.url), 'utf8'));
+  const colours = new Set([...village.openings, ...(ring.surroundings?.openings ?? [])].filter((o) => o.k !== 'w' && o.c).map((o) => o.c));
+  assert.ok(colours.size > 10);
+  const floor = luminance(ANTHRACITE);
+  for (const c of [...colours, '#000000', '#111111']) {
+    const drawn = doorColour(c);
+    assert.ok(luminance(drawn) >= floor * 0.97, `${c} drawn as ${drawn}`);
+    if (luminance(c) >= floor) assert.equal(drawn, c.toLowerCase());
+  }
+});
+
+test('a made-up garage door agrees with its frame', () => {
+  assert.equal(GARAGE_MADE_UP.length, 3);
+  assert.equal(garageColour('#f1efe9'), '#ece8df'); // white with white
+  assert.equal(garageColour('#3a3c3f'), ANTHRACITE); // anthracite with anthracite
+  assert.equal(garageColour('#4c3427'), '#7a5a3e'); // wood with brown
+  assert.equal(garageColour('#9b7653'), '#7a5a3e');
+  assert.equal(garageColour('#2f4a3a'), ANTHRACITE); // the odd green frame: anthracite
 });

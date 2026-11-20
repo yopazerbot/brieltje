@@ -24,7 +24,7 @@ import { pointInside } from './houseKeys';
 import { flatEdgeSides, FRAME, type Downpipe, type Hole } from './housePlan';
 import { cutWall } from './wallCut';
 import { bandedWalls, chimney, flatEdge, openingTrim, roofEdges, roofExtras, roofFrame, type OpeningContext, type RoofEdges, type SolarArray } from './houseTrim';
-import { houseStyle } from './houseStyle';
+import { doorColour, GARAGE_MADE_UP, garageColour, houseStyle } from './houseStyle';
 import type { RoofField } from './roofField';
 import { inHomes } from './modelRoofs';
 import { snowy } from './snowCover';
@@ -418,6 +418,13 @@ function slab(at: THREE.Vector3, d: THREE.Vector3, n: THREE.Vector3, w: number, 
   return g;
 }
 
+/** A slab's face turned to `n`, lit as if turned `angle` radians up (only its normals change). */
+function facingUp(g: THREE.BufferGeometry, n: THREE.Vector3, angle: number): THREE.BufferGeometry {
+  const a = g.attributes.normal as THREE.BufferAttribute;
+  for (let i = 0; i < a.count; i++) if (a.getX(i) * n.x + a.getZ(i) * n.z > 0.99) a.setXYZ(i, n.x * Math.cos(angle), Math.sin(angle), n.z * Math.cos(angle));
+  return g;
+}
+
 /**
  * Windows, doors and garage doors on the neighbours' walls: a frame, glass (or a door panel) in it, a centre bar on wide
  * windows and a stone sill under each window; round them the house's lintels, doorsteps and shutters
@@ -474,16 +481,28 @@ function buildOpenings(list: Opening[], ground: number, houses: Houses, pitched:
       else solid.push(slab(out(0.06).setY(y0 - 0.075), d, n, w + 0.2, 0.05, 0.14, sill));
     } else if (o.k === 'd') {
       threshold('#6b7177');
-      const panel = new THREE.Color(o.c ?? '#6b4a32');
+      const panel = new THREE.Color(doorColour(o.c ?? '#6b4a32'));
       solid.push(slab(out(0.05), d, n, w, h, 0.02, panel));
       glass.push(paneGeometry(out(0.067).setY(y0 + h * 0.72), d, n, w * 0.3, h * 0.35, { ...paneLook(mid.x, mid.z, n.x, n.z, false, i), cell: COVER.none, sill: h * 0.545 }, mid.x + mid.z * 1.7));
       solid.push(slab(out(0.07).addScaledVector(d, w * 0.38).setY(y0 + 1.05), d, n, 0.03, 0.18, 0.03, new THREE.Color('#9a9a96')));
     } else {
       // Garage door: horizontal sections with a groove between them.
       threshold('#9d9a94');
-      const panel = new THREE.Color(o.c ?? '#ece8df');
+      // A made-up colour (an outbuilding's door, world/houseStyle.ts) agrees with its frame; none darker than anthracite.
+      const madeUp = h < 2.18 && GARAGE_MADE_UP.includes(o.c ?? '');
+      const panel = new THREE.Color(doorColour(madeUp ? garageColour(`#${frame.getHexString()}`) : o.c ?? '#ece8df'));
+      // Behind the sections, so the grooves between them are the door's own colour in shadow, not the white frame.
+      solid.push(slab(out(0.048), d, n, w, h, 0.004, panel.clone().multiplyScalar(0.35)));
+      // Each section with the lip along its top, which leans out and catches the sky over it (lit as turned 45 degrees
+      // up): a light line on every section, in the sun and in the shade, where a dark door was one black plane.
       const k = 5;
-      for (let s = 0; s < k; s++) solid.push(slab(out(0.05).setY(y0 + (h * (s + 0.5)) / k), d, n, w, h / k - 0.02, 0.02, panel));
+      const lip = 0.06;
+      for (let s = 0; s < k; s++) {
+        const top = y0 + (h * (s + 1)) / k - 0.01;
+        const face = h / k - 0.02 - lip;
+        solid.push(slab(out(0.05).setY(top - lip - face / 2), d, n, w, face, 0.02, panel));
+        solid.push(facingUp(slab(out(0.05).setY(top - lip / 2), d, n, w, lip, 0.02, panel), n, 0.8));
+      }
     }
   });
   const out: Piece[] = [];
