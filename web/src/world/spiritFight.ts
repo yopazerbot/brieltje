@@ -11,7 +11,7 @@ import { paintball } from '../paintball';
 import { key, type Control } from '../shortcuts';
 import { SpiritLine, type SpiritTone } from '../ui/spiritLine';
 import { gunModel, gunsReady, SPECS, type WeaponId } from '../weapon';
-import { BrookSpirit, loadBrookSpirit, spiritLightFits } from './brookSpirit';
+import { BrookSpirit, loadBrookSpirit, prepareSpiritLight, spiritLightFits } from './brookSpirit';
 import { daylight } from './daylight';
 import { hitBoxMaterial } from './hitBox';
 import type { Prism } from './houseData';
@@ -38,10 +38,17 @@ export const SPIRIT = DATA as unknown as SpiritData;
 const ME = 'me';
 /** m: the line shows within this of the grove's middle */
 const LINE_NEAR = 60;
-/** m: the look is made within this, shown within SHOW, hidden past HIDE (its light comes and goes with it) */
-const MAKE = 190;
-const SHOW = 220;
-const HIDE = 260;
+/**
+ * m: its model is fetched and the look made (its shaders compiled, hidden) within MAKE, shown within SHOW, hidden past
+ * HIDE. Its light is in the scene from the start (prepareSpiritLight), so showing it compiles nothing more.
+ */
+const MAKE = 400;
+const SHOW = 260;
+const HIDE = 290;
+/** m: its shell's hit box while the shell is shut (world/brookSpirit.ts SHELL): shots stop on it and make it flare */
+const SHELL_R = 3.3;
+/** m: how far along the sweep's strip its tendrils reach for (their length, 6 to 8 m) */
+const SWEEP_REACH = 7;
 /** s a launcher's line stays */
 const SAY = 4.5;
 
@@ -49,6 +56,8 @@ const SAY = 4.5;
 export interface SpiritHost {
   scene: THREE.Scene;
   renderer: THREE.WebGLRenderer;
+  /** For compiling the look's shaders before it first shows */
+  camera: THREE.Camera;
   /** The ground's height in the world at (x, z) */
   ground: (x: number, z: number) => number;
   /** The ring's trees (house_shell.json surroundings): the trunks are cover */
@@ -130,6 +139,13 @@ export class SpiritFight {
   private readonly trunks: SpiritTrunk[];
   private readonly lightSpots = lightsOf(SPIRIT);
   readonly heartBox: THREE.Mesh;
+  /** While its shell is shut: shots stop on it (part -1, nothing counted) and it flares where they land */
+  readonly shellBox: THREE.Mesh;
+  /** Its light, in the scene from the start on a graphics card (null on a chip it does not suit) */
+  private readonly lamp: THREE.PointLight | null;
+  private readonly lit: boolean;
+  /** Dev build: the look's own stand-in is at the grove (main.ts briel.spiritLook): this one stands aside */
+  quiet = false;
   readonly lightBoxes: THREE.Mesh[];
   private heart = new THREE.Vector3();
   private prev: { mode: string; act: string; lights: number; hp: number; pools: number; hurtAt: number } | null = null;
@@ -168,7 +184,13 @@ export class SpiritFight {
       m.visible = false;
       return m;
     });
-    host.scene.add(this.heartBox, ...this.lightBoxes);
+    this.shellBox = new THREE.Mesh(ball, hitBoxMaterial);
+    this.shellBox.scale.setScalar(SHELL_R);
+    this.shellBox.userData.spirit = -1;
+    this.shellBox.visible = false;
+    host.scene.add(this.heartBox, this.shellBox, ...this.lightBoxes);
+    this.lit = spiritLightFits(host.renderer);
+    this.lamp = this.lit ? prepareSpiritLight(host.scene) : null;
     const s = SPIRIT.sign;
     this.sign = new SpiritSign(s, host.ground(s.x, s.z));
     host.scene.add(this.sign.group);
@@ -244,6 +266,10 @@ export class SpiritFight {
   shot(part: number, point: THREE.Vector3, w: WeaponId): void {
     this.fx.burst(point, 'glint', this.now / 1000);
     this.lastShot = point.clone();
+    if (part === -1) {
+      this.look?.hurt(0.35, point); // on the shut shell: it flares there, nothing counts
+      return;
+    }
     if (!Number.isInteger(part) || part < 0 || part > this.lightSpots.length || this.last.absent) return;
     const spec = SPECS[w];
     if (!spec || spec.rocket || spec.lob || spec.body <= 0) return;
@@ -426,12 +452,13 @@ export class SpiritFight {
     // The look: made on the way to the wood, shown near, hidden far off.
     if (!this.look && !this.making && dist < MAKE && !absent) this.make(me.low);
     const look = this.look;
-    const show = !!v && !absent && dist < (look?.group.visible ? HIDE : SHOW);
+    const show = !!v && !absent && !this.quiet && dist < (look?.group.visible ? HIDE : SHOW);
     if (look) {
       if (this.lookLow !== me.low) {
         this.lookLow = me.low;
         look.setLook(me.low ? 'low' : 'high');
       }
+      if (look.group.visible && !show && this.lamp) this.lamp.intensity = 0; // hidden: its light goes out with it
       look.group.visible = show;
     }
     this.fx.low = me.low;
@@ -446,7 +473,7 @@ export class SpiritFight {
         look.shield = L.shield;
         look.anger = L.anger;
         look.fade = L.fade;
-        look.reach = L.reach ? new THREE.Vector3(L.reach.x, this.host.ground(L.reach.x, L.reach.z) + 0.5, L.reach.z) : null;
+        look.reach = L.reach ? this.reachFor(v, L.reach) : null;
         look.ground = this.host.ground(L.x, L.z);
         look.update(dt, camera);
         look.heartWorld(this.heart);
@@ -460,6 +487,10 @@ export class SpiritFight {
     const heartOn = !!v && show && (together ? heartOpenIn(v) : spiritPart(this.sim, 0, this.clock) !== null);
     this.heartBox.visible = heartOn;
     if (heartOn) this.heartBox.position.copy(this.heart);
+    // Its shut shell: shots stop on it (as on the drawn storm round it), never on a lit light's line behind it alone.
+    const shellOn = !!v && show && v.lights !== 0 && !!look && look.group.visible;
+    this.shellBox.visible = shellOn;
+    if (shellOn) this.shellBox.position.copy(look!.group.position);
     this.lightBoxes.forEach((b, i) => {
       const lit = !!v && show && ((v.lights >> i) & 1) === 1;
       b.visible = lit;
@@ -497,14 +528,77 @@ export class SpiritFight {
     return { ...v, x: this.drawn.x, y: this.drawn.y, z: this.drawn.z };
   }
 
+  /**
+   * Its model fetched (KTX2 maps through the renderer), the look made, and its shaders compiled while it is still out of
+   * sight, so it appears without a stutter.
+   */
   private async make(low: boolean): Promise<void> {
     this.making = true;
-    const model = await loadBrookSpirit();
+    const model = await loadBrookSpirit(undefined, this.host.renderer);
     if (!model) return; // no model: the fight still runs, its lights and tells show
-    this.look = new BrookSpirit(model, low ? 'low' : 'high', spiritLightFits(this.host.renderer));
+    const look = new BrookSpirit(model, low ? 'low' : 'high', this.lit);
     this.lookLow = low;
-    this.look.group.visible = false;
-    this.host.scene.add(this.look.group);
+    look.group.visible = false;
+    look.group.position.set(SPIRIT.rest.x, SPIRIT.rest.y + SPIRIT.up, SPIRIT.rest.z);
+    this.host.scene.add(look.group);
+    // Every part shown for the compile (its near and far models, its shell, the fight's own tells and lights), then put
+    // back as it was: three compiles only what is visible.
+    const hidden: THREE.Object3D[] = [];
+    for (const g of [look.group, this.fx.group]) {
+      g.traverse((o) => {
+        if (!o.visible) hidden.push(o);
+        o.visible = true;
+      });
+    }
+    // Compiled as the game draws: into the effects' render target (linear colour) and straight to the screen, so the
+    // first frame it shows needs no program of its own (a throwaway 1 x 1 target stands for the effects' one).
+    const r = this.host.renderer;
+    const was = r.getRenderTarget();
+    const into = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType });
+    try {
+      look.group.updateMatrixWorld(true);
+      this.fx.group.updateMatrixWorld(true);
+      for (const target of [into, null]) {
+        r.setRenderTarget(target);
+        await r.compileAsync(look.group, this.host.camera, this.host.scene);
+        await r.compileAsync(this.fx.group, this.host.camera, this.host.scene);
+      }
+      // Its maps onto the graphics chip too (the near model's, first drawn within 45 m, else a long frame then).
+      const seen = new Set<THREE.Texture>();
+      look.group.traverse((o) => {
+        const mats = (o as THREE.Mesh).material;
+        for (const m of Array.isArray(mats) ? mats : mats ? [mats] : []) {
+          for (const v of Object.values(m as unknown as Record<string, unknown>)) if (v instanceof THREE.Texture) seen.add(v);
+          const u = (m as THREE.ShaderMaterial).uniforms;
+          if (u) for (const k of Object.keys(u)) if (u[k].value instanceof THREE.Texture) seen.add(u[k].value);
+        }
+      });
+      for (const t of seen) r.initTexture(t);
+    } catch {
+      // not compiled ahead: it compiles when it is first drawn
+    } finally {
+      r.setRenderTarget(was);
+      into.dispose();
+    }
+    for (const o of hidden) o.visible = false;
+    look.group.visible = false;
+    this.fx.group.visible = false;
+    this.look = look;
+  }
+
+  /**
+   * Where its front tendrils reach during a tell: for the sweep a spot on the strip itself, as far out as they reach, so
+   * they come down onto it; for the bolt where it will land.
+   */
+  private reachFor(v: SpiritView, at: { x: number; z: number }): THREE.Vector3 {
+    let { x, z } = at;
+    if (v.act === 'sweep') {
+      const len = Math.hypot(at.x - v.x, at.z - v.z) || 1;
+      const k = Math.min(1, SWEEP_REACH / len);
+      x = v.x + (at.x - v.x) * k;
+      z = v.z + (at.z - v.z) * k;
+    }
+    return new THREE.Vector3(x, this.host.ground(x, z) + 0.2, z);
   }
 
   /** The sounds and flashes of what changed since the last frame (alone and together alike). */
@@ -550,8 +644,7 @@ export class SpiritFight {
       }
       if (v.hurtAt !== p.hurtAt && Number.isFinite(v.hurtAt)) {
         this.sound.cue('hit');
-        const near = this.lastShot && this.lastShot.distanceTo(this.heart) < 3 ? this.lastShot : undefined;
-        this.look?.hurt(0.6, near);
+        this.look?.hurt(0.6, this.lastShot ?? undefined);
       }
     }
     this.prev = { mode: v.mode, act: v.act, lights: v.lights, hp: v.hp, pools: v.pools.length, hurtAt: v.hurtAt };

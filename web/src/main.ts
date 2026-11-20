@@ -2011,7 +2011,7 @@ function soloHurt(amount: number, who = t('char.strongman'), back?: { x: number;
 weapon.onClownHit = (id, point, spot) => clownHit(id, point, weapon.current, spot);
 // The Brook Spirit in the wood by the brook (world/spiritFight.ts): alone its fight runs here, together the server's is drawn.
 const spiritFight = new SpiritFight({
-  scene, renderer, ground: groundY, trees: house.surroundings?.trees ?? [], addBlock: (p) => world.addPrisms([p]), send: (m) => net.send(m),
+  scene, renderer, camera, ground: groundY, trees: house.surroundings?.trees ?? [], addBlock: (p) => world.addPrisms([p]), send: (m) => net.send(m),
   hurt: (hp, x, z) => (combat.hitFrom(Math.atan2(-(x - player.x), -(z - player.z)) - player.yaw), soloHurt(hp, t('char.spirit'), { ...SPIRIT.wake, fx: SPIRIT.grove.x, fz: SPIRIT.grove.z })),
   marker: () => combat.hitMarker(false), giveLauncher: (n) => weapon.giveLauncher(n),
 });
@@ -5124,8 +5124,10 @@ if (import.meta.env.DEV) {
       clowns,
       zombies,
       /** The brook spirit's look alone at its grove (dev/spiritInWorld.ts): spiritLook({ open: 1 }), spiritLook({ remove: true }). */
-      spiritLook: (o?: import('./dev/spiritInWorld').SpiritInWorld) =>
-        import('./dev/spiritInWorld').then((m) => m.standSpirit({ scene, camera, renderer, ground: (x, z) => world.groundAt(x, z, 200, 0).y }, o)),
+      spiritLook: (o?: import('./dev/spiritInWorld').SpiritInWorld) => {
+        spiritFight.quiet = !o?.remove; // the fight's own creature stands aside while this one is there
+        return import('./dev/spiritInWorld').then((m) => m.standSpirit({ scene, camera, renderer, ground: (x, z) => world.groundAt(x, z, 200, 0).y }, o));
+      },
       aimAssist,
       villagers,
       christmas,
