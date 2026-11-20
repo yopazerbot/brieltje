@@ -1256,7 +1256,7 @@ export class Heli {
     // Its block: nobody walks through a machine that stands; while it flies it is no wall.
     this.world.setMoving(this.key, this.ready && s.ground && !this.taken ? this.footprint() : null, s.y, s.y + SIZE.boom.y1);
     // Its sound (world/heliSound.ts), a touch muffled from the pilot's seat.
-    this.noise.update({ x: s.x, y: s.y, z: s.z, rotor: this.group.visible ? r : 0, coll: s.coll, sink: -s.vy, air: Math.hypot(s.vx, s.vz), inside: (this.flown || this.riding) && this.view === 'cockpit' });
+    this.noise.update({ x: s.x, y: s.y, z: s.z, rotor: this.group.visible ? r : 0, coll: s.coll, sink: -s.vy, air: Math.hypot(s.vx, s.vz), inside: (this.flown || this.riding) && this.view === 'cockpit' }, eye);
   }
 
   /** Dev: whether its sound loop is running. */

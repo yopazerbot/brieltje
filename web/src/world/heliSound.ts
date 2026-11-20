@@ -1,20 +1,30 @@
 import { sound } from '../sound';
 
 /**
- * The helicopter's sound, made in code (nothing to download), from where the machine is (world/heli.ts). Simple and
- * subtle (Yoshi: "Ook simpel maar goed subtiel geluid tijdens vliegen heli"): it sits under the game, never over it.
- * Three layers, each following the rotor's speed, so the run-up and the run-down are the same sound rising and falling:
+ * The helicopter's sound, made in code (nothing to download), from where the machine is (world/heli.ts). It sits under
+ * the game, never over it (Yoshi: "Ook simpel maar goed subtiel geluid tijdens vliegen heli"; its loudest stays well
+ * under a rifle's shot: tools/dev/heliWash.mjs --sound measures both), but a machine is heard from far off, as in the
+ * big games (Battlefield's: close and distant layers crossfaded with the distance, the turbine's whine filtered away
+ * first, the blades carrying). Five layers, each following the rotor's speed, so the run-up and the run-down are the
+ * same sound rising and falling:
  *
- * - the rotor's pulse: low noise opened softly once per blade pass (four blades at 395 rpm: 26 a second at full speed),
- *   a rounded swell rather than a slap, with a little more body as the lever comes up (climbing, pulling up);
- * - the bed: the turbines and the air through the rotor, a quiet steady rush, low-passed under 1.2 kHz;
+ * - the thump: low noise opened softly once per blade pass (four blades at 395 rpm: 26 a second at full speed), a
+ *   rounded swell, more body with the lever up and in a descent; it carries furthest (heard to 400 m);
+ * - the slap: a short bright crack of each blade through the air the one before it stirred, sharper as the lever comes
+ *   up and in a descent, and louder as the machine comes towards you than as it goes (the noise of the blades meeting
+ *   their own wake throws forward and down);
+ * - the turbines' whine: two tones near 2 kHz and a hiss round them, heard close by only;
+ * - the bed: the turbines and the air through the rotor, a steady rush under 1.2 kHz;
  * - the air over the cabin, a little more of it the faster it flies.
  *
- * All through one lowpass: open from behind, more closed from the pilot's seat (a touch muffled inside). Every level
- * and pitch eases to its new value, so nothing steps or clicks when you press or let go, start, stop or get out.
- * Through the world's sounds (sound.at): silent before play begins, muffled indoors, the game's volume and mute. It
- * stops once the rotor has run down. Another player's machine (later) is the same class at its own place: the panner's
- * distance makes it quieter with range, nothing else needed. Bumps keep their one-shots (a thump, a dull clang).
+ * Each layer falls off with the distance at its own rate, and the air takes the highs first (a lowpass closing with the
+ * distance). The whole of it reaches you late, as sound does (343 m/s, a delay line): as the distance shrinks the delay
+ * shortens and the pitch rises, as it grows the pitch falls, so a pass-by has its Doppler without anything worked out
+ * for it. All through one more lowpass, more closed from the pilot's seat (a touch muffled inside). Every level and pitch
+ * eases to its new value, so nothing steps or clicks. Through the world's sounds (sound.at, out of doors): silent before
+ * play begins, muffled through the walls when you are indoors (world/acoustics.ts), the game's volume and mute; the
+ * panner only places it (left, right, behind), the distance is this file's. It stops once the rotor has run down. Bumps
+ * keep their one-shots (a thump, a dull clang).
  */
 
 let noise: AudioBuffer | null = null;
@@ -34,12 +44,22 @@ function noiseBuffer(c: BaseAudioContext): AudioBuffer {
 /** The blade-pass rate at full rotor speed: four blades at 395 rpm (Hz). */
 export const BLADE_HZ = (4 * 395) / 60;
 
+/** m: the distance at which LEVELS are heard as they are */
+export const REF = 8;
+
 /**
- * The three numbers to make it louder or softer (at the reference distance, before the game's volume): the pulse at a
- * hover, the bed at full rotor speed, and the air at top speed. Together they peak near 0.09, half the first version's,
- * with an RMS under the music's at its default.
+ * The numbers to make it louder or softer (at the reference distance, before the game's volume): the thump at a hover,
+ * the slap's crack, the turbines' whine, the bed at full rotor speed, and the air at top speed. Together they peak near
+ * 0.13 at REF in a hard climb (0.09 the version before, which was too quiet from a distance); measured against a
+ * rifle's shot in tools/dev/heliWash.mjs --sound.
  */
-export const LEVELS = { pulse: 0.18, bed: 0.06, air: 0.07 };
+export const LEVELS = { thump: 0.34, slap: 0.06, whine: 0.0035, bed: 0.04, air: 0.06 };
+/** How fast each layer falls off with the distance (the panner's "inverse" rolloff, per layer): the thump carries furthest. */
+export const FALL = { thump: 0.2, slap: 0.6, whine: 1.6, bed: 1.0, air: 1.2 };
+/** m/s: the speed of sound (the delay line: the Doppler) */
+const SOUND_SPEED = 343;
+/** s: the longest delay (some 500 m) */
+const MAX_DELAY = 1.5;
 
 /** What the machine is doing this frame, for its sound. */
 export interface HeliNoise {
@@ -58,18 +78,33 @@ export interface HeliNoise {
   inside: boolean;
 }
 
+/** Where it is heard from (the camera). */
+export interface Ear {
+  x: number;
+  y: number;
+  z: number;
+}
+
 interface Loop {
   out: AudioNode;
   pos: PannerNode | null;
   sources: AudioScheduledSourceNode[];
   lfo: OscillatorNode;
-  pulse: GainNode;
   pulseDepth: GainNode;
   pulseTone: BiquadFilterNode;
+  slapDepth: GainNode;
+  slapTone: BiquadFilterNode;
+  whine: GainNode;
+  whineTones: OscillatorNode[];
+  whineBand: BiquadFilterNode;
   bed: GainNode;
   air: GainNode;
   airBand: BiquadFilterNode;
+  absorb: BiquadFilterNode;
   muffle: BiquadFilterNode;
+  delay: DelayNode;
+  /** The delay last asked for (s), to tell a jump of the eye from a flight */
+  late: number;
 }
 
 /** The loop's nodes into `out` on any audio context (live: a spot in the world; offline: the destination). */
@@ -89,48 +124,107 @@ function buildLoop(c: BaseAudioContext, out: AudioNode): Loop {
     b.Q.value = q;
     return b;
   };
-  // Everything through one lowpass: open from behind, closed a little from the cockpit; nothing above 3 kHz anyway.
-  const muffle = filter('lowpass', 1600, 0.5);
-  muffle.connect(filter('lowpass', 1600, 0.5)).connect(out); // two in a row: steep above it
-  // The pulse: low noise through a gain that a sine at the blade-pass rate swells and eases, squared (a rounded swell,
-  // no edge to click on). Its gain is 0 + depth x (0..1).
-  const pulse = gain(0);
-  const pulseDepth = gain(0);
+  // The way to you: the air takes the highs with the distance, the cockpit muffles, and it all arrives late.
+  const delay = c.createDelay(MAX_DELAY);
+  delay.delayTime.value = REF / SOUND_SPEED;
+  delay.connect(out);
+  const muffle = filter('lowpass', 20000, 0.5);
+  muffle.connect(delay);
+  const absorb = filter('lowpass', 3200, 0.5);
+  absorb.connect(filter('lowpass', 3200, 0.5)).connect(muffle); // two in a row: steep above it
+  const mix = gain(1);
+  mix.connect(absorb);
+  // One oscillator at the blade-pass rate drives the thump and the slap, so they keep time with each other.
   const lfo = c.createOscillator();
   lfo.frequency.value = BLADE_HZ;
-  const shape = c.createWaveShaper();
-  const curve = new Float32Array(256);
-  for (let i = 0; i < curve.length; i++) curve[i] = (i / (curve.length - 1)) ** 2; // the sine's -1..1 as 0..1, squared
-  shape.curve = curve;
-  lfo.connect(shape).connect(pulseDepth).connect(pulse.gain);
+  const shaper = (power: number) => {
+    const s = c.createWaveShaper();
+    const curve = new Float32Array(512);
+    for (let i = 0; i < curve.length; i++) curve[i] = (i / (curve.length - 1)) ** power; // the sine's -1..1 as 0..1, raised
+    s.curve = curve;
+    return s;
+  };
+  // The thump: low noise through a gain the sine swells and eases, squared (a rounded swell, no edge to click on).
+  const pulse = gain(0);
+  const pulseDepth = gain(0);
+  lfo.connect(shaper(2)).connect(pulseDepth).connect(pulse.gain);
   const pulseTone = filter('lowpass', 220, 0.8);
-  src.connect(pulseTone).connect(pulse).connect(muffle);
+  src.connect(pulseTone).connect(pulse).connect(mix);
+  // The slap: brighter noise opened only at the sine's top (raised to the 12th: a few milliseconds a blade).
+  const slap = gain(0);
+  const slapDepth = gain(0);
+  lfo.connect(shaper(12)).connect(slapDepth).connect(slap.gain);
+  const slapTone = filter('bandpass', 1000, 1.1);
+  src.connect(slapTone).connect(slap).connect(mix);
+  // The whine: two tones of the turbines and a narrow hiss round them, under 3 kHz.
+  const whine = gain(0);
+  const whineTones = [1950, 2440].map((f, i) => {
+    const o = c.createOscillator();
+    o.frequency.value = f;
+    o.connect(gain(i ? 0.5 : 1)).connect(whine);
+    return o;
+  });
+  const whineBand = filter('bandpass', 2200, 4);
+  src.connect(whineBand).connect(gain(1.5)).connect(whine);
+  whine.connect(mix);
   // The bed: the turbines and the rotor's air, a steady rush under 1.2 kHz.
   const bed = gain(0);
-  src.connect(filter('lowpass', 1200, 0.5)).connect(filter('highpass', 90, 0.5)).connect(bed).connect(muffle);
+  src.connect(filter('lowpass', 1200, 0.5)).connect(filter('highpass', 90, 0.5)).connect(bed).connect(mix);
   // The air over the cabin with the speed.
   const airBand = filter('bandpass', 600, 0.6);
   const air = gain(0);
-  src.connect(airBand).connect(air).connect(muffle);
-  const sources = [src, lfo];
+  src.connect(airBand).connect(air).connect(mix);
+  const sources = [src, lfo, ...whineTones];
   for (const s of sources) s.start();
-  return { out, pos: null, sources, lfo, pulse, pulseDepth, pulseTone, bed, air, airBand, muffle };
+  return { out, pos: null, sources, lfo, pulseDepth, pulseTone, slapDepth, slapTone, whine, whineTones, whineBand, bed, air, airBand, absorb, muffle, delay, late: REF / SOUND_SPEED };
 }
 
-/** The loop's levels for what the machine does, from time `t`; every one eases in (no steps, no clicks). */
-function setLoop(a: Loop, n: HeliNoise, t: number): void {
+/** How much of a layer is left at `d` m, falling off at `roll` (1 the panner's inverse law, from REF). */
+export function falloff(d: number, roll: number): number {
+  return REF / (REF + roll * Math.max(0, d - REF));
+}
+
+/**
+ * The loop's levels for what the machine does, heard from `d` m off and coming nearer at `closing` m/s (negative: going
+ * away), from time `t`; every one eases in (no steps, no clicks).
+ */
+function setLoop(a: Loop, n: HeliNoise, t: number, d: number, closing: number): void {
   const r = Math.max(0, Math.min(1, n.rotor));
   const lever = Math.max(0, Math.min(1, n.coll));
+  const sink = Math.min(1, Math.max(0, n.sink) / 6);
   a.lfo.frequency.setTargetAtTime(Math.max(0.5, BLADE_HZ * r), t, 0.15);
-  // The pulse: from nothing at rest to its level at speed; a little more body with the lever up and in a descent.
-  const body = 0.75 + 0.45 * lever + 0.15 * Math.min(1, Math.max(0, n.sink) / 6);
-  a.pulseDepth.gain.setTargetAtTime(LEVELS.pulse * r * r * body, t, 0.25);
+  // The thump: from nothing at rest to its level at speed; a little more body with the lever up and in a descent.
+  const body = 0.75 + 0.45 * lever + 0.15 * sink;
+  a.pulseDepth.gain.setTargetAtTime(LEVELS.thump * r * r * body * falloff(d, FALL.thump), t, 0.25);
   a.pulseTone.frequency.setTargetAtTime(160 + 120 * lever, t, 0.3);
-  a.bed.gain.setTargetAtTime(LEVELS.bed * r * r * (0.85 + 0.3 * lever), t, 0.3);
+  // The slap: hardly any at idle, sharp with the lever up and in a descent; louder coming, softer going.
+  const toward = Math.max(-1, Math.min(1, closing / 25));
+  const approach = toward > 0 ? 1 + 0.8 * toward : 1 + 0.4 * toward;
+  const crack = (0.35 + 0.8 * lever + 0.6 * sink) * approach;
+  a.slapDepth.gain.setTargetAtTime(LEVELS.slap * r * r * r * crack * falloff(d, FALL.slap), t, 0.25);
+  a.slapTone.frequency.setTargetAtTime(850 + 350 * lever, t, 0.3);
+  // The whine: with the turbines' speed, close by only.
+  const near = 1 - Math.min(1, Math.max(0, (d - 25) / 55));
+  a.whine.gain.setTargetAtTime(LEVELS.whine * r * falloff(d, FALL.whine) * near, t, 0.3);
+  const spin = 0.55 + 0.45 * r;
+  a.whineTones[0].frequency.setTargetAtTime(1950 * spin, t, 0.4);
+  a.whineTones[1].frequency.setTargetAtTime(2440 * spin, t, 0.4);
+  a.whineBand.frequency.setTargetAtTime(2200 * spin, t, 0.4);
+  a.bed.gain.setTargetAtTime(LEVELS.bed * r * r * (0.85 + 0.3 * lever) * falloff(d, FALL.bed), t, 0.3);
   const v = Math.max(0, n.air);
   a.airBand.frequency.setTargetAtTime(450 + v * 10, t, 0.4);
-  a.air.gain.setTargetAtTime(LEVELS.air * Math.min(1, (v / 47) ** 2), t, 0.4);
-  a.muffle.frequency.setTargetAtTime(n.inside ? 700 : 1600, t, 0.2);
+  a.air.gain.setTargetAtTime(LEVELS.air * Math.min(1, (v / 47) ** 2) * falloff(d, FALL.air), t, 0.4);
+  // The air takes the highs: open close by, about 1.9 kHz at 80 m, 1 kHz at 250 m.
+  a.absorb.frequency.setTargetAtTime(Math.max(350, 3600 / (1 + d / 90)), t, 0.2);
+  a.muffle.frequency.setTargetAtTime(n.inside ? 700 : 20000, t, 0.2);
+  // Late by the way sound takes: shrinking as it comes (higher), growing as it goes (lower). A jump of the eye (a
+  // portal, a respawn) is set at once rather than heard as a swoop.
+  const late = Math.min(MAX_DELAY, d / SOUND_SPEED);
+  if (Math.abs(late - a.late) > 0.12) {
+    a.delay.delayTime.cancelScheduledValues(t);
+    a.delay.delayTime.setValueAtTime(late, t);
+  } else a.delay.delayTime.setTargetAtTime(late, t, 0.05);
+  a.late = late;
 }
 
 function stopLoop(a: Loop): void {
@@ -140,6 +234,10 @@ function stopLoop(a: Loop): void {
 
 export class HeliSound {
   private loop: Loop | null = null;
+  /** The distance last frame and how fast it shrinks (m/s), eased */
+  private was = -1;
+  private closing = 0;
+  private stamp = 0;
   /**
    * A tab in the background draws no frames, so nothing would turn the loop down: it fades out over about a second
    * and stops, as the music does; in view again the next frame starts it as things are then.
@@ -149,7 +247,7 @@ export class HeliSound {
     const c = sound.context();
     if (!document.hidden || !a || !c) return;
     this.loop = null;
-    setLoop(a, { x: 0, y: 0, z: 0, rotor: 0, coll: 0, sink: 0, air: 0, inside: false }, c.currentTime);
+    setLoop(a, { x: 0, y: 0, z: 0, rotor: 0, coll: 0, sink: 0, air: 0, inside: false }, c.currentTime, REF, 0);
     setTimeout(() => stopLoop(a), 2000);
   };
   constructor() {
@@ -160,8 +258,8 @@ export class HeliSound {
     return !!this.loop;
   }
 
-  /** Every frame the machine is in the game. */
-  update(n: HeliNoise): void {
+  /** Every frame the machine is in the game, heard from `ear` (the camera). */
+  update(n: HeliNoise, ear: Ear): void {
     if ((!this.loop && n.rotor < 0.02) || document.hidden) return;
     if (this.loop && n.rotor < 0.005) {
       stopLoop(this.loop); // run down: its levels are at nothing already, so the stop doesn't click
@@ -171,17 +269,28 @@ export class HeliSound {
     const c = sound.context();
     if (!c) return;
     if (!this.loop) {
-      const at = sound.at(n.x, n.y + 2, n.z, 8) as PannerNode | null;
+      const at = sound.at(n.x, n.y + 2, n.z, REF) as PannerNode | null;
       if (!at) return;
+      // The panner only places it; the distance is this file's (FALL, the delay).
+      at.distanceModel = 'linear';
+      at.rolloffFactor = 0;
+      at.maxDistance = 10000;
       this.loop = buildLoop(c, at);
       this.loop.pos = at;
+      this.was = -1;
     }
     const t = c.currentTime;
     const p = this.loop.pos!;
     p.positionX.setTargetAtTime(n.x, t, 0.03);
     p.positionY.setTargetAtTime(n.y + 2, t, 0.03);
     p.positionZ.setTargetAtTime(n.z, t, 0.03);
-    setLoop(this.loop, n, t);
+    const d = Math.hypot(n.x - ear.x, n.y + 2 - ear.y, n.z - ear.z);
+    const dt = t - this.stamp;
+    this.stamp = t;
+    if (this.was >= 0 && dt > 0 && dt < 0.5 && Math.abs(d - this.was) < 40) this.closing += ((this.was - d) / dt - this.closing) * Math.min(1, dt * 4);
+    else this.closing = 0;
+    this.was = d;
+    setLoop(this.loop, n, t, d, this.closing);
   }
 
   /** A thump from (x, y, z), `strength` about the speed of the knock in m/s (1 a soft touchdown, 10 a bump). */
@@ -207,7 +316,7 @@ export class HeliSound {
 
   /**
    * Before play (the warm-up behind the start screen, silent there): the loop's nodes made once and let go, so the
-   * first start-up in play builds nothing new (the panner's HRTF, the noise, the shaper's curve).
+   * first start-up in play builds nothing new (the panner's HRTF, the noise, the shapers' curves).
    */
   warm(): void {
     const c = sound.context();
@@ -276,10 +385,11 @@ function oneShot(c: BaseAudioContext, out: AudioNode, kind: 'thump' | 'clang' | 
 
 /**
  * Dev build, for checks without ears: the loop rendered offline for `seconds` while `script(t)` says what the machine
- * does (default: a run-up, a hover, a climb, top speed, a descent and a run-down). With `above`, only what lies above
- * that many hertz (four highpasses in a row after it: 48 dB an octave), to measure what is left up there.
+ * does (default: a run-up, a hover, a climb, top speed, a descent and a run-down), heard from `ear` (default REF m off,
+ * where LEVELS are as they are). With `above`, only what lies above that many hertz (four highpasses in a row after it:
+ * 48 dB an octave), to measure what is left up there.
  */
-export async function render(seconds = 30, rate = 48000, script?: (t: number) => HeliNoise, above = 0): Promise<{ buffer: AudioBuffer; rotor: Float32Array }> {
+export async function render(seconds = 30, rate = 48000, script?: (t: number) => HeliNoise, above = 0, ear: Ear = { x: 0, y: 2, z: REF }): Promise<{ buffer: AudioBuffer; rotor: Float32Array }> {
   const c = new OfflineAudioContext(1, Math.ceil(seconds * rate), rate);
   let out: AudioNode = c.destination;
   if (above > 0) {
@@ -296,10 +406,14 @@ export async function render(seconds = 30, rate = 48000, script?: (t: number) =>
   const plan = script ?? defaultScript;
   const step = 0.05;
   const rotor = new Float32Array(Math.ceil(seconds / step));
+  let was = -1;
   for (let i = 0; i < rotor.length; i++) {
     const n = plan(i * step);
     rotor[i] = n.rotor;
-    setLoop(loop, n, i * step);
+    const d = Math.hypot(n.x - ear.x, n.y + 2 - ear.y, n.z - ear.z);
+    const closing = was < 0 ? 0 : (was - d) / step;
+    was = d;
+    setLoop(loop, n, i * step, d, closing);
   }
   for (const s of loop.sources) s.stop(seconds);
   return { buffer: await c.startRendering(), rotor };
@@ -312,4 +426,12 @@ function defaultScript(t: number): HeliNoise {
   return { x: 0, y: 0, z: 0, rotor, coll, sink: t > 17 && t < 21 ? 6 : 0, air: t > 13 && t < 17 ? 47 : 0, inside: false };
 }
 
-if (import.meta.env.DEV) Object.assign(window, { brielHeliSound: { render, BLADE_HZ, LEVELS } });
+/**
+ * A pass-by for the checks: at full speed `speed` m/s along x, `miss` m beside the ear and `height` m up, its middle at
+ * `seconds` / 2 (heard from the ear at the origin).
+ */
+export function passBy(seconds: number, speed = 40, miss = 30, height = 40): (t: number) => HeliNoise {
+  return (t) => ({ x: (t - seconds / 2) * speed, y: height, z: miss, rotor: 1, coll: 0.55, sink: 0, air: speed, inside: false });
+}
+
+if (import.meta.env.DEV) Object.assign(window, { brielHeliSound: { render, passBy, falloff, BLADE_HZ, LEVELS, FALL, REF } });
