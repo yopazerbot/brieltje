@@ -886,6 +886,7 @@ const effects = new Effects(scene, new Decals(scene), (x, z, y) => world.groundA
 looseProps.attach(scene, world, effects.particles); // the street's bins, bikes, letterboxes and posts that cars knock over (world/looseProps.ts)
 const crash = new Crash(effects.particles);
 Car.onCrash = (hit) => crash.hit(hit); // sparks, dust or leaves, and a crunch, by what a car hit (world/crash.ts)
+Car.fx = crash.carFx(effects.splashes); // leaves in a hedge, the water a car throws, steam from a crumpled bonnet
 const tyreSpray = new TyreSpray(effects.particles, world); // behind the wheels on a wet road
 const grenades = new Grenades(world);
 scene.add(grenades.group);
@@ -964,7 +965,7 @@ horses.onDust = (at) => effects.impact(at, new THREE.Vector3(0, 1, 0), 'cat'); /
 // church, there once the village is); they stop against tree trunks too: these circles, which hold the trunks' blocks
 // (trunkBlocks), so a car or a bike meets a tree as before and its crash is a tree's.
 // `car` is the one you are in, or else the nearest.
-const trunks = (house.surroundings?.trees ?? []).map((t) => ({ x: t.x, z: t.z, r: 0.35 }));
+const trunks = (house.surroundings?.trees ?? []).map((t) => ({ x: t.x, z: t.z, r: 0.35, young: t.h < 6 })); // a young tree gives a little (world/car.ts)
 // Trees left out round the house and the church have no trunk to stop against (kept in place: cars and bikes share it).
 const pruneTrunks = () => {
   for (let i = trunks.length - 1; i >= 0; i--) if (treesLeftOut.has(treeKey(trunks[i].x, trunks[i].z))) trunks.splice(i, 1);
@@ -3888,6 +3889,8 @@ renderer.setAnimationLoop((now: number) => {
         rumble(Math.min(1, hit / 10), 0.6, 140);
         shake = Math.max(shake, Math.min(0.5, hit / 20));
       }
+      const look = net.connected ? car.wear?.toSend(performance.now()) : null; // its dents and mud, for the others (world/carDamage.ts)
+      if (look) net.send({ t: 'dent', dm: look });
       const knocked = bikes.struck(car, dt, indoorsAt); // a free bike in its way is knocked aside (world/bike.ts): the car drives on
       if (knocked) { car.nudge(knocked); rumble(0.3, 0.3, 90); shake = Math.max(shake, 0.06); }
       car.chase(camera, dt, turn, tilt);
@@ -4808,7 +4811,7 @@ async function buildVillage(): Promise<void> {
     const [pi, pj] = key.split(',').map(Number);
     layGround(pi, pj);
   }
-  for (const t of data.trees) trunks.push({ x: t.x, z: t.z, r: 0.35 });
+  for (const t of data.trees) trunks.push({ x: t.x, z: t.z, r: 0.35, young: t.h < 6 });
   heliCrowns.push(...data.trees); // the village's crowns for the helicopter
   pruneTrunks();
   trunkBlocks.add(data.trees);

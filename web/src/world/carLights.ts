@@ -27,6 +27,8 @@ const OUT = 0.14;
 /** The pool of the headlights on the road: its width at the far end and its length ahead of the nose (m). */
 const POOL_W = 7;
 const POOL_L = 17;
+/** Every lamp lit. */
+const LIT: readonly number[] = [1, 1, 1, 1];
 
 /** Where a car's lamps are, on the car (its body: x right, y up, z back), and where its nose is (z). */
 export interface LampSpots {
@@ -216,7 +218,7 @@ class CarLights {
    * `head` and the tail lights `tail` bright (0 to 1), and the pool on the ground in `ground`'s frame (the car on
    * the road: y up from the ground under it, the nose to -z).
    */
-  show(k: number, body: THREE.Matrix4, ground: THREE.Matrix4, spots: LampSpots, head: number, tail: number): void {
+  show(k: number, body: THREE.Matrix4, ground: THREE.Matrix4, spots: LampSpots, head: number, tail: number, lit = LIT): void {
     if (k < 0) return;
     const forward = this.d.set(0, 0, -1).transformDirection(body);
     for (let i = 0; i < 4; i++) {
@@ -227,9 +229,10 @@ class CarLights {
       const s = isHead ? 1 : -1;
       this.aim.set([forward.x * s, forward.y * s, forward.z * s], j * 3);
       const c = isHead ? HEAD : TAIL;
-      const b = isHead ? head : tail;
+      const b = (isHead ? head : tail) * lit[i];
       this.tint.set([c.r * b, c.g * b, c.b * b], j * 3);
     }
+    head *= (lit[0] + lit[1]) / 2; // the pool on the road: half as bright with one headlight out
     this.bright[k] = head;
     this.pools.setMatrixAt(k, head > 0.01 ? this.m.makeTranslation(0, 0.05, spots.nose).premultiply(ground) : this.zero);
     this.lit.add(k);
@@ -267,6 +270,8 @@ export class CarLamps {
   private on = 0;
   private spots: LampSpots;
   private dayBar: THREE.Color;
+  /** Each lamp lit (1) or broken (0): the headlights left and right, the tail lights left and right (world/carDamage.ts) */
+  lit = LIT;
 
   /** `bar`: this car's own copy of the light bar's material (car.ts gives it to the model). */
   constructor(readonly bar: THREE.MeshStandardMaterial, length: number, width: number, lift: number) {
@@ -307,7 +312,7 @@ export class CarLamps {
     }
     body.updateWorldMatrix(true, false);
     ground.updateWorldMatrix(true, false);
-    carLights.show(this.slot, body.matrixWorld, ground.matrixWorld, this.spots, k, k * (braking ? 1 : 0.4));
+    carLights.show(this.slot, body.matrixWorld, ground.matrixWorld, this.spots, k, k * (braking ? 1 : 0.4), this.lit);
   }
 
   dispose(): void {

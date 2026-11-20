@@ -9,6 +9,7 @@ import { truckModel } from './truck';
 import type { CarSample } from '../../shared/wire.mjs';
 import { netClock, Track } from '../net/track';
 import { AIR_GAP, CarBody, groundPlane, PITCH_MAX, rideHeight, ROLL_MAX, skid } from './carBody';
+import { crackSound, CarWear } from './carDamage';
 import { G, MASS, surfaceGrip, tyreForces, YAW_INERTIA } from './carGrip';
 import { CarLamps } from './carLights';
 import { CarSound } from './carSound';
@@ -20,7 +21,8 @@ import { skidMarks } from './skidMarks';
  * The cars you can drive (shared/car.json): the black Tesla Model Y on our driveway, the blue
  * Model 3 at the bungalow, and a white Model Y and a red Model 3 in the bays by the church in
  * Smetlede. You get in with E (or Triangle) and drive with a camera behind the car; it stops
- * against the house, hedges, fences, trees and other players. In multiplayer one player drives
+ * against the house, fences, trees and other players, and pushes through a hedge, held back hard; it
+ * dents, scratches and gets muddy, and water holds it (world/carDamage.ts). In multiplayer one player drives
  * each car at a time and the others see it move (see game.mjs), drawn a little behind on the
  * server's clock between the states it sends (net/track.ts), so it drives smoothly for them and for
  * the passenger.
@@ -73,6 +75,8 @@ export interface CarState {
   kind?: string;
   /** One of Steal the flag's parked cars (server/flags.mjs): there only while it is played */
   flag?: boolean;
+  /** Its dents and mud as its driver's page last sent them (world/carDamage.ts pack; server/game.mjs dent) */
+  dm?: number[];
 }
 
 export interface DriveInput {
@@ -105,6 +109,29 @@ export interface Obstacle {
   x: number;
   z: number;
   r: number;
+  /** A young tree (under 6 m): it gives a little, no bounce back, its crown shaken low (world/crash.ts) */
+  young?: boolean;
+}
+
+/** A car in a pond or a ditch this frame (world/crash.ts water): where, the water's surface, its way and speed (m/s). */
+export interface CarWater {
+  x: number;
+  z: number;
+  level: number;
+  fx: number;
+  fz: number;
+  speed: number;
+  halfL: number;
+  halfW: number;
+  /** It just went in */
+  enter: boolean;
+}
+
+/** What a car does to the world round it, shown by world/crash.ts (main.ts sets Car.fx). */
+export interface CarFx {
+  brush(h: CrashHit): void;
+  water(w: CarWater): void;
+  steam(x: number, y: number, z: number, k: number, dt: number): void;
 }
 
 const WHEELBASE = 2.89; // m
@@ -364,6 +391,12 @@ const angle = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 export class Car {
   /** A car hit something (yours as you drive it, the others' from how they stop): main.ts shows it (world/crash.ts). */
   static onCrash: (hit: CrashHit) => void = () => {};
+  /** The leaves, water and steam a car throws (world/crash.ts carFx): main.ts sets it. */
+  static fx: CarFx | null = null;
+  /** Its dents, scratches and mud, and how hedges and water hold it (world/carDamage.ts); none on the spawn truck. */
+  readonly wear: CarWear | null = null;
+  /** Its own glass's and trim's materials, which show its cracks, scrapes and mud (with wear) */
+  private glass: THREE.MeshStandardMaterial[] = [];
   readonly group = new THREE.Group();
   x: number;
   y: number;
@@ -502,10 +535,26 @@ export class Car {
     this.plainPaint = new THREE.MeshStandardMaterial({ color: spec.paint, metalness: spec.metal * 0.6, roughness: 0.18, envMapIntensity: 1.6, vertexColors: true });
     horizonReflection(paint);
     horizonReflection(this.plainPaint);
+    const own: Record<string, THREE.Material> = { Paint: paint, TailLight: this.taillight, LightBar: this.lamps.bar, GapLines: this.gapLine, BarLine: this.barLine };
+    if (!spec.model.startsWith('proc:')) {
+      const wear = (this.wear = new CarWear(this.halfL, this.halfW));
+      const d = wear.damage;
+      d.paint(paint);
+      d.paint(this.plainPaint);
+      d.lamp(this.lamps.bar, false);
+      d.lamp(this.taillight, true);
+      this.lamps.lit = d.lamps;
+      this.glass = ['Glass', 'GlassDark', 'Trim'].map((name) => {
+        const m = (MATERIALS[name] as THREE.MeshStandardMaterial).clone();
+        if (name === 'Trim') d.paint(m); // the black cladding over the arches and along the sills: scraped and muddy too
+        else d.glass(m);
+        own[name] = m;
+        return m;
+      });
+    }
     cars.add(this);
     void modelCopy(spec.model).then((scene) => {
       if (this.gone) return;
-      const own = { Paint: paint, TailLight: this.taillight, LightBar: this.lamps.bar, GapLines: this.gapLine, BarLine: this.barLine };
       // The simple copy goes straight on the body, hidden until the car is far off; its lamps aren't the lamps' spots.
       const far = scene.getObjectByName('Far') ?? null;
       if (far) {
@@ -533,7 +582,9 @@ export class Car {
       if (at.every((p) => p)) {
         const [fl, fr, rl] = at as THREE.Vector3[];
         this.axle = { at: at.map((p) => [p!.x, p!.z]), base: Math.abs(rl.z - fl.z), track: Math.abs(fr.x - fl.x), hub: at.map((p) => p!.y) };
+        this.wear?.damage.axles(fl.z, rl.z);
       }
+      this.wear?.damage.attach(scene); // the parts that dent: the body without its wheels and its far copy
       scene.position.y = -ROLL_H;
       this.body.add(scene);
       this.front = front;
@@ -607,6 +658,7 @@ export class Car {
     Object.assign(this, { x, y, z, yaw, steer: 0, speed: 0, vx: 0, vz: 0, vy: 0, air: false, turn: 0, pedal: 0, brakePedal: 0, lastSpeed: 0, spinKick: 0, braking: false, reverse: false, stood: 0, brakeWas: false, camHeading: yaw, camYaw: 0, fresh: true });
     this.motion.reset();
     this.track.clear();
+    this.wear?.damage.repair(); // through a portal it comes out mended (the mud stays)
   }
 
   /**
@@ -616,6 +668,10 @@ export class Car {
   setPose(s: CarState, snap = false): void {
     this.driver = s.driver;
     this.passenger = s.passenger ?? null;
+    if (s.dm) {
+      this.wear?.damage.unpack(s.dm, snap); // its dents and mud as its driver's page sent them
+      this.wear?.heard(s.dm);
+    }
     if (snap || Math.hypot(s.x - this.x, s.z - this.z) > 10) {
       Object.assign(this, { x: s.x, y: s.y, z: s.z, yaw: s.yaw, steer: s.s, speed: 0, vy: 0, air: false, spinKick: 0, turn: 0, fresh: true });
       this.motion.reset();
@@ -661,6 +717,8 @@ export class Car {
     let impact = 0;
     this.atEdge = false;
     this.hit = null;
+    const wear = this.wear;
+    wear?.water(this.wheelSpots(), this.groundUnder, dt); // a pond or a ditch holds it back and may drown its motor (step)
     for (let i = 0; i < steps; i++) impact = Math.max(impact, this.step(dt / steps, input, near));
     this.crashed = impact > 1;
     const hit = this.hit as CrashHit | null; // step() keeps the hardest
@@ -668,6 +726,7 @@ export class Car {
       Car.onCrash(hit);
       this.camBack -= Math.min(0.8, hit.speed * 0.06); // the camera lurches on with the car's weight, and eases back
     }
+    if (wear) this.wore(wear, hit, dt, v);
     // The brake lights: braking, and standing on the brake or the handbrake.
     this.braking = (brk && !this.reverse) || (input.throttle > 0.05 && this.speed < -0.3) || !!input.handbrake;
     this.pushing = this.pedal || this.brakePedal; // as the car takes the pedals (eased in)
@@ -694,6 +753,42 @@ export class Car {
     return impact;
   }
 
+  /** Where its four wheels are on the plan (world/carDamage.ts: the water under them). */
+  private wheelSpots(): [number, number][] {
+    const c = Math.cos(this.yaw);
+    const s = Math.sin(this.yaw);
+    return this.axle.at.map(([lx, lz]) => [this.x + lx * c + lz * s, this.z - lx * s + lz * c]);
+  }
+
+  /** The ground's height under the car at (x, z) (its wheels' ground). */
+  private readonly groundUnder = (x: number, z: number): number => this.world.groundAt(x, z, this.y, CLEAR).y;
+
+  /**
+   * What this frame at the wheel did to it (world/carDamage.ts): the hardest hit dents and scratches it where it struck
+   * (a hedge only scratches, a fence or a young tree half as much), sliding along something scratches it, the ground
+   * and the water muddy it or wash it, and standing still on its own parking spot mends it. `v`: its speed (m/s).
+   */
+  private wore(wear: CarWear, hit: CrashHit | null, dt: number, v: number): void {
+    wear.scrape = 0;
+    if (hit && !hit.land) {
+      const [fx, fz] = this.forward;
+      const dx = hit.x - this.x;
+      const dz = hit.z - this.z;
+      const mx = -dx * fz + dz * fx; // on the model: to its right
+      const mz = -(dx * fx + dz * fz); // and back along it
+      const scale = /hedge/.test(hit.what) ? 0 : /fence/.test(hit.what) ? 0.5 : hit.what === 'sapling' ? 0.6 : 1;
+      if (scale > 0) wear.damage.hit(mx, mz, hit.speed, scale);
+      // Sliding along it: its speed past what it touches, not into it.
+      const along = Math.sqrt(Math.max(0, v * v - hit.speed * hit.speed));
+      if (along > 1.5) {
+        wear.damage.scrape(mx, mz, along, dt, scale || 0.4);
+        if (scale > 0) wear.scrape = along;
+      }
+    }
+    wear.soil(dt, this.rough.filter(Boolean).length, v);
+    wear.parked(dt, v < 0.3 && Math.hypot(this.x - this.park.x, this.z - this.park.z) < 1.5 && Math.abs(angle(this.yaw - this.park.yaw)) < 0.4);
+  }
+
   /**
    * It came down on the ground (`mat`) at `speed` m/s: the body sinks on its springs by how hard (world/carBody.ts
    * land), a thump as loud, dust off gravel, earth or grass and a crunch when it lands hard (world/crash.ts land, by
@@ -716,7 +811,11 @@ export class Car {
   }
 
   private free(x: number, z: number, yaw: number, others: Obstacle[]): boolean {
-    if (!this.world.boxFree(x, z, yaw, this.halfL, this.halfW, this.y + CLEAR, this.y + this.spec.height, this.key)) return false;
+    // A hedge lets it in (world/carDamage.ts): a thin one all the way, a thick one only so far.
+    const wear = this.wear;
+    if (wear) wear.sawThick = false;
+    if (!this.world.boxFree(x, z, yaw, this.halfL, this.halfW, this.y + CLEAR, this.y + this.spec.height, this.key, wear?.give)) return false;
+    if (wear?.held(this.world, x, z, yaw, this.halfL, this.halfW, this.y + CLEAR, this.y + this.spec.height, this.key)) return false;
     const fx = -Math.sin(yaw);
     const fz = -Math.cos(yaw);
     return !others.some((o) => {
@@ -772,11 +871,15 @@ export class Car {
     const want = -Math.sign(sx) * Math.abs(sx) ** STICK_CURVE * lock;
     const out = Math.abs(want) > Math.abs(this.steer) && want * this.steer >= 0;
     this.steer += (want - this.steer) * (1 - Math.exp(-dt * (out ? STEER_IN : Math.min(18, 12 + speed * 0.2))));
-    const delta = -this.steer; // to the right
+    const wear = this.wear;
+    const pull = wear?.damage.pull;
+    const delta = pull ? pull - this.steer : -this.steer; // to the right (a bent front corner pulls a little to its side)
 
-    // The tyres on what is under them (front wheels, rear wheels).
-    const muF = (TYRE * (this.grip[0] + this.grip[1])) / 2;
-    const muR = (TYRE * (this.grip[2] + this.grip[3])) / 2;
+    // The tyres on what is under them (front wheels, rear wheels), less in water; a drowned motor gives less or nothing.
+    const kept = wear?.gripKept ?? 1;
+    const muF = (TYRE * (this.grip[0] + this.grip[1]) * kept) / 2;
+    const muR = (TYRE * (this.grip[2] + this.grip[3]) * kept) / 2;
+    if (wear) drive *= wear.motor;
     // In the air they hold nothing: no pull, no brakes, no steering; it flies on as it went, turning as it turned.
     const flying = this.air;
     const t = flying ? AIRBORNE : tyreForces({ u, s: side, r: this.turn, delta, drive, brake, locked: hb, muF, muR, ax: this.ax });
@@ -829,6 +932,12 @@ export class Car {
       const keep = Math.min(slow, max) / v;
       vx *= keep;
       vz *= keep;
+      // In a hedge or in water: held back hard, more the faster (world/carDamage.ts).
+      if (wear && !flying && (wear.brush > 0 || wear.wade > 0.03)) {
+        const held = wear.holdBack(v * keep, dt) / (v * keep || 1);
+        vx *= held;
+        vz *= held;
+      }
     }
     fx = gx;
     fz = gz;
@@ -846,7 +955,8 @@ export class Car {
     if (!ahead) this.atEdge = true;
     // Into something: a small bounce back off it (more the harder it hit), not a dead stop.
     // (Crash tests: a tenth to a seventh of the speed comes back; the rest goes into the crumple.)
-    const back = (speed: number) => (speed > 2 ? 0.1 + Math.min(0.06, speed * 0.004) : 0);
+    // A hedge, a wire fence or a young tree gives instead: no bounce back (what it hit: contact, just before).
+    const back = (speed: number) => (speed > 2 && !(wear && /hedge|fence|sapling/.test(this.hit?.what ?? '')) ? 0.1 + Math.min(0.06, speed * 0.004) : 0);
     // Where it touched and what it is: looked for the way it was going (a wall at an angle is still ahead).
     const going = Math.hypot(vx, vz) || 1;
     const [tx, tz] = [vx / going, vz / going];
@@ -865,7 +975,7 @@ export class Car {
     } else {
       impact = Math.hypot(vx, vz);
       if (impact > 1e-3) this.contact(tx, tz, impact, others);
-      const e = Math.max(0.15, back(impact));
+      const e = wear && /hedge|fence|sapling/.test(this.hit?.what ?? '') ? 0 : Math.max(0.15, back(impact));
       vx *= -e;
       vz *= -e;
     }
@@ -879,6 +989,7 @@ export class Car {
       if (left !== right) this.spinKick += (right ? -1 : 1) * Math.sign(un || 1) * Math.min(1.1, impact * 0.07);
     }
     if (impact > 1) this.turn *= 0.3; // what it hit holds it: its own spin mostly stops (the knock above turns it)
+    wear?.brushAt(this.world, this.x, this.z, this.yaw, this.halfL, this.halfW, this.y + CLEAR, this.y + this.spec.height, this.key); // in a hedge now?
     this.vx = vx;
     this.vz = vz;
     [fx, fz] = this.forward;
@@ -903,7 +1014,7 @@ export class Car {
     let what = '';
     if (near) {
       if (!this.trees.includes(near)) return;
-      what = 'tree';
+      what = near.young ? 'sapling' : 'tree';
     } else {
       const lo = this.y + CLEAR;
       const hi = this.y + this.spec.height;
@@ -958,7 +1069,8 @@ export class Car {
       z: target.z + Math.cos(h) * Math.cos(this.camPitch) * dist - Math.sin(h) * this.camSide,
     };
     // Something between the car and the camera (a wall, a hedge): come closer.
-    const k = Math.max(0.15, this.world.clearance(target, want, this.key) - 0.3 / dist);
+    // (Not the hedge it is pushing through: the camera would close in on the car inside it.)
+    const k = Math.max(0.15, this.world.clearance(target, want, this.key, this.wear?.brush ? this.wear.give : undefined) - 0.3 / dist);
     camera.position.set(target.x + (want.x - target.x) * k, target.y + (want.y - target.y) * k, target.z + (want.z - target.z) * k);
     camera.lookAt(target.x, target.y, target.z);
     if (!CALM) camera.rotateZ(0.25 * this.motion.roll);
@@ -1092,7 +1204,10 @@ export class Car {
       if (this.rough[i]) rough = Math.max(rough, s);
       else paved = Math.max(paved, s);
     }
+    const wear = this.wear;
+    const worn = wear ? this.worn(wear, dt, local) : null;
     this.noise.update({
+      ...worn,
       x: this.x, y: this.y, z: this.z, speed: Math.abs(this.speed),
       load: local ? Math.min(1, this.pushing) : Math.min(1, Math.max(0, this.along / 5)),
       regen: Math.min(1, Math.max(0, (-this.along * Math.sign(this.speed)) / 6)),
@@ -1104,6 +1219,45 @@ export class Car {
     this.lastY = this.y;
     this.lastZ = this.z;
     this.lastYaw = this.yaw;
+  }
+
+  /**
+   * Its wear this frame, drawn (world/carDamage.ts), the same for every car from how it moves: leaves thrown while it is
+   * in a hedge, the water it throws, steam from a crumpled bonnet, the tick of a pane cracking, its dented shape kept
+   * up; and for its sound, how it grinds, rustles and sloshes. Someone else's car: its hedge and its water found here.
+   */
+  private worn(wear: CarWear, dt: number, local: boolean): { scrape: number; brush: number; wade: number; dead: boolean } {
+    const v = Math.abs(this.speed);
+    const d = wear.damage;
+    if (!local) {
+      wear.water(this.wheelSpots(), this.groundUnder, dt, false);
+      if (v > 0.3) wear.brushAt(this.world, this.x, this.z, this.yaw, this.halfL, this.halfW, this.y + CLEAR, this.y + this.spec.height, this.key);
+      else wear.brush = 0;
+    }
+    d.wet(mood.wet);
+    const [fx, fz] = this.forward;
+    const way = Math.sign(this.speed) || 1;
+    if (wear.leaves(dt, v)) {
+      const along = way * this.halfL * 0.8;
+      Car.fx?.brush({ x: this.x + fx * along, y: this.y + 0.5, z: this.z + fz * along, nx: fx * way, nz: fz * way, speed: v, what: 'hedge' });
+    }
+    const splash = wear.splash(dt, v);
+    if (splash) Car.fx?.water({ x: this.x, z: this.z, level: wear.level, fx: fx * way, fz: fz * way, speed: v, halfL: this.halfL, halfW: this.halfW, enter: splash === 'in' });
+    const steam = d.update(dt);
+    if (steam > 0) {
+      const ahead = this.halfL - 0.65;
+      Car.fx?.steam(this.x + fx * ahead, this.y + this.ride.lift + 0.95, this.z + fz * ahead, steam, dt);
+    }
+    if (d.crackSound) {
+      d.crackSound = false;
+      crackSound(this.x, this.y + 1.1, this.z);
+    }
+    return {
+      scrape: local ? wear.scrape : 0,
+      brush: v > 0.3 ? wear.brush * Math.min(1, 0.15 + v / 6) : 0,
+      wade: wear.wade > 0.05 ? Math.min(1, wear.wade / 0.5) * Math.min(1, v / 6) : 0,
+      dead: local && wear.dead,
+    };
   }
 
   /**
@@ -1216,7 +1370,8 @@ export class Car {
       mat.dispose();
     });
     cars.delete(this);
-    for (const m of [this.paint, this.plainPaint, this.taillight, this.blurMat, this.gapLine, this.barLine]) m.dispose();
+    for (const m of [this.paint, this.plainPaint, this.taillight, this.blurMat, this.gapLine, this.barLine, ...(this.glass ?? [])]) m.dispose();
+    this.wear?.damage.dispose();
     this.lamps.dispose();
     this.noise.dispose();
   }

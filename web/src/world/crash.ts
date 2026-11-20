@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { sound } from '../sound';
-import type { CrashHit } from './car';
+import type { CarFx, CarWater, CrashHit } from './car';
 import type { Particles, Spawn } from './particles';
+import type { Splashes } from './splashes';
 import { PARTICLE } from './sprites';
 import { windAt } from './wind';
 
@@ -12,14 +13,16 @@ import { windAt } from './wind';
  * from the crown; into a hedge a burst of leaves and twigs and a rustle. Harder hits throw more, and
  * above about 25 km/h a light's glass tinkles. All from the shared particle pools (world/particles.ts)
  * and made in code like the other sounds (nothing to download). Each page shows its own: the others'
- * cars from how they stop.
+ * cars from how they stop. A young tree is wood with its crown low; a car pushing through a hedge throws
+ * leaves (brush), one in the water a splash and a bow wave (water), a crumpled bonnet steam (steam):
+ * world/car.ts Car.fx, world/carDamage.ts.
  */
 
 type Surface = 'metal' | 'masonry' | 'wood' | 'hedge';
 
 /** What a hit block or thing is, by its material, name or key. */
 function surfaceOf(what: string): Surface {
-  if (what === 'tree' || /wood|oak|walnut|cladding|timber|plank/.test(what)) return 'wood';
+  if (what === 'tree' || what === 'sapling' || /wood|oak|walnut|cladding|timber|plank/.test(what)) return 'wood';
   if (/hedge|leaves|shrub|bush/.test(what)) return 'hedge';
   if (/^car-|^bike|steel|rail|alu|fence|metal|lamp|gate|glass/.test(what)) return 'metal'; // the village's poles are concrete: dust
   return 'masonry';
@@ -166,6 +169,7 @@ export class Crash {
         s.c1.copy(s.c0);
       });
       if (h.what === 'tree') this.leaves({ ...h, y: h.y + 3.5 }, 6 + 22 * k, 1.8);
+      if (h.what === 'sapling') this.leaves({ ...h, y: h.y + 1.8 }, 10 + 20 * k, 1); // a young tree shaken, its crown low
     }
     if (surface === 'hedge') {
       this.leaves(h, 10 + 24 * k, 0.6);
@@ -184,6 +188,118 @@ export class Crash {
       });
     }
     this.crunch(h, surface);
+  }
+
+  /**
+   * A car pushing through a hedge (world/car.ts, every so often while it is in one; (nx, nz) the way it goes): leaves
+   * and bits of twig thrown up and ahead off its front, more the faster. The rustle is the car's own (world/carSound.ts).
+   */
+  brush(h: CrashHit): void {
+    const k = Math.min(1, h.speed / 10);
+    this.leaves({ ...h, y: h.y + 0.4 }, 4 + 12 * k, 0.7);
+    this.throw(h, 2 + 6 * k, 1.2 + 2.5 * k, 0.9, 0.7, (s) => {
+      Object.assign(s, { life: 0.5 + Math.random() * 0.4, size0: 0.025, size1: 0.02, alpha: 1, cell: PARTICLE.chip, drag: 0.8, gravity: 9.8, spin: (Math.random() - 0.5) * 20 });
+      s.c0.set(Math.random() < 0.5 ? '#4b3b28' : '#5b6b2e');
+      s.c1.copy(s.c0);
+    });
+  }
+
+  /**
+   * A car in a pond or a ditch (world/car.ts): going in at speed, a burst from its nose and both sides (the splashes'
+   * own, world/splashes.ts) and a heavy slosh; moving through it, a bow wave: water pushed up and out to both sides off
+   * its nose, and a ring spreading behind it.
+   */
+  water(w: CarWater, splashes: Splashes): void {
+    const nx = w.x + w.fx * w.halfL;
+    const nz = w.z + w.fz * w.halfL;
+    const [rx, rz] = [-w.fz, w.fx]; // to its right
+    if (w.enter) {
+      splashes.plunge(nx, nz, w.level, Math.min(12, w.speed));
+      for (const side of [-1, 1]) splashes.plunge(w.x + rx * side * w.halfW, w.z + rz * side * w.halfW, w.level, Math.min(8, w.speed * 0.6));
+      this.slosh(nx, w.level, nz, Math.min(1, w.speed / 10));
+      return;
+    }
+    const k = Math.min(1, w.speed / 8);
+    const s = this.s;
+    const n = Math.round((3 + 9 * k) * this.particles.budget);
+    for (let i = 0; i < n; i++) {
+      const side = i % 2 ? 1 : -1;
+      const along = Math.random() * 0.6;
+      const out = (1 + 2.5 * k) * (0.6 + Math.random() * 0.6);
+      s.x = nx - w.fx * along + rx * side * (0.3 + Math.random() * (w.halfW - 0.3));
+      s.y = w.level + 0.05;
+      s.z = nz - w.fz * along + rz * side * (0.3 + Math.random() * (w.halfW - 0.3));
+      s.vx = rx * side * out + w.fx * w.speed * 0.6;
+      s.vy = 0.8 + Math.random() * (1 + 2 * k);
+      s.vz = rz * side * out + w.fz * w.speed * 0.6;
+      Object.assign(s, { life: 0.45 + Math.random() * 0.35, size0: 0.04 + Math.random() * 0.04, size1: 0.03, alpha: 0.75, cell: PARTICLE.chip, drag: 0.6, gravity: 9.8, spin: 0, stretch: 0.04 });
+      s.c0.setRGB(0.78, 0.84, 0.84);
+      s.c1.copy(s.c0);
+      this.particles.spawn(s);
+    }
+    if (Math.random() < 0.5) splashes.ring(nx, w.level, nz, w.halfW * 2 * (0.7 + 0.8 * k), 1.6, 0.35);
+  }
+
+  private steamT = 0;
+  /** Steam from under a crumpled bonnet at (x, y, z) (world/carDamage.ts), `k` 0 to 1 as it thins out over a minute: pale wisps rising. */
+  steam(x: number, y: number, z: number, k: number, dt: number): void {
+    this.steamT += dt * (1.5 + 6 * k) * this.particles.budget;
+    const s = this.s;
+    while (this.steamT >= 1) {
+      this.steamT -= 1;
+      s.x = x + (Math.random() - 0.5) * 0.5;
+      s.y = y;
+      s.z = z + (Math.random() - 0.5) * 0.5;
+      s.vx = (Math.random() - 0.5) * 0.3;
+      s.vy = 0.5 + Math.random() * 0.5;
+      s.vz = (Math.random() - 0.5) * 0.3;
+      Object.assign(s, { life: 2 + Math.random() * 1.2, size0: 0.2, size1: 1 + 0.6 * k, alpha: 0.06 + 0.14 * k, cell: PARTICLE.puff, drag: 1.2, gravity: -0.3, spin: (Math.random() - 0.5) * 1.2, stretch: 0 });
+      s.c0.setRGB(0.93, 0.94, 0.95);
+      s.c1.copy(s.c0);
+      this.particles.spawn(s);
+    }
+  }
+
+  /** What a car does in the world through this (world/car.ts Car.fx): leaves in a hedge, the water it throws, steam. */
+  carFx(splashes: Splashes): CarFx {
+    return { brush: (h) => this.brush(h), water: (w) => this.water(w, splashes), steam: (x, y, z, k, dt) => this.steam(x, y, z, k, dt) };
+  }
+
+  /** A car going into the water: a heavy slosh (low noise falling away) and the water's spatter after it. */
+  private slosh(x: number, y: number, z: number, k: number): void {
+    const c = sound.context();
+    const dest = c && sound.at(x, y, z, 5);
+    if (!c || !dest) return;
+    const t = c.currentTime;
+    const src = c.createBufferSource();
+    src.buffer = noiseBuffer(c);
+    const f = c.createBiquadFilter();
+    f.type = 'lowpass';
+    f.frequency.setValueAtTime(1400, t);
+    f.frequency.exponentialRampToValueAtTime(300, t + 0.7);
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.25 + 0.5 * k, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.9);
+    src.connect(f).connect(g).connect(dest);
+    src.start(t, Math.random() * 0.5);
+    src.stop(t + 1);
+    for (let i = 0; i < 8; i++) {
+      const at = t + 0.15 + Math.random() * 0.7;
+      const d = c.createBufferSource();
+      d.buffer = noiseBuffer(c);
+      const b = c.createBiquadFilter();
+      b.type = 'bandpass';
+      b.frequency.value = 1500 + Math.random() * 2500;
+      b.Q.value = 4;
+      const dg = c.createGain();
+      dg.gain.setValueAtTime(0.0001, at);
+      dg.gain.exponentialRampToValueAtTime(0.05 * (0.5 + k), at + 0.004);
+      dg.gain.exponentialRampToValueAtTime(0.0001, at + 0.05);
+      d.connect(b).connect(dg).connect(dest);
+      d.start(at, Math.random() * 0.8);
+      d.stop(at + 0.06);
+    }
   }
 
   /** Leaves falling from (x, y, z): green and the browns of November, drifting, turning, slowly down. */

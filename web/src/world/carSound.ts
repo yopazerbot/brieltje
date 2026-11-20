@@ -8,7 +8,9 @@ import { sound } from '../sound';
  * - the tyres rolling, a rushing that rises with speed and gets rougher off the paving, silent in the air;
  * - the wind round the body at high speed;
  * - a squeal while the tyres slide (world/carBody.ts: skid), a scrub instead on grass or gravel;
- * - a thump when it goes over a kerb or runs into something.
+ * - a thump when it goes over a kerb or runs into something;
+ * - a grinding while it slides along a wall, a rustle of leaves and twigs while it pushes through a hedge, a rushing
+ *   slosh through water, and the whine gone while its motor is drowned (world/carDamage.ts).
  *
  * The loop starts when the car first moves (after your first click or key: browsers keep sound off
  * until then) and runs while the car is in the game.
@@ -39,6 +41,9 @@ interface Loop {
   squeal2: OscillatorNode;
   squeal2Gain: GainNode;
   scrub: GainNode;
+  grind: GainNode;
+  rustle: GainNode;
+  wash: GainNode;
 }
 
 /** What the car is doing this frame, for its sound. */
@@ -60,6 +65,14 @@ export interface CarNoise {
   rough: boolean;
   /** Off the ground (world/carBody.ts rideHeight): the tyres touch nothing, so they are still */
   air?: boolean;
+  /** m/s it slides along something hard (a wall, a fence): the body grinding along it */
+  scrape?: number;
+  /** 0 to 1: pushing through a hedge, by how much of it is in and how fast (the leaves and twigs) */
+  brush?: number;
+  /** 0 to 1: how hard it pushes through water (deep and fast) */
+  wade?: number;
+  /** Its motor drowned in the water: no whine */
+  dead?: boolean;
 }
 
 export class CarSound {
@@ -81,7 +94,7 @@ export class CarSound {
     a.whine.frequency.setTargetAtTime(f, t, 0.05);
     a.whine2.frequency.setTargetAtTime(f * 3.02, t, 0.05);
     const pull = 0.35 + 0.65 * Math.max(n.load, 0.6 * n.regen);
-    a.motor.gain.setTargetAtTime(Math.min(0.035, 0.002 + v * 0.0012) * pull * (v > 0.3 ? 1 : 0), t, 0.08);
+    a.motor.gain.setTargetAtTime(Math.min(0.035, 0.002 + v * 0.0012) * pull * (v > 0.3 && !n.dead ? 1 : 0), t, n.dead ? 0.25 : 0.08);
     // The tyres: a low rush that opens up with speed; off the paving louder and duller. In the air they fade out
     // (about a tenth of a second) and come back as it lands (the thump is world/car.ts landed).
     a.roll.frequency.setTargetAtTime((n.rough ? 160 : 250) + v * (n.rough ? 45 : 70), t, 0.1);
@@ -99,6 +112,12 @@ export class CarSound {
     a.squealGain.gain.setTargetAtTime(n.rough ? 0 : Math.min(0.13, (0.05 + 0.006 * slide) * s), t, s > 0 ? 0.03 : 0.08);
     a.squeal2Gain.gain.setTargetAtTime(n.rough ? 0 : 0.35 * Math.max(0, s - 0.4), t, 0.05);
     a.scrub.gain.setTargetAtTime(n.rough ? Math.min(0.3, (0.15 + 0.01 * slide) * s) : 0.05 * s, t, 0.05);
+    // Along a wall: a harsh grinding that rises with the speed; through a hedge, leaves and twigs; through water, a
+    // rushing slosh. All from the same noise.
+    const grind = Math.min(1, (n.scrape ?? 0) / 10);
+    a.grind.gain.setTargetAtTime(grind > 0.02 ? 0.05 + 0.2 * grind : 0, t, grind > 0.02 ? 0.02 : 0.08);
+    a.rustle.gain.setTargetAtTime(0.35 * Math.min(1, n.brush ?? 0), t, 0.05);
+    a.wash.gain.setTargetAtTime(0.4 * Math.min(1, n.wade ?? 0), t, 0.1);
   }
 
   private start(c: AudioContext, n: CarNoise): Loop {
@@ -155,9 +174,27 @@ export class CarSound {
     wobble.connect(depth2).connect(squeal2.frequency);
     const squeal2Gain = gain();
     squeal2.connect(filter('bandpass', 1700, 6)).connect(squeal2Gain).connect(squealGain);
-    const sources = [src, whine, whine2, squeal, squeal2, wobble];
+    // Grinding along a wall: two bands of the noise, a gritty high one and a low rumble of the panel.
+    const grind = gain();
+    src.connect(filter('bandpass', 2600, 1.5)).connect(grind).connect(at);
+    src.connect(filter('bandpass', 420, 2.5)).connect(grind);
+    // Leaves and twigs: the high noise, its loudness flickering (a fast wobble on the gain).
+    const rustle = gain();
+    const flick = osc('sine', 11);
+    const flickDepth = gain(0.6);
+    const rustleAmp = gain(1);
+    flick.connect(flickDepth).connect(rustleAmp.gain);
+    src.connect(filter('highpass', 2400, 0.7)).connect(rustleAmp).connect(rustle).connect(at);
+    // Water: a low rush that sloshes (a slow wobble).
+    const wash = gain();
+    const slosh = osc('sine', 1.4);
+    const sloshDepth = gain(0.5);
+    const washAmp = gain(1);
+    slosh.connect(sloshDepth).connect(washAmp.gain);
+    src.connect(filter('lowpass', 650, 0.8)).connect(washAmp).connect(wash).connect(at);
+    const sources = [src, whine, whine2, squeal, squeal2, wobble, flick, slosh];
     for (const s of sources) s.start();
-    return { at, sources, whine, whine2, motor, roll, road, windBand, wind, squeal, squealGain, squeal2, squeal2Gain, scrub };
+    return { at, sources, whine, whine2, motor, roll, road, windBand, wind, squeal, squealGain, squeal2, squeal2Gain, scrub, grind, rustle, wash };
   }
 
   /** A thump from (x, y, z): `strength` about the speed of the knock (m/s), 1 a kerb, 10 a crash. */
