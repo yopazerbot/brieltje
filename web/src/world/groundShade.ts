@@ -8,6 +8,7 @@ import { wetOn } from './wetGround';
 import { compileDrawn, compileQuad } from './warmShaders';
 import { groundNoise } from './groundNoise';
 import { SPRUCE_WOOD } from './cardTrees';
+import { DuskShade } from './duskShade';
 
 /**
  * Light on the ground of the whole neighbourhood, worked out once when the sky
@@ -26,7 +27,8 @@ import { SPRUCE_WOOD } from './cardTrees';
  * decide the sun's shadow: a second image holds the contact band's share of the
  * sun's dimming alone, so the ground there takes the band from it, the shadow from
  * the map and only the core of the bake's own shadow (for what isn't in the map),
- * and the bake's soft shadow lies no halo round the map's sharp one.
+ * and the bake's soft shadow lies no halo round the map's sharp one. At dusk the low sun's long shadows are made
+ * again for each bake in the background and blended in (world/duskShade.ts).
  *
  * Where walls, hedges, fences and sheds meet the ground a darker band lies round
  * their foot (contact shadow), wider the taller they are, so they stand on the
@@ -323,6 +325,12 @@ export const grassDetail = { value: matchMedia('(pointer: coarse)').matches ? 1 
  */
 export const groundSkySun = { value: 0 };
 
+/**
+ * The sun's height as the weather has it (world/weather.ts), for the ground's dusk shadows (world/duskShade.ts): `low`
+ * 0 at noon height to 1 at dusk's, `soon` while a dusk is coming or showing, `dusk` the direction towards dusk's sun.
+ */
+export const groundSun = { low: 0, soon: false, dusk: new THREE.Vector3() };
+
 export class GroundShade {
   /**
    * For the ground materials: the texture and where it lies (centre x, centre z, half size), and the coarse
@@ -336,6 +344,9 @@ export class GroundShade {
     /** The contact band's share of the sun's dimming, for where the real-time shadow map takes over (r; 1: none) */
     groundContact: { value: neutral as THREE.Texture },
     groundContactAll: { value: neutral as THREE.Texture },
+    /** How much of the sun's dimming at dusk to show (world/duskShade.ts: the contact image's second channel; 0: none) */
+    groundDuskK: { value: 0 },
+    groundDuskKAll: { value: 0 },
   };
   /** The grass's detail, to turn down or off (see grassDetail) */
   readonly grassDetail = grassDetail;
@@ -355,6 +366,8 @@ export class GroundShade {
   private reading = -1;
   /** The gardens and meadows known so far, as one flat mesh for the cover image */
   private grass = { pos: [] as number[], attr: [] as number[] };
+  /** The dusk sun's shadow of each bake, made in the background when a dusk comes (world/duskShade.ts) */
+  readonly dusk = new DuskShade();
 
   /** `live`: where the real-time shadow map lies now (world/sunShadow.ts uniforms), for the handover to it. */
   constructor(
@@ -373,6 +386,7 @@ export class GroundShade {
   /** Read the texture of the area whose middle is nearest the eye: the house's, the village's or the far stretch's. */
   follow(eye: THREE.Vector3): void {
     this.lastEye.copy(eye);
+    this.duskStep();
     let best = -1;
     let bestD = Math.hypot(eye.x - this.center.x, eye.z - this.center.z);
     this.areas.forEach(({ area }, i) => {
@@ -388,6 +402,38 @@ export class GroundShade {
     }
   }
 
+  /** The dusk pictures: one made a little further, and the ones read now blended in as far as the sun is down. */
+  private duskStep(): void {
+    // Thrown away long after a dusk: the bakes' own contact images back in their place.
+    if (this.dusk.step(groundSun.soon || groundSun.low > 0, groundSun.dusk, [this.fineTarget(), this.all])) this.pick();
+    else this.duskUniforms();
+  }
+
+  private fineTarget(): THREE.WebGLRenderTarget | null {
+    return this.reading >= 0 ? this.areas[this.reading]?.target ?? null : this.target;
+  }
+
+  /**
+   * A dusk picture once made takes the place of its bake's contact image (the same band in its first channel, the
+   * dusk sun's dimming in its second), and how much of it shows.
+   */
+  private duskUniforms(): void {
+    if (!this.on) return;
+    const fine = this.fineTarget();
+    const [t, k] = this.dusk.read(fine, groundSun.low);
+    const [ta, ka] = this.dusk.read(this.all, groundSun.low);
+    if (fine && t) this.uniforms.groundContact.value = t;
+    if (this.all && ta) this.uniforms.groundContactAll.value = ta;
+    this.uniforms.groundDuskK.value = t ? k : 0;
+    this.uniforms.groundDuskKAll.value = ta ? ka : 0;
+  }
+
+  /** What the bake into `target` was made of, for its dusk picture. */
+  private duskSource(target: THREE.WebGLRenderTarget, renderer: THREE.WebGLRenderer, scene: THREE.Scene, casters: THREE.Object3D[], ground: number,
+    centre: THREE.Vector3, half: number, size: number): void {
+    this.dusk.add(target, { renderer, scene, casters: [...casters], ground, centre: centre.clone(), half, size, contact: target.textures[1], standIns: bakeStandIns });
+  }
+
   private pick(): void {
     const a = this.reading >= 0 ? this.areas[this.reading] : null;
     const t = a ? a.target : this.target;
@@ -397,6 +443,8 @@ export class GroundShade {
     this.uniforms.groundContactAll.value = this.on && this.all ? this.all.textures[1] : neutral;
     if (a) this.uniforms.groundArea.value.copy(a.area);
     else this.uniforms.groundArea.value.set(this.center.x, this.center.z, HALF);
+    this.uniforms.groundDuskK.value = this.uniforms.groundDuskKAll.value = 0;
+    this.duskUniforms();
   }
 
   /** Gardens and meadows for the bakes to come (the ring's at the start, the village's with it). */
@@ -471,7 +519,7 @@ export class GroundShade {
       shader.fragmentShader = shader.fragmentShader
         .replace(
           '#include <common>',
-          '#include <common>\nuniform sampler2D groundShade;\nuniform sampler2D groundShadeAll;\nuniform sampler2D groundContact;\nuniform sampler2D groundContactAll;\nuniform float liveOn;\nuniform float grassDetail;\nuniform float groundSkySun;\nvarying vec2 vGroundUv;\nvarying vec2 vGroundUvAll;\nvarying vec3 vGroundLive;' + (hard ? '\nuniform sampler2D groundGrain;\nvarying vec2 vGroundXZ;' : ''),
+          '#include <common>\nuniform sampler2D groundShade;\nuniform sampler2D groundShadeAll;\nuniform float groundDuskK;\nuniform float groundDuskKAll;\nuniform sampler2D groundContact;\nuniform sampler2D groundContactAll;\nuniform float liveOn;\nuniform float grassDetail;\nuniform float groundSkySun;\nvarying vec2 vGroundUv;\nvarying vec2 vGroundUvAll;\nvarying vec3 vGroundLive;' + (hard ? '\nuniform sampler2D groundGrain;\nvarying vec2 vGroundXZ;' : ''),
         )
         .replace(
           '#include <map_fragment>',
@@ -485,9 +533,17 @@ export class GroundShade {
           float gsSkySunFloor = 0.0;
           if (gsFine < 1.0) {
             vec2 gsAll = abs(vGroundUvAll - 0.5);
-            if (max(gsAll.x, gsAll.y) < 0.5) gs = texture2D(groundShadeAll, vGroundUvAll);
+            if (max(gsAll.x, gsAll.y) < 0.5) {
+              gs = texture2D(groundShadeAll, vGroundUvAll);
+              if (groundDuskKAll > 0.0) gs.r = mix(gs.r, texture2D(groundContactAll, vGroundUvAll).g, groundDuskKAll);
+            }
           }
-          if (gsFine > 0.0) gs = mix(gs, texture2D(groundShade, vGroundUv), gsFine);
+          if (gsFine > 0.0) {
+            vec4 gsHere = texture2D(groundShade, vGroundUv);
+            // At dusk the low sun's long shadows, as far as the sun is down (world/duskShade.ts).
+            if (groundDuskK > 0.0) gsHere.r = mix(gsHere.r, texture2D(groundContact, vGroundUv).g, groundDuskK);
+            gs = mix(gs, gsHere, gsFine);
+          }
           diffuseColor.rgb *= mix(0.86, 1.1, gs.b);
           ${grass ? GRASS : hard ? HARD : ''}`,
         )
@@ -539,8 +595,10 @@ export class GroundShade {
    * cut-out fences don't); everything else in the scene is hidden meanwhile.
    */
   bake(renderer: THREE.WebGLRenderer, scene: THREE.Scene, sun: THREE.DirectionalLight, casters: THREE.Object3D[], ground: number): void {
+    if (this.target) this.dusk.forget(this.target);
     this.target?.dispose();
     this.target = this.render(renderer, scene, sun, casters, ground, this.center, HALF, SIZE);
+    this.duskSource(this.target, renderer, scene, casters, ground, this.center, HALF, SIZE);
     this.pick();
   }
 
@@ -551,8 +609,14 @@ export class GroundShade {
   bakeVillage(renderer: THREE.WebGLRenderer, scene: THREE.Scene, sun: THREE.DirectionalLight, casters: THREE.Object3D[], ground: number, centre: THREE.Vector3, half: number, size: number,
     key = 'village'): void {
     const old = this.areas.findIndex((a) => a.key === key);
-    if (old >= 0) this.areas.splice(old, 1)[0].target.dispose();
-    this.areas.push({ key, target: this.render(renderer, scene, sun, casters, ground, centre, half, size), area: new THREE.Vector3(centre.x, centre.z, half) });
+    if (old >= 0) {
+      const gone = this.areas.splice(old, 1)[0].target;
+      this.dusk.forget(gone);
+      gone.dispose();
+    }
+    const target = this.render(renderer, scene, sun, casters, ground, centre, half, size);
+    this.duskSource(target, renderer, scene, casters, ground, centre, half, size);
+    this.areas.push({ key, target, area: new THREE.Vector3(centre.x, centre.z, half) });
     this.reading = -2; // pick() again whichever area it was
     this.follow(this.lastEye);
   }
@@ -567,8 +631,10 @@ export class GroundShade {
     const centre = new THREE.Vector3((terrain.x0 + x1) / 2, 0, (terrain.z0 + z1) / 2);
     centre.y = ground + terrain.height(centre.x, centre.z);
     const half = Math.max(x1 - terrain.x0, z1 - terrain.z0) / 2 + 8;
+    if (this.all) this.dusk.forget(this.all);
     this.all?.dispose();
     this.all = this.render(renderer, scene, sun, casters, ground, centre, half, size);
+    this.duskSource(this.all, renderer, scene, casters, ground, centre, half, size);
     this.uniforms.groundAreaAll.value.set(centre.x, centre.z, half);
     this.pick();
   }

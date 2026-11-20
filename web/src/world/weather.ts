@@ -7,7 +7,7 @@ import { bakeMood } from './bakedLight';
 import type { World } from './collision';
 import { CoverMap, type CoverCrown } from './coverMap';
 import { environment, loadSky, type SkyLook } from './environment';
-import { groundSkySun } from './groundShade';
+import { groundSkySun, groundSun } from './groundShade';
 import type { IndoorLight } from './indoorLight';
 import { moodShown } from './mood';
 import { setFigureSun } from './figureShadows';
@@ -265,6 +265,7 @@ export class Weather {
       this.noonDir.copy(d).normalize();
       const across = Math.hypot(d.x, d.z) || 1;
       this.duskDir.set((d.x / across) * Math.cos(DUSK_SUN), Math.sin(DUSK_SUN), (d.z / across) * Math.cos(DUSK_SUN));
+      groundSun.dusk.copy(this.duskDir); // the ground's dusk shadows are made for this sun (world/duskShade.ts)
     });
   }
 
@@ -422,6 +423,7 @@ export class Weather {
     if (!this.sky(LOOKS[pair.b].sky)) pair = { a: pair.a, b: pair.a, k: 0 };
     if (!this.sky(LOOKS[pair.a].sky)) pair = { a: this.shown.a, b: this.shown.a, k: 0 };
     this.shown = pair;
+    groundSun.soon = target.a === 'dusk' || target.b === 'dusk' || pair.b === 'dusk'; // the ground's dusk shadows made ahead
     // Dusk darkens through its time on Auto (blending in, it starts golden); picked by hand it holds.
     const depth = c && !this.fade ? (c.mood === 'dusk' ? c.progress : 0) : DUSK_HELD;
     blendLook(LOOKS.dusk, DUSK[0], DUSK[1], depth * depth * (3 - 2 * depth));
@@ -515,6 +517,7 @@ export class Weather {
       this.sunDir.copy(this.noonDir).lerp(this.duskDir, l.sunLow).normalize();
       this.sun.position.copy(this.sun.target.position).addScaledVector(this.sunDir, 60);
     }
+    groundSun.low = l.sunLow; // the ground's baked shadows from noon's to dusk's as far (world/groundShade.ts)
     // The light on open ground (outside: the hemisphere at 0.9 of its strength, the sky photo at 0.9 times `fill`; world/indoorLight.ts).
     const lum = (c: THREE.Color) => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
     const fill = 0.9 * l.hemi * lum(l.hemiSky) + 0.9 * Math.PI * light * l.fill;
