@@ -29,7 +29,7 @@ const VERTEX = /* glsl */ `
 attribute vec3 iPos;
 attribute vec4 iSize;   // width, height, turn, kind (0 the ball, 1 the wisp)
 attribute vec4 iColor;  // tint (how dark the mist is), alpha
-attribute vec4 iMisc;   // frame, the heart's light on it, -, -
+attribute vec4 iMisc;   // frame, the heart's light on it, thickness, firmness of its edge
 uniform vec4 uCore;     // the core's middle (in the group) and how far round it no sprite is drawn
 uniform vec3 uHeart;    // the heart's middle (in the group)
 uniform vec3 uInner;    // the heart's light: colour times strength
@@ -41,6 +41,7 @@ varying vec2 vQ;
 varying float vMix;
 varying float vAlpha;
 varying float vThick;
+varying float vFirm;
 varying vec3 vHole;
 varying vec3 vC0;
 varying vec3 vC1;
@@ -101,6 +102,7 @@ void main() {
   // Close to the eye a sprite thins away, so its flat shape never shows.
   vAlpha = iColor.a * smoothstep(0.6, 2.6, -mv.z);
   vThick = iMisc.z;
+  vFirm = iMisc.w;
 
   spiritRight = vec3(cs, sn, 0.0);
   spiritUp = vec3(-sn, cs, 0.0);
@@ -135,11 +137,13 @@ void main() {
 const FRAGMENT = /* glsl */ `
 uniform sampler2D uA;
 uniform sampler2D uB;
+uniform vec3 uInner;
 varying vec4 vUv;
 varying vec2 vQ;
 varying float vMix;
 varying float vAlpha;
 varying float vThick;
+varying float vFirm;
 varying vec3 vHole;
 varying vec3 vC0;
 varying vec3 vC1;
@@ -150,22 +154,34 @@ varying vec3 vC5;
 varying vec3 vCi;
 #include <fog_pars_fragment>
 void main() {
-  // Open, the heart shows through a soft hole in the mist in front of it.
-  float hole = vHole.z * (1.0 - smoothstep(0.55, 1.25, length(vHole.xy)));
-  vec4 a = texture2D(uA, vUv.xy);
-  vec4 b = texture2D(uB, vUv.xy);
+  // Open, the heart shows through a soft hole in the mist in front of it; the mist round the hole lit by it.
+  // A frame's edge never shows, even where the mist reaches it: a round mask, taken off what it covers before that is
+  // thickened (thickened first, a faint fringe at the frame's edge grew into a straight cut there). Its corners,
+  // outside the mask, are not drawn at all.
+  float edge = smoothstep(0.56, 0.3, length(vQ));
+  if (edge <= 0.0) discard;
+  float hr = length(vHole.xy);
+  float hole = vHole.z * (1.0 - smoothstep(0.55, 1.25, hr));
+  float rd = (hr - 1.05) * 3.3;
+  float rim = vHole.z * max(1.0 - rd * rd, 0.0);
+  // Read a size softer than the distance asks (bias 1): the compressed maps' blocks never show where it is thickened.
+  vec4 a = texture2D(uA, vUv.xy, 1.0);
+  vec4 b = texture2D(uB, vUv.xy, 1.0);
   #ifdef SPIRIT_BLEND
-    a = mix(a, texture2D(uA, vUv.zw), vMix);
-    b = mix(b, texture2D(uB, vUv.zw), vMix);
+    a = mix(a, texture2D(uA, vUv.zw, 1.0), vMix);
+    b = mix(b, texture2D(uB, vUv.zw, 1.0), vMix);
   #endif
-  // A frame's edge never shows, even where the mist reaches it.
-  float edge = smoothstep(0.5, 0.4, max(abs(vQ.x), abs(vQ.y)));
   float inner = max(b.a * 2.0 - 1.0, 0.0); // stored as 0.5 + 0.5 * value (tools/brook_spirit_mist.py)
   vec3 col = a.r * vC0 + a.g * vC1 + a.b * vC2 + b.r * vC3 + b.g * vC4 + b.b * vC5 + inner * vCi;
-  // Thicker mist (the cloud's middle): as if several frames lay one behind the other.
-  float cover = 1.0 - pow(1.0 - min(a.a, 0.999), vThick);
+  // Thicker mist (the cloud's middle): as if several frames lay one behind the other. The faintest fringe (where
+  // the compressed map is noisy) is left out of it.
+  float aa = max(a.a - 0.03, 0.0) * edge;
+  float cover = 1.0 - pow(1.0 - min(aa, 0.999), vThick);
+  // A firm edge (a storm cloud's billows, not a soft smudge): what it covers pushed towards all of it.
+  cover = mix(cover, smoothstep(0.12, 0.6, cover), vFirm);
   col *= cover / max(a.a, 1e-3);
-  float keep = vAlpha * edge * (1.0 - 0.95 * hole);
+  col += uInner * rim * cover * 0.75;
+  float keep = vAlpha * (1.0 - 0.95 * hole);
   float alpha = cover * keep;
   col *= keep;
   #ifdef USE_FOG
@@ -215,8 +231,8 @@ export class MistPool {
         uInner: shared.uInner,
         uHole: shared.uHole,
         // The sun far over the sky: a lit side and a dark side, as a storm cloud has.
-        uSun: { value: 0.5 },
-        uSky: { value: 0.22 },
+        uSun: { value: 0.65 },
+        uSky: { value: 0.12 },
       },
       vertexShader: VERTEX,
       fragmentShader: FRAGMENT,
@@ -262,13 +278,16 @@ export class MistPool {
     this.count = 0;
   }
 
-  /** One sprite: where (in the group), its size, turn, the ball (0) or the wisp (1), its frame, tint and alpha, and how much the heart lights it. */
-  put(p: THREE.Vector3, sx: number, sy: number, rot: number, kind: number, frame: number, tint: THREE.Color, alpha: number, inner: number, thick = 1): void {
+  /**
+   * One sprite: where (in the group), its size, turn, the ball (0) or the wisp (1), its frame, tint and alpha, how much
+   * the heart lights it, how thick it is, and how firm its edge (0 soft as the flipbook's, 1 a billow's).
+   */
+  put(p: THREE.Vector3, sx: number, sy: number, rot: number, kind: number, frame: number, tint: THREE.Color, alpha: number, inner: number, thick = 1, firm = 0): void {
     const i = this.count++;
     this.iPos.setXYZ(i, p.x, p.y, p.z);
     this.iSize.setXYZW(i, sx, sy, rot, kind);
     this.iColor.setXYZW(i, tint.r, tint.g, tint.b, alpha);
-    this.iMisc.setXYZW(i, frame, inner, Math.max(1, thick), 0);
+    this.iMisc.setXYZW(i, frame, inner, Math.max(1, thick), firm);
   }
 
   end(): void {

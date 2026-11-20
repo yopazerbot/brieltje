@@ -40,6 +40,9 @@ import { PARTICLE, particleSheet } from './sprites';
  *   long wisps hanging between the tendrils that trail behind as it moves, and a veil in front of the heart that
  *   parts when it opens (40 over the body on Medium and up, 16 on Low). The solid parts take a haze of the cloud they
  *   lie in, so they go softly into it. On Low (and phones) also a single dark shell with moving bumps.
+ * - Open, the lobes in front of the heart roll aside like a curtain, the gap's rim lit by it, and the lantern swells
+ *   and burns through its own halo (by day most); on Medium and up soft rays stream out of the gap (sprites in the
+ *   glow's draw). The cloud is shaded by where each lobe lies towards the sun: a lit side and a near-black one.
  * - Light: drifting will-o'-the-wisp lights and a halo round the heart in a second, additive draw; the heart, the
  *   nodes under the tendrils and the hollow behind the opening glow (the game's bloom picks them up, Medium and up;
  *   every value stays far under the half floats' 65504). One small point light on Medium and up on a graphics card
@@ -98,9 +101,14 @@ const COLD = new THREE.Color('#c9ffe2');
 const AMBER = new THREE.Color('#ffa63a');
 /** The mist's own darkness: near black at the heart of the cloud, charcoal lobes, blue-grey torn edges (albedo). */
 const MIST_CORE = new THREE.Color(0.03, 0.032, 0.036);
-const MIST_DENSE = new THREE.Color(0.05, 0.053, 0.058);
-const MIST_THIN = new THREE.Color(0.1, 0.106, 0.115);
-const MIST_LOW = new THREE.Color('#2c343b');
+const MIST_DENSE = new THREE.Color(0.038, 0.04, 0.044);
+const MIST_THIN = new THREE.Color(0.085, 0.09, 0.098);
+const MIST_LOW = new THREE.Color('#1d2328');
+/** The rays of the open heart through the gap in its mist (Medium and up), and how far they reach (m). */
+const RAYS = 9;
+const RAY_LEN = 2.6;
+/** How much thicker its tendrils are drawn than modelled (near, and at 30 m and beyond): their silhouette carries. */
+const THICK = { near: 1.22, far: 1.55 };
 
 /**
  * Whether its point light suits this graphics chip: a graphics card, not an integrated chip, where it costs about
@@ -337,8 +345,9 @@ varying vec3 vO;
 void main() {
   float f = abs(dot(normalize(vN), vV));
   float front = smoothstep(0.55, 0.9, vO.z);
-  float a = uAlpha * smoothstep(0.05, 1.0, f) * (1.0 - uOpen * front);
-  vec3 c = uMist * (0.7 + 0.5 * vO.y) + uLight * front * (0.04 + 0.12 * uOpen);
+  // Dense to near its edge (a thin shell read as smoke on Low), lit from above, dark beneath.
+  float a = uAlpha * smoothstep(0.0, 0.45, f) * (1.0 - uOpen * front);
+  vec3 c = uMist * (0.45 + 0.9 * max(vO.y, 0.0)) + uLight * front * (0.04 + 0.12 * uOpen);
   #ifdef USE_FOG
     #ifdef FOG_EXP2
       c = mix(c, fogColor, 1.0 - exp(-fogDensity * fogDensity * vFogDepth * vFogDepth));
@@ -524,6 +533,10 @@ export class BrookSpirit {
   private time = 0;
   private phase = 0;
   private pulse = 0;
+  /** The heart's double beat this frame (1 at rest, up to about 1.35 on the beat) */
+  private beat = 1;
+  /** How far the eye is from it (m), this frame */
+  private camDist = 0;
   private look: SpiritLook;
   private far = false;
   private maps: SpiritMaps;
@@ -592,6 +605,8 @@ export class BrookSpirit {
     this.heart = new THREE.Mesh(model.near.heart, heartMaterial(this.uniforms, this.heartU, this.maps.body));
     this.core = new THREE.Mesh(model.near.core, bodyMaterial('core', this.uniforms, this.maps.body));
     this.tendrils = new THREE.Mesh(model.near.tendrils, bodyMaterial('tendrils', this.uniforms, this.maps.tendril));
+    // Darker than their maps: their pale undersides, curled up, read as rows of white teeth by day.
+    (this.tendrils.material as THREE.MeshStandardMaterial).color.setScalar(0.62);
     this.body.add(this.heart, this.core, this.tendrils);
 
     // Low's body of mist: a dark shell (drawn before the sprites).
@@ -603,7 +618,7 @@ export class BrookSpirit {
     this.body.add(this.veil);
 
     this.mist = new MistPool(48, this.maps.mist, this.shared);
-    this.glow = new GlowPool(24, particleSheet(), this.shared);
+    this.glow = new GlowPool(16 + RAYS + 8, particleSheet(), this.shared);
     this.group.add(this.mist.mesh, this.glow.mesh);
 
     // The ring: leaves (oak, beech, birch, alder) and drops of water.
@@ -703,6 +718,11 @@ export class BrookSpirit {
     if (maps === this.maps) this.useMaps(maps, look);
     else void maps.ready.then(() => this.look === look && this.useMaps(maps, look));
     this.mist.setMaps(this.maps.mist, look === 'high');
+    // Low and phones (no bloom, no smoothing of edges): the wet sheen and the relief softer, so its edges never sparkle.
+    for (const m of [this.tendrils.material, this.core.material] as THREE.MeshStandardMaterial[]) {
+      m.envMapIntensity = look === 'low' ? 0.2 : 0.55;
+      m.normalScale.setScalar(look === 'low' ? 0.55 : 1);
+    }
     this.far = !this.far; // re-pick the model at the next update
   }
 
@@ -840,11 +860,14 @@ export class BrookSpirit {
     // A slow double beat, like a heart's.
     const beatT = (this.time * (0.75 + 0.5 * s.anger)) % 1;
     const beat = 1 + 0.35 * Math.exp(-(((beatT - 0.05) / 0.05) ** 2)) + 0.22 * Math.exp(-(((beatT - 0.24) / 0.06) ** 2));
-    this.heartU.uHeart.value = (1.4 + 4.2 * s.open + 5 * hurt) * (1 - 0.4 * night) * flicker * beat * gone;
-    // The nodes bright enough to bloom by day too (the eye's exposure is low in the sun), a little softer at night.
-    this.uniforms.uGlow.value = (1.1 + 1.4 * s.anger + 1.2 * s.reach + 3 * this.rear + 3 * hurt) * (3.2 - 2.1 * night) * (0.85 + 0.15 * beat);
+    this.beat = beat;
+    // Open by day the lantern burns through its own halo (the eye's exposure is low in the sun, and the bloom faint).
+    this.heartU.uHeart.value = (1.4 + 4.2 * s.open + 7 * day * s.open + 5 * hurt) * (1 - 0.4 * night) * flicker * beat * gone;
+    // The nodes bright enough to show by day too (the eye's exposure is low in the sun), a little softer at night.
+    this.uniforms.uGlow.value = (1.1 + 1.4 * s.anger + 1.2 * s.reach + 3 * this.rear + 3 * hurt) * (4.6 - 3.5 * night) * (0.85 + 0.15 * beat);
     this.uniforms.uInner.value = (0.25 + 1.4 * s.open) * flicker * beat;
-    this.uniforms.uRim.value = 0.25 + 0.25 * night;
+    // The sky's rim on the wet skin: faint by day (it read as white wire), more at night; fainter still on Low.
+    this.uniforms.uRim.value = (0.1 + 0.35 * night) * (this.look === 'low' ? 0.5 : 1);
     this.uniforms.uFade.value = fade;
     this.uniforms.uPulse.value = this.pulse;
     this.uniforms.uPhase.value = this.phase;
@@ -871,11 +894,13 @@ export class BrookSpirit {
     );
     this.body.scale.set(breath * (1 + 0.08 * hurt), breath * (1 - 0.1 * hurt), breath);
     this.group.updateMatrixWorld(true);
-    this.heart.scale.setScalar((0.9 + 0.12 * s.open + 0.15 * hurt) * (1 - 0.5 * smooth(fade, 0.5, 1)) * (0.97 + 0.03 * beat));
+    // Open, the lantern swells (it is the one thing to aim at), beating.
+    this.heart.scale.setScalar((0.9 + 0.3 * s.open + 0.15 * hurt) * (1 - 0.5 * smooth(fade, 0.5, 1)) * (0.97 + 0.03 * beat + 0.04 * s.open * (beat - 1)));
 
     // Near or far model.
     const camPos = camera.getWorldPosition(this.tmp2);
     const dist = camPos.distanceTo(pos);
+    this.camDist = dist;
     const far = dist > FAR[this.look];
     if (far !== this.far) {
       this.far = far;
@@ -913,7 +938,7 @@ export class BrookSpirit {
       this.patchU.uDark.value = (0.55 - 0.025 * above) * (1 - fade) * (0.5 + 0.5 * day);
     }
     this.veilU.uOpen.value = s.open;
-    this.veilU.uAlpha.value = 0.88 * (1 - fade);
+    this.veilU.uAlpha.value = 0.96 * (1 - fade);
     this.veilU.uMist.value.copy(MIST_LOW).multiplyScalar(0.35 + 0.65 * day + 0.6 * night * 0.3);
     this.group.visible = fade < 1;
   }
@@ -926,6 +951,8 @@ export class BrookSpirit {
     const local = this.tmp2;
     if (s.reach > 0.001) this.body.worldToLocal(local.copy(this.reachAt));
     const waveA = (0.16 + 0.1 * s.anger) * (1 - 0.6 * s.shield);
+    // Thicker the further off it is seen, so the tendrils' outline still carries at 25 m.
+    const thickK = THREE.MathUtils.lerp(THICK.near, THICK.far, smooth(this.camDist, 12, 30));
     this.model.arms.forEach((a, i) => {
       const b = this.bends[i];
       const front = i < 2;
@@ -996,7 +1023,7 @@ export class BrookSpirit {
       if (b.rippleAt > 1.3) b.ripple = 0;
       b.a1 += 0.6 * fade;
       b.wa *= 1 - 0.5 * fade;
-      b.thick = 1 / Math.sqrt(b.stretch);
+      b.thick = thickK / Math.sqrt(b.stretch);
       this.uniforms.uBendA.value[i].set(b.a0, b.a1, b.curl, b.wa);
       this.uniforms.uBendB.value[i].set(b.b0, b.b1, b.wb, b.phase);
       this.uniforms.uArmX.value[i].set(b.stretch, b.thick, b.rippleAt, b.ripple * (i % 2 ? 1 : 0.85));
@@ -1007,6 +1034,7 @@ export class BrookSpirit {
   private drawMist(dt: number, camera: THREE.Camera, s: BrookSpirit['shown'], fade: number, hurt: number, night: number): void {
     const look = this.look;
     const n = COUNTS[look];
+    const day = 1 - night;
     const keep: Record<Layer, number> = { dense: n.dense, wisp: n.wisp, trail: n.trail, veil: n.veil, mote: n.mote, halo: 1 };
     const seen: Record<Layer, number> = { dense: 0, wisp: 0, trail: 0, veil: 0, mote: 0, halo: 0 };
     const groupInv = this.groupInv.copy(this.group.matrixWorld).invert();
@@ -1014,7 +1042,7 @@ export class BrookSpirit {
     const p = new THREE.Vector3();
     const camLocal = this.group.worldToLocal(camera.getWorldPosition(new THREE.Vector3()));
     const facing = clamp01(camLocal.clone().normalize().z * 1.4 + 0.2); // the halo shows from in front
-    this.shared.uHole.value.set(s.open * (1 - fade), 0.95);
+    this.shared.uHole.value.set(s.open * (1 - fade), 1.2);
     this.mist.begin();
     this.glow.begin();
     this.order.length = 0;
@@ -1024,13 +1052,14 @@ export class BrookSpirit {
       active.push(sp);
     }
     const spread = 1 + 2.4 * fade * fade + 0.25 * hurt + 0.1 * this.rear;
+    const sunLocal = this.sunWay(this.sunDir).transformDirection(groupInv);
     for (const sp of active) {
       const t = this.time;
       if (sp.layer === 'halo') p.set(0, 0, 0.9);
       else if (sp.layer === 'veil') {
-        // In front of the heart; parts to either side as it opens.
+        // In front of the heart; parts to either side as it opens, a curtain drawn back.
         const side = Math.sign(sp.dir.x);
-        p.set(side * (0.3 + 1.4 * s.open), sp.dir.y * (0.6 + 0.5 * s.open), 0.95 - 0.35 * s.open);
+        p.set(side * (0.3 + 1.8 * s.open), sp.dir.y * (0.6 + 0.4 * s.open), 0.95 - 0.3 * s.open);
       } else if (sp.layer === 'trail') {
         // Hanging under the body between the tendrils, turning slowly round, swaying.
         p.copy(sp.dir).applyAxisAngle(this.scl.set(0, 1, 0), t * sp.speed).multiplyScalar(sp.radius * (1 + 0.15 * Math.sin(t * 0.5 + sp.seed)));
@@ -1041,6 +1070,13 @@ export class BrookSpirit {
         p.multiplyScalar(r).multiply(this.scl.set(1.25, sp.layer === 'wisp' ? 0.85 : 0.72, 1.1));
         if (sp.layer === 'wisp') p.y -= 0.2; // its torn edge hangs a little low, among the tendrils
         if (sp.layer === 'mote') p.y += 0.35 * Math.sin(t * 1.3 + sp.seed);
+        // Open: the lobes in front of the heart roll aside to either side of it (they trail into place, so the
+        // mist is seen parting), leaving a gap round it.
+        if (s.open > 0.001 && sp.layer !== 'mote') {
+          const part = s.open * smooth(p.z / Math.max(0.3, p.length()), -0.1, 0.6);
+          p.x += (p.x >= 0 ? 1 : -1) * part * (1.3 - 0.4 * Math.min(1, Math.abs(p.x)));
+          p.z -= part * 0.35;
+        }
       }
       // Shielding: the torn edges and the trails are caught up in the storm, racing round just inside the shell.
       if (s.shield > 0.001 && (sp.layer === 'wisp' || sp.layer === 'trail')) {
@@ -1075,10 +1111,12 @@ export class BrookSpirit {
       const local = this.tmp.copy(sp.at).applyMatrix4(groupInv);
       const fadeA = 1 - fade;
       if (sp.layer === 'halo') {
-        // A light in it even closed (through the lips), much brighter open.
+        // A light in it even closed (through the lips), much brighter and larger open, by day most (the sun washes
+        // additive light out) and from afar (up close it would fill the view), swelling on its beat.
         const a = (0.3 + 0.7 * s.open) * Math.max(facing, 0.35) * (1 - fade) * (1 - 0.7 * s.shield);
-        this.col.copy(this.lightColor).multiplyScalar(0.7 + 0.3 * night + hurt);
-        this.glow.put(local, sp.size * (0.6 + 0.6 * s.open), sp.size * (0.6 + 0.6 * s.open), 0, sp.cell, this.col, a);
+        this.col.copy(this.lightColor).multiplyScalar(0.7 + 0.3 * night + hurt + (0.3 + 1.1 * smooth(this.camDist, 7, 20)) * day * s.open);
+        const hs = sp.size * (0.6 + (0.6 + 0.6 * day) * s.open) * (1 + 0.12 * s.open * (this.beat - 1));
+        this.glow.put(local, hs, hs, 0, sp.cell, this.col, a);
       } else if (sp.layer === 'mote') {
         const tw = 0.6 + 0.4 * Math.sin(this.time * (2 + (sp.seed % 3)) + sp.seed);
         this.col.copy(this.lightColor).multiplyScalar((1.6 + 2 * night) * tw);
@@ -1089,6 +1127,12 @@ export class BrookSpirit {
         // The heart of the cloud near black, the lobes round it charcoal, the torn edges and trails blue-grey.
         this.col.copy(sp.layer === 'dense' && sp.radius < 1.6 ? MIST_CORE : dense ? MIST_DENSE : MIST_THIN);
         if (fade > 0) this.col.lerp(MIST_THIN, fade);
+        // The whole cloud lit from the sun's side and in shadow on the other (each sprite only lights itself): its
+        // lobes towards the sun lighter, those away from it near black, as a storm cloud's.
+        const rel = this.tmp2.copy(local).sub(this.body.position);
+        const toSun = rel.dot(sunLocal) / Math.max(0.4, rel.length());
+        // And its middle darker than its rim: dense and near black inside.
+        this.col.multiplyScalar((0.3 + 1.7 * smooth(toSun, -0.2, 0.9) * (0.4 + 0.6 * day)) * (0.5 + 0.5 * smooth(rel.length(), 0.9, 2.3)));
         let a = sp.alpha * fadeA;
         const size = sp.size * (1 + 0.6 * fade);
         // Open, the mist clears from in front of the heart (towards its front, and wherever a lobe lies over it as
@@ -1099,18 +1143,69 @@ export class BrookSpirit {
           const ahead = local.z / Math.max(0.3, local.length());
           clear = s.open * smooth(ahead, 0.2, 0.7) * 0.6;
         }
-        if (sp.layer === 'veil') a *= 1 - 0.85 * s.open;
+        // The curtain's two halves stay, drawn back to the sides of the gap (lit at their edge by the heart).
+        if (sp.layer === 'veil') a *= 1 - 0.45 * s.open;
         a *= 1 - clear;
         const wisp = sp.layer === 'trail';
         const frame = (sp.frame + this.time * play * sp.rate) % (wisp ? WISP_FRAMES : BALL_FRAMES);
         const inner = sp.layer === 'veil' ? 1.4 : sp.layer === 'dense' ? 1 : wisp ? 0.35 : 0.6;
-        // The middle of the cloud thicker than one frame of mist: it reads as one dark body, not loose puffs.
-        const thick = sp.layer === 'dense' ? 4.5 - (sp.radius - 0.55) * 1.3 : sp.layer === 'veil' ? 3 : 1;
-        this.mist.put(local, size, size * sp.stretch * (wisp ? 2 : 1), sp.rot, wisp ? 1 : 0, frame, this.col, a, inner, thick * (1 - 0.6 * fade) * (1 - 0.7 * clear));
+        // The middle of the cloud thicker than one frame of mist: it reads as one dark body, not loose puffs; its
+        // lobes with a billow's firm edge, the torn ones and the trails softer.
+        const thick = sp.layer === 'dense' ? 5.5 - (sp.radius - 0.55) * 1.6 : sp.layer === 'veil' ? 3 : 1.4;
+        const firm = (sp.layer === 'dense' ? 0.5 : sp.layer === 'veil' ? 0.6 : wisp ? 0.15 : 0.35) * (1 - fade);
+        this.mist.put(local, size, size * sp.stretch * (wisp ? 2 : 1), sp.rot, wisp ? 1 : 0, frame, this.col, a, inner, thick * (1 - 0.6 * fade) * (1 - 0.7 * clear), firm);
       }
     }
+    this.drawRays(camera, s, fade, hurt, day, facing);
     this.mist.end();
     this.glow.end();
+  }
+
+  /**
+   * The open heart's light through the gap in its mist: soft streaks raying out from it towards the eye, turning slowly
+   * and swelling on its beat, as light through a break in a cloud (Medium and up; a few sprites in the glow's draw).
+   */
+  private drawRays(camera: THREE.Camera, s: BrookSpirit['shown'], fade: number, hurt: number, day: number, facing: number): void {
+    if (this.look !== 'high') return;
+    const k = s.open * (1 - s.shield) * (1 - fade) * smooth(facing, 0.2, 0.8) * (0.45 + 0.55 * smooth(this.camDist, 7, 18));
+    if (k < 0.01) return;
+    const right = this.rayRight.set(1, 0, 0).transformDirection(camera.matrixWorld).transformDirection(this.groupInv);
+    const up = this.rayUp.set(0, 1, 0).transformDirection(camera.matrixWorld).transformDirection(this.groupInv);
+    const h = this.shared.uHeart.value;
+    const t = this.time;
+    const swell = 0.85 + 0.45 * (this.beat - 1);
+    this.col.copy(this.lightColor).multiplyScalar(0.45 + 1.0 * day + hurt);
+    for (let i = 0; i < RAYS; i++) {
+      const r = Math.sin(i * 12.9898 + 4.1) * 43758.5453;
+      const rnd = r - Math.floor(r);
+      const ang = (i / RAYS) * Math.PI * 2 + 0.4 * rnd + 0.05 * t + 0.1 * Math.sin(t * 0.7 + i * 2.3);
+      const len = RAY_LEN * (0.6 + 0.6 * rnd) * swell * (0.5 + 0.5 * s.open);
+      const off = 0.4 + len * 0.5;
+      const p = this.tmp.copy(h).addScaledVector(right, Math.cos(ang) * off).addScaledVector(up, Math.sin(ang) * off);
+      const flicker = 0.7 + 0.3 * Math.sin(t * 1.9 + i * 1.7);
+      this.glow.put(p, 0.3 + 0.2 * rnd, len, ang - Math.PI / 2, PARTICLE.glow, this.col, 0.4 * k * flicker);
+    }
+  }
+
+  private rayRight = new THREE.Vector3();
+  private rayUp = new THREE.Vector3();
+  private sunDir = new THREE.Vector3();
+  private sun: THREE.DirectionalLight | null | undefined;
+
+  /** The way to the scene's sun (or moon) in the world: its first directional light, found once; straight up without. */
+  private sunWay(out: THREE.Vector3): THREE.Vector3 {
+    if (this.sun === undefined && this.group.parent) {
+      let root: THREE.Object3D = this.group;
+      while (root.parent) root = root.parent;
+      this.sun = null;
+      root.traverse((o) => {
+        if (!this.sun && (o as THREE.DirectionalLight).isDirectionalLight) this.sun = o as THREE.DirectionalLight;
+      });
+    }
+    const sun = this.sun;
+    if (!sun) return out.set(0, 1, 0);
+    out.setFromMatrixPosition(sun.matrixWorld).sub(this.tmp2.setFromMatrixPosition(sun.target.matrixWorld));
+    return out.lengthSq() > 1e-8 ? out.normalize() : out.set(0, 1, 0);
   }
 
   /**

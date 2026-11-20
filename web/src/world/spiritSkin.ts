@@ -294,10 +294,11 @@ const BODY_GLOW = /* glsl */ `
   float fres = pow(1.0 - NdV, 5.0);
   vec3 film = 0.9 + 0.1 * cos(6.2832 * (NdV * 1.2 + vec3(0.55, 0.35, 0.15)));
   totalEmissiveRadiance += vec3(dot(spiritSky, vec3(0.3, 0.59, 0.11))) * film * fres * uRim * (1.0 - roughnessFactor);
-  // The sun (or moon) through the thin parts when it is behind them.
+  // The sun (or moon) through the thin parts when it is right behind them: a faint warm glow in the frill only (seen
+  // from below against the sun it lit the frills as a row of white teeth, a sparkle on Low).
   #if NUM_DIR_LIGHTS > 0
-    float back = pow(clamp(dot(-spiritV, directionalLights[0].direction), 0.0, 1.0), 4.0);
-    totalEmissiveRadiance += directionalLights[0].color * diffuseColor.rgb * back * spiritThin * spiritThin * 0.6;
+    float back = pow(clamp(dot(-spiritV, directionalLights[0].direction), 0.0, 1.0), 8.0);
+    totalEmissiveRadiance += directionalLights[0].color * diffuseColor.rgb * back * spiritThin * spiritThin * 0.12;
   #endif
   totalEmissiveRadiance += uLight * uHurt * (0.15 + 0.5 * spiritThin) * 0.6;
   if (uFade > 0.0) totalEmissiveRadiance += uLight * 3.0 * smoothstep(-0.1, 0.0, spiritCut);
