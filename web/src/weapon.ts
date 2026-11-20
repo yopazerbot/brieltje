@@ -35,7 +35,7 @@ import { WIND_PUSH, windAt } from './world/wind';
  * a paintball you see fly (effects.ts); the hits are the same.
  */
 
-export type WeaponId = 'pistol' | 'rifle' | 'shotgun' | 'sniper' | 'bazooka' | 'launcher';
+export type WeaponId = 'pistol' | 'rifle' | 'shotgun' | 'sniper' | 'bazooka' | 'launcher' | 'laser';
 interface Spec {
   name: string;
   slot: number;
@@ -62,18 +62,24 @@ interface Spec {
    * `flight` s or `range` m; `rounds` grenades come with the launcher, and it holds one at a time
    */
   lob?: { speed: number; lift: number; rounds: number; flight: number; range: number };
+  /**
+   * The laser rifle: a beam instead of a bullet, at once along the view as far as `range` m, no drop, through
+   * window glass; each shot heats the gun by `heat` (of 1), and it cools by `cool` a second once `wait` s have passed
+   * since the last; at full heat it vents for `vent` s and won't fire. Its magazine is the energy cell (`mag` shots)
+   */
+  beam?: { range: number; heat: number; cool: number; wait: number; vent: number };
 }
 export const SPECS = WEAPONS as Record<WeaponId, Spec>;
 export const WEAPON_IDS = Object.keys(SPECS) as WeaponId[];
 
 /** How fast each gun comes up to the eye (1/s): the pistol at once, the long and heavy ones slower. */
-const AIM_SPEED: Record<WeaponId, number> = { pistol: 20, rifle: 14, shotgun: 12, sniper: 9, bazooka: 8, launcher: 11 };
+const AIM_SPEED: Record<WeaponId, number> = { pistol: 20, rifle: 14, shotgun: 12, sniper: 9, bazooka: 8, launcher: 11, laser: 13 };
 const NO_DRIFT = new THREE.Vector2();
 /**
  * How fast you walk with each gun, of your free pace: the pistol hardly counts, the long and heavy ones
  * do. Aiming slows you a quarter more (carrySpeed).
  */
-const WEIGHT: Record<WeaponId, number> = { pistol: 1, rifle: 0.94, shotgun: 0.93, sniper: 0.87, bazooka: 0.8, launcher: 0.9 };
+const WEIGHT: Record<WeaponId, number> = { pistol: 1, rifle: 0.94, shotgun: 0.93, sniper: 0.87, bazooka: 0.8, launcher: 0.9, laser: 0.92 };
 /**
  * The sniper rifle's bullet, m/s. Slower than a real one (about 800) so that its flight shows at the
  * distances this village has: 100 m takes a quarter of a second and drops 34 cm, 190 m takes half a
@@ -90,7 +96,7 @@ const BULLET_LOOK = 20;
 const COVER: Record<string, number> = { hedge: 1.6, nb_hedge: 1.6, oak: 0.2, walnut: 0.2, fence: 0.2 };
 
 /** Muzzle flash length per gun, in metres. */
-const FLASH: Record<WeaponId, number> = { pistol: 0.16, rifle: 0.26, shotgun: 0.34, sniper: 0.32, bazooka: 0.45, launcher: 0.2 };
+const FLASH: Record<WeaponId, number> = { pistol: 0.16, rifle: 0.26, shotgun: 0.34, sniper: 0.32, bazooka: 0.45, launcher: 0.2, laser: 0.1 }; // the laser's never shows: it has no flame (its glow is the beam's, effects.ts)
 
 /**
  * Paintball's toy look: each gun in bright colours instead of black metal. Each of the models'
@@ -103,6 +109,8 @@ type Role = 'body' | 'trim' | 'deep' | 'lens';
 const ROLE: Record<string, Role> = {
   Polymer: 'body', Wood: 'body', Olive: 'body', Warhead: 'body',
   Steel: 'trim', Brass: 'trim', Dark: 'deep', Grip: 'deep', Glass: 'lens',
+  // The laser rifle's own (lasergun.glb): its lower and stock the paint, its upper and shroud the trim.
+  LaserPolymer: 'body', LaserAnodised: 'trim', LaserFin: 'trim', LaserAccent: 'deep', LaserGlass: 'lens',
 };
 const TOY: Record<WeaponId, Record<Role, string>> = {
   pistol: { body: GUN_PAINT.pistol, trim: '#ffd23f', deep: '#2f6fe0', lens: '#8fe9ff' },
@@ -111,9 +119,10 @@ const TOY: Record<WeaponId, Record<Role, string>> = {
   sniper: { body: GUN_PAINT.sniper, trim: '#f4f4ee', deep: '#ffd23f', lens: '#8fe9ff' },
   bazooka: { body: GUN_PAINT.bazooka, trim: '#ffd23f', deep: '#9d5cff', lens: '#8fe9ff' },
   launcher: { body: GUN_PAINT.launcher, trim: '#9d5cff', deep: '#2f6fe0', lens: '#8fe9ff' },
+  laser: { body: '#f4f4ee', trim: '#2f8cff', deep: '#ffd23f', lens: '#8fe9ff' }, // the light tagger: white with a blue top, its light cyan
 };
 /** Each paint hopper's colour: one that stands out on its gun (a lighter one turns skin-coloured in the sun). */
-const HOPPER: Record<WeaponId, string> = { pistol: '#2f8cff', rifle: '#9d5cff', shotgun: '#ff7a1a', sniper: '#ffd23f', bazooka: '#ffd23f', launcher: '#ff4fa3' }; // the launcher's: its paint balloons
+const HOPPER: Record<WeaponId, string> = { pistol: '#2f8cff', rifle: '#9d5cff', shotgun: '#ff7a1a', sniper: '#ffd23f', bazooka: '#ffd23f', launcher: '#ff4fa3', laser: '#35e2ff' }; // the launcher's: its paint balloons; the light tagger has none
 /** The materials that change, with their toy colour and their own look (colour, metalness, roughness). */
 const toyParts: { m: THREE.MeshStandardMaterial; color: string; rough: number; real: [THREE.Color, number, number] }[] = [];
 /** The hoppers' and tanks' materials: shown in paintball only. */
@@ -162,7 +171,12 @@ const loadedGuns = new Map<WeaponId, LoadedGun>();
 const sleeves: THREE.MeshStandardMaterial[] = [];
 
 /** For the others' hands, the small accents take the colour of a material nearby: 3 or 4 draws per gun, as before. */
-const FOLD: Record<string, string> = { Dot: 'Steel', Brass: 'Steel', Glass: 'Dark', Lens: 'Dark', RedDot: 'Dark', Grip: 'Dark', Warhead: 'Olive' };
+const FOLD: Record<string, string> = {
+  Dot: 'Steel', Brass: 'Steel', Glass: 'Dark', Lens: 'Dark', RedDot: 'Dark', Grip: 'Dark', Warhead: 'Olive',
+  // The laser rifle's lit parts: in the others' hands a steady glow, the read-out and the fins as in yours at rest (theirs aren't yours to light).
+  LaserFin: 'Steel', LaserLens: 'Dark', LaserReticle: 'Dark', LaserGlass: 'Dark',
+  LaserBar0: 'LaserGlow', LaserBar1: 'LaserGlow', LaserBar2: 'LaserGlow', LaserBar3: 'LaserGlow', LaserBar4: 'LaserGlow',
+};
 
 /** The gun merged into one mesh per material (not the parts' moving): a few draws per player who holds it. */
 function liteGun(gun: THREE.Object3D, muzzle: THREE.Vector3): THREE.Group {
@@ -228,70 +242,83 @@ function gloveMaps(m: THREE.MeshStandardMaterial): void {
   m.roughness = 1;
 }
 
-/** The weapons' model: one file, a node per weapon (tools/weapons.py). */
-export const gunsReady: Promise<boolean> = new GLTFLoader().loadAsync('/models/weapons.glb').then(
-  (gltf) => {
+/**
+ * The weapons' model: one file, a node per weapon (tools/weapons.py); the laser rifle in a file of its own beside it
+ * (tools/lasergun.py), its nodes laid out the same way. Without its file the laser rifle stays a block gun.
+ */
+const gunLoader = new GLTFLoader();
+const laserFile = gunLoader.loadAsync('/models/lasergun.glb').then((g) => g, () => null);
+export const gunsReady: Promise<boolean> = gunLoader.loadAsync('/models/weapons.glb').then(
+  async (gltf) => {
     gltf.scene.updateMatrixWorld(true);
-    for (const w of WEAPON_IDS) {
-      const gun = gltf.scene.getObjectByName(w)!;
-      const hands = gun.getObjectByName(`${w}_hands`)!;
-      hands.removeFromParent();
-      gun.removeFromParent();
-      gun.getObjectByName(`${w}_kit`)?.traverse((o) => (o.userData.kit = true));
-      // Its own copy of each material, so each gun takes its own colours in paintball.
-      const own = new Map<THREE.Material, THREE.MeshStandardMaterial>();
-      gun.traverse((o) => {
-        o.userData.ignoreRay = true;
-        if (!(o instanceof THREE.Mesh)) return;
-        const from = o.material as THREE.MeshStandardMaterial;
-        let m = own.get(from);
-        if (!m) {
-          m = from.clone();
-          own.set(from, m);
-          if (o.userData.kit) {
-            if (m.name === 'Hopper') m.color.set(HOPPER[w]);
-            if (m.name === 'KitTrim') m.color.set(TOY[w].trim);
-            m.visible = paintball.on;
-            kitMats.push(m);
-          } else {
-            // The scope's lenses mirror the sky, as coated glass does (before `toy` notes the real look).
-            if (m.name === 'Glass') {
-              m.metalness = 1;
-              m.roughness = 0.04;
-              m.color.set('#4a6a7c');
-              m.envMapIntensity = 1.5;
-            }
-            gunSurface(m); // its finish, worn edges, darker seams, a fine grain (world/gunSurface.ts), before `toy` notes the real look
-            if (ROLE[m.name]) toy(m, w, ROLE[m.name]);
-            // The red-dot sight: a window you look through, and a dot that shows in any light.
-            if (m.name === 'Lens') m.depthWrite = false;
-            if (m.name === 'RedDot') m.emissiveIntensity = 3;
-          }
-        }
-        o.material = m;
-      });
-      hands.traverse((o) => {
-        o.userData.ignoreRay = true;
-        o.userData.hand = true;
-        const m = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
-        if (m?.name === 'Sleeve' && !sleeves.includes(m)) sleeves.push(m);
-        // Cloth and leather with their grain and the shade between the fingers; and your arm reaches back past the
-        // camera's near edge: drawn, not cut open (the surface brings that along; noNearCut for what has none).
-        if (m && !m.userData.dressed) {
-          m.userData.dressed = true;
-          if (m.name === 'Glove') gloveMaps(m);
-          if (!gunSurface(m)) noNearCut(m);
-        }
-      });
-      const muzzle = gun.getObjectByName(`${w}_muzzle`)!;
-      muzzle.name = 'muzzle';
-      const sight = gun.getObjectByName(`${w}_sight`)!.position.clone();
-      loadedGuns.set(w, { gun, hands, sight, lite: liteGun(gun, muzzle.position) });
+    for (const w of WEAPON_IDS) if (w !== 'laser') takeGun(gltf.scene, w);
+    const laser = await laserFile;
+    if (laser) {
+      laser.scene.updateMatrixWorld(true);
+      takeGun(laser.scene, 'laser');
     }
     return true;
   },
   () => false,
 );
+
+/** Gun `w` out of a loaded file: its own materials with their finish, its hands dressed, ready in loadedGuns. */
+function takeGun(scene: THREE.Object3D, w: WeaponId): void {
+  const gun = scene.getObjectByName(w)!;
+  const hands = gun.getObjectByName(`${w}_hands`)!;
+  hands.removeFromParent();
+  gun.removeFromParent();
+  gun.getObjectByName(`${w}_kit`)?.traverse((o) => (o.userData.kit = true));
+  // Its own copy of each material, so each gun takes its own colours in paintball.
+  const own = new Map<THREE.Material, THREE.MeshStandardMaterial>();
+  gun.traverse((o) => {
+    o.userData.ignoreRay = true;
+    if (!(o instanceof THREE.Mesh)) return;
+    const from = o.material as THREE.MeshStandardMaterial;
+    let m = own.get(from);
+    if (!m) {
+      m = from.clone();
+      own.set(from, m);
+      if (o.userData.kit) {
+        if (m.name === 'Hopper') m.color.set(HOPPER[w]);
+        if (m.name === 'KitTrim') m.color.set(TOY[w].trim);
+        m.visible = paintball.on;
+        kitMats.push(m);
+      } else {
+        // The scope's lenses mirror the sky, as coated glass does (before `toy` notes the real look).
+        if (m.name === 'Glass') {
+          m.metalness = 1;
+          m.roughness = 0.04;
+          m.color.set('#4a6a7c');
+          m.envMapIntensity = 1.5;
+        }
+        gunSurface(m); // its finish, worn edges, darker seams, a fine grain (world/gunSurface.ts), before `toy` notes the real look
+        if (ROLE[m.name]) toy(m, w, ROLE[m.name]);
+        // The red-dot sight: a window you look through, and a dot that shows in any light.
+        if (m.name === 'Lens' || m.name === 'LaserGlass') m.depthWrite = false; // and the laser's emitter glass: you see into it
+        if (m.name === 'RedDot' || m.name === 'LaserReticle') m.emissiveIntensity = 3;
+      }
+    }
+    o.material = m;
+  });
+  hands.traverse((o) => {
+    o.userData.ignoreRay = true;
+    o.userData.hand = true;
+    const m = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
+    if (m?.name === 'Sleeve' && !sleeves.includes(m)) sleeves.push(m);
+    // Cloth and leather with their grain and the shade between the fingers; and your arm reaches back past the
+    // camera's near edge: drawn, not cut open (the surface brings that along; noNearCut for what has none).
+    if (m && !m.userData.dressed) {
+      m.userData.dressed = true;
+      if (m.name === 'Glove') gloveMaps(m);
+      if (!gunSurface(m)) noNearCut(m);
+    }
+  });
+  const muzzle = gun.getObjectByName(`${w}_muzzle`)!;
+  muzzle.name = 'muzzle';
+  const sight = gun.getObjectByName(`${w}_sight`)!.position.clone();
+  loadedGuns.set(w, { gun, hands, sight, lite: liteGun(gun, muzzle.position) });
+}
 
 const skin =new THREE.MeshStandardMaterial({ color: '#c99a7b', roughness: 0.7 });
 const sleeve = new THREE.MeshStandardMaterial({ color: '#2d3436', roughness: 0.9 });
@@ -354,6 +381,8 @@ interface ViewModel {
   round?: THREE.Object3D;
   /** In paintball the grenade it loads is a paint balloon */
   balloon?: THREE.Object3D;
+  /** The laser rifle's lit parts (lasergun.glb): the read-out's five bars, the lens behind the emitter's glass, the shroud's fins */
+  lit?: { bars: THREE.MeshStandardMaterial[]; lens?: THREE.MeshStandardMaterial; fins?: THREE.MeshStandardMaterial };
   shell?: THREE.Object3D;
   handR?: THREE.Object3D;
   handL?: THREE.Object3D;
@@ -419,6 +448,15 @@ function buildViewModel(id: WeaponId): ViewModel {
     leftHand = new THREE.Vector3(0, -0.02, -0.3);
     hip = new THREE.Vector3(0.06, -0.068, -0.12);
     ads = new THREE.Vector3(0, -0.03, -0.1);
+  } else if (id === 'laser') {
+    // A receiver, a finned shroud and the emitter in front, the energy cell under it, a stock.
+    gun.add(box(0.034, 0.05, 0.42, metal, 0, 0.03, -0.17), grip, box(0.05, 0.08, 0.12, metal, 0, 0.035, -0.4));
+    gun.add(tube(0.022, -0.46, -0.53, dark, 0, 0.052), box(0.027, 0.13, 0.22, dark, 0, 0.0, 0.2));
+    mag = box(0.027, 0.12, 0.065, dark, 0, -0.06, -0.12);
+    muzzle.position.set(0, 0.052, -0.53);
+    leftHand = new THREE.Vector3(0, -0.03, -0.27);
+    hip = new THREE.Vector3(0.06, -0.068, -0.12);
+    ads = new THREE.Vector3(0, -0.03, -0.1);
   } else {
     gun.add(box(0.05, 0.07, 0.3, olive, 0, 0.02, -0.1), grip, tube(0.011, -0.25, -0.9, metal, 0, 0.035));
     gun.add(box(0.045, 0.085, 0.3, olive, 0, -0.005, 0.18), tube(0.024, -0.02, -0.3, dark, 0, 0.1), tube(0.02, -0.299, -0.305, lens, 0, 0.1));
@@ -476,6 +514,7 @@ const HIP: Record<WeaponId, [number, number, number]> = {
   sniper: [0.05, -0.046, -0.095],
   bazooka: [0.072, -0.048, -0.1],
   launcher: [0.054, -0.05, -0.095],
+  laser: [0.05, -0.045, -0.095], // the carbine's place: its grip and lower line are the carbine's
 };
 
 /** From the hip the gun is drawn as with a 54 degree view instead of 72: its own depth this much shorter. */
@@ -543,6 +582,7 @@ const VOICE: Record<WeaponId, { len: number; f0: number; f1: number; thump: numb
   sniper: { len: 0.7, f0: 6500, f1: 180, thump: 65, gain: 0.8 },
   bazooka: { len: 0.9, f0: 1800, f1: 120, thump: 55, gain: 0.7 },
   launcher: { len: 0.32, f0: 1100, f1: 110, thump: 92, gain: 0.8 }, // a hollow thump: no crack (sound)
+  laser: { len: 0.12, f0: 3000, f1: 600, thump: 90, gain: 0.4 }, // only its low thump comes from here: the zap is its own (sound)
 };
 /** The rocket's explosion. */
 const BOOM = { len: 1.6, f0: 2400, f1: 50, thump: 42, gain: 1.0 };
@@ -557,9 +597,10 @@ const POP: Record<WeaponId, { len: number; f: number; thump: number; gain: numbe
   sniper: { len: 0.18, f: 1200, thump: 140, gain: 0.55 },
   bazooka: { len: 0.35, f: 500, thump: 80, gain: 0.7 },
   launcher: { len: 0.26, f: 420, thump: 75, gain: 0.7 },
+  laser: { len: 0.06, f: 2400, thump: 160, gain: 0.25 }, // not heard: the light tagger has its own soft chirp (sound)
 };
-/** How big each gun's paint splats are (m across); the shotgun's eight are smaller. */
-const SPLAT: Record<WeaponId, number> = { pistol: 0.5, rifle: 0.45, shotgun: 0.32, sniper: 0.65, bazooka: 0.9, launcher: 0.9 };
+/** How big each gun's paint splats are (m across); the shotgun's eight are smaller. The light tagger leaves none. */
+const SPLAT: Record<WeaponId, number> = { pistol: 0.5, rifle: 0.45, shotgun: 0.32, sniper: 0.65, bazooka: 0.9, launcher: 0.9, laser: 0 };
 
 /** Whether a hit landed on the lower two fifths of its hit box: the legs of a body's box. */
 function lowOnBox(hit: THREE.Intersection): boolean {
@@ -587,6 +628,93 @@ function noiseBuffer(ctx: AudioContext, key: string, seconds: number, shape: (s:
     noises.set(id, buf);
   }
   return buf;
+}
+
+/**
+ * The laser rifle's voice, made in code as the guns' are. A shot: a tight zap (a bright buzz falling fast through a
+ * band, a few milliseconds of crackle on its front) over a low thump, and after it the capacitor's whine rising as
+ * the next shot charges. The light tagger (paintball): a soft falling chirp, no thump. `vent`: the hiss of the heat
+ * let out and a falling sigh of pressure; `tick`: the metal settling as it cools; `cell`: a new cell powering up.
+ * `far`: metres from you (later and duller from far away, as a shot is).
+ */
+function laserSound(ctx: AudioContext, out: AudioNode, t: number, kind: 'shot' | 'vent' | 'tick' | 'cell', far: number): void {
+  const dull = 1 / (1 + far / 70);
+  const t0 = t + far / 343;
+  const bus = ctx.createBiquadFilter();
+  bus.type = 'lowpass';
+  bus.frequency.value = 700 + 15000 * dull;
+  bus.connect(out);
+  const tone = (type: OscillatorType, f0: number, f1: number, start: number, len: number, gain: number, attack = 0.004) => {
+    const o = ctx.createOscillator();
+    o.type = type;
+    o.frequency.setValueAtTime(f0, start);
+    o.frequency.exponentialRampToValueAtTime(f1, start + len);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, start);
+    g.gain.exponentialRampToValueAtTime(gain, start + attack);
+    g.gain.exponentialRampToValueAtTime(0.0001, start + len);
+    o.connect(g).connect(bus);
+    o.start(start);
+    o.stop(start + len + 0.02);
+    return o;
+  };
+  const noise = (key: string, len: number, shape: (s: number) => number, filter: BiquadFilterType, f: number, q: number, gain: number, start = t0) => {
+    const src = ctx.createBufferSource();
+    src.buffer = noiseBuffer(ctx, key, len, shape);
+    const band = ctx.createBiquadFilter();
+    band.type = filter;
+    band.frequency.value = f;
+    band.Q.value = q;
+    const g = ctx.createGain();
+    g.gain.value = gain;
+    src.connect(band).connect(g).connect(bus);
+    src.start(start);
+  };
+  if (kind === 'shot' && paintball.on) {
+    tone('sine', 1900, 650, t0, 0.13, 0.22);
+    tone('triangle', 3600, 1300, t0, 0.05, 0.05);
+    return;
+  }
+  if (kind === 'shot') {
+    // The zap: a buzz through a band that falls with it, a bright edge on top, the crackle at its front.
+    const buzz = ctx.createOscillator();
+    buzz.type = 'sawtooth';
+    buzz.frequency.setValueAtTime(2400, t0);
+    buzz.frequency.exponentialRampToValueAtTime(190, t0 + 0.1);
+    const band = ctx.createBiquadFilter();
+    band.type = 'bandpass';
+    band.Q.value = 3;
+    band.frequency.setValueAtTime(3200, t0);
+    band.frequency.exponentialRampToValueAtTime(500, t0 + 0.1);
+    const bg = ctx.createGain();
+    bg.gain.setValueAtTime(0.0001, t0);
+    bg.gain.exponentialRampToValueAtTime(0.9, t0 + 0.003);
+    bg.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.12);
+    buzz.connect(band).connect(bg).connect(bus);
+    buzz.start(t0);
+    buzz.stop(t0 + 0.14);
+    tone('square', 5200, 1100, t0, 0.035, 0.05, 0.002);
+    noise('lzap', 0.018, (s) => Math.pow(1 - s, 2), 'highpass', 3000, 0.7, 0.45);
+    // The low thump of the coil letting go.
+    tone('sine', 120, 38, t0, 0.16, 0.55, 0.003);
+    // The next shot charging: a quiet whine rising.
+    tone('triangle', 520, 2300, t0 + 0.05, 0.2, 0.035, 0.08);
+    return;
+  }
+  if (kind === 'vent') {
+    noise('lvent', 1.15, (s) => Math.min(1, s * 25) * Math.pow(1 - s, 1.6), 'highpass', 2600, 0.6, 0.32);
+    noise('lvent2', 0.9, (s) => Math.min(1, s * 10) * Math.pow(1 - s, 2), 'bandpass', 900, 0.8, 0.12, t0 + 0.05);
+    tone('sine', 820, 260, t0 + 0.02, 0.6, 0.04, 0.05);
+    return;
+  }
+  if (kind === 'tick') {
+    tone('square', 3100 + Math.random() * 600, 2600, t0, 0.012, 0.02, 0.001);
+    tone('sine', 4600, 4300, t0, 0.04, 0.012, 0.001);
+    return;
+  }
+  // A new cell: a short rising chirp and a soft hum coming up.
+  tone('sine', 380, 1700, t0, 0.24, 0.07, 0.03);
+  tone('triangle', 110, 140, t0 + 0.05, 0.3, 0.06, 0.08);
 }
 
 /** The figure (a player, a clown, a strongman) a hit box belongs to: the paint goes on its body, not on the box round it. */
@@ -742,6 +870,21 @@ export class Weapon {
   onTracer: (from: THREE.Vector3, to: THREE.Vector3) => void = () => {};
   /** The sniper rifle's bullet went this stretch in the last `dt` seconds. */
   onBullet: (from: THREE.Vector3, to: THREE.Vector3, dt: number) => void = () => {};
+  /** The laser rifle's beam, from the emitter of the gun in your hands (drawn small and close) to where it ended; `hit`: the surface it ended on, if any. */
+  onBeam: (from: THREE.Vector3, to: THREE.Vector3, hit?: { normal: THREE.Vector3; material: string; on: THREE.Object3D }) => void = () => {};
+  /** A laser's beam went on through a window pane at `point`: a hot spot on the glass. */
+  onBeamPane: (point: THREE.Vector3) => void = () => {};
+  /** Whether window pane `index` stops a laser's beam (a locked home's does, as it stops a bullet). */
+  paneHolds: (index: number) => boolean = () => false;
+  /** The laser rifle venting: a breath of steam out of its shroud at `at`. */
+  onVent: (at: THREE.Vector3) => void = () => {};
+  /** The laser rifle's heat, 0..1 (each shot adds to it; it cools once you stop), and the seconds of venting left at full heat. */
+  heat = 0;
+  venting = 0;
+  /** Seconds the laser rifle's keys are still shown, after it came into your hands (main.ts shows the line). */
+  laserHint = 0;
+  private ventPuff = 0;
+  private coolTick = 0;
   private models: Record<WeaponId, ViewModel>;
   private cooldown = 0;
   private reloading = 0;
@@ -805,7 +948,8 @@ export class Weapon {
   private useLoadedGuns(): void {
     for (const w of WEAPON_IDS) {
       const m = this.models[w];
-      const loaded = loadedGuns.get(w)!;
+      const loaded = loadedGuns.get(w);
+      if (!loaded) continue; // the laser rifle's own file didn't come: its block gun stays
       for (const c of [...m.gun.children, ...m.root.children]) if (c instanceof THREE.Mesh) c.visible = false;
       const model = loaded.gun.clone(true);
       const hands = loaded.hands.clone(true);
@@ -819,7 +963,20 @@ export class Weapon {
         }
         return o;
       };
-      m.mag = part('mag');
+      m.mag = part('mag') ?? part('cell'); // the laser rifle's energy cell comes out and goes in as a magazine does
+      if (w === 'laser') {
+        // Its lit parts, to light by its state (lightLaser). These are only in your hands: the others' copies fold them away (FOLD).
+        const lit: NonNullable<ViewModel['lit']> = { bars: [] };
+        model.traverse((o) => {
+          const mat = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
+          if (!mat?.name) return;
+          const bar = /^LaserBar(\d)$/.exec(mat.name);
+          if (bar) lit.bars[Number(bar[1])] = mat;
+          if (mat.name === 'LaserLens') lit.lens = mat;
+          if (mat.name === 'LaserFin') lit.fins = mat;
+        });
+        m.lit = lit;
+      }
       m.pump = part('pump');
       m.bolt = part('bolt');
       m.slide = part('slide');
@@ -988,6 +1145,7 @@ export class Weapon {
   get status(): string {
     if (!this.enabled) return '';
     if (this.reloading > 0) return t(paintball.on ? 'paint.refilling' : 'weapon.reloading');
+    if (this.venting > 0 && this.spec.beam) return t('laser.venting');
     if (this.current === 'bazooka' && this.rocketsLeft !== null) return t(paintball.on ? 'fbz.ammoPaint' : 'fbz.ammo', { n: this.rocketsLeft });
     // The grenade launcher: the grenades it has left in all, of those it came with.
     if (this.spec.lob) return `${this.lobLeft} / ${this.spec.lob.rounds}`;
@@ -1018,6 +1176,19 @@ export class Weapon {
     this.select('launcher');
   }
 
+  /**
+   * The laser rifle is yours, its cell full and cool, and in your hands (alone only for now: main.ts's dev give).
+   * Its keys show for a few seconds (laserHint).
+   */
+  giveLaser(): void {
+    this.owned.add('laser');
+    this.ammo.laser = this.magOf('laser');
+    this.heat = this.venting = 0;
+    if (this.current === 'laser') this.reloading = 0;
+    this.select('laser');
+    this.laserHint = 6;
+  }
+
   /** For the weapon list on screen. */
   get slots(): { id: WeaponId; name: string; slot: number; owned: boolean; current: boolean }[] {
     return WEAPON_IDS.map((id) => ({ id, name: SPECS[id].name, slot: SPECS[id].slot, owned: this.owned.has(id), current: id === this.current }));
@@ -1030,6 +1201,7 @@ export class Weapon {
       this.bloom[w] = 0;
     }
     this.reloading = 0;
+    this.heat = this.venting = 0; // the laser rifle cool again
   }
 
   /** Back to just the pistol (after dying), plus `extra` (the admin's bazooka). */
@@ -1135,6 +1307,7 @@ export class Weapon {
   shoot(): Shot | null {
     const spec = this.spec;
     if (!this.enabled || this.cooldown > 0 || this.reloading > 0) return null;
+    if (this.venting > 0 && spec.beam) return null; // the laser rifle venting its heat: it won't fire until it is done
     if (this.ammo[this.current] === 0) {
       this.sound('empty');
       this.cooldown = 0.25;
@@ -1144,14 +1317,21 @@ export class Weapon {
     this.ammo[this.current]--;
     this.cooldown = spec.delay + (spec.auto ? this.cooldown : 0);
     this.cycleTime = spec.delay;
-    this.flashTime = 0.05;
+    this.flashTime = spec.beam ? 0 : 0.05; // a laser has no flame
     this.models[this.current].flash.fire();
     this.sinceShot = 0;
-    // Recoil: a push back, the barrel up and a little roll; less when aimed.
+    // Recoil: a push back, the barrel up and a little roll; less when aimed. The laser rifle's almost none: a small
+    // push and a shiver as the coil lets go.
     const steady = 1 - 0.4 * this.aim;
-    this.recoilVel[0] += (0.08 + spec.kick * 6) * steady;
-    this.recoilVel[1] += Math.min(4.5, 0.6 + spec.kick * 60) * steady;
-    this.recoilVel[2] += (Math.random() - 0.5) * (0.4 + spec.kick * 10) * steady;
+    if (spec.beam) {
+      this.recoilVel[0] += 0.05 * steady;
+      this.recoilVel[1] += 0.12 * steady;
+      this.recoilVel[2] += (Math.random() - 0.5) * 0.15 * steady;
+    } else {
+      this.recoilVel[0] += (0.08 + spec.kick * 6) * steady;
+      this.recoilVel[1] += Math.min(4.5, 0.6 + spec.kick * 60) * steady;
+      this.recoilVel[2] += (Math.random() - 0.5) * (0.4 + spec.kick * 10) * steady;
+    }
     if (this.current === 'pistol' || this.current === 'rifle') this.onEject(this.current);
     this.sound('shot');
 
@@ -1185,11 +1365,13 @@ export class Weapon {
 
     this.camera.updateMatrixWorld();
     const eye = this.camera.getWorldPosition(new THREE.Vector3());
-    // Paintball: each pellet is a paintball from the muzzle, in the gun's paint.
-    const paint = paintball.on ? { from: this.models[this.current].muzzle.getWorldPosition(new THREE.Vector3()), color: new THREE.Color(GUN_PAINT[this.current]), size: SPLAT[this.current] } : null;
+    // Paintball: each pellet is a paintball from the muzzle, in the gun's paint. (The light tagger's is light: its beam.)
+    const paint = paintball.on && !spec.beam ? { from: this.models[this.current].muzzle.getWorldPosition(new THREE.Vector3()), color: new THREE.Color(GUN_PAINT[this.current]), size: SPLAT[this.current] } : null;
     const players = new Map<string, { body: number; head: number; point: THREE.Vector3; spot?: Spot }>();
     const zombies = new Map<number, ZombieHit>();
     let tracer: THREE.Vector3 | undefined;
+    const far = this.raycaster.far;
+    if (spec.beam) this.raycaster.far = spec.beam.range;
     for (let i = 0; i < spec.pellets; i++) {
       const a = Math.random() * Math.PI * 2;
       const r = spread * Math.sqrt(Math.random());
@@ -1208,10 +1390,25 @@ export class Weapon {
         tracer = end.point ?? this.raycaster.ray.at(200, new THREE.Vector3());
         this.onTracer(this.muzzlePoint(), tracer);
       }
+      if (spec.beam) {
+        // The beam: from the emitter of the gun in your hands to where it ended, or as far as it reaches. (It is drawn
+        // small and close, so the beam leaves it exactly on screen.) The others are told its end as a tracer's.
+        tracer = end.point ?? this.raycaster.ray.at(spec.beam.range, new THREE.Vector3());
+        this.onBeam(this.models[this.current].muzzle.getWorldPosition(new THREE.Vector3()), tracer, end.surface);
+      }
       if (end.clown) break;
     }
+    this.raycaster.far = far;
     for (const [name, e] of players) this.onPlayerHit(name, e.body, e.head, e.point, e.spot, this.current);
     if (zombies.size) this.onZombieHit([...zombies.values()], paint, this.current);
+    if (spec.beam) {
+      // Each shot heats it; at full heat it vents (update) and won't fire until it is done.
+      this.heat = Math.min(1, this.heat + spec.beam.heat);
+      if (this.heat >= 1) {
+        this.venting = spec.beam.vent;
+        this.sound('vent');
+      }
+    }
     if (this.ammo[this.current] === 0) this.reload();
     return { ...this.kickOf(spec), tracer };
   }
@@ -1229,12 +1426,17 @@ export class Weapon {
     spec: Spec, w: WeaponId, paint: (Paint & { from: THREE.Vector3 }) | null, eye: THREE.Vector3,
     players: Map<string, { body: number; head: number; point: THREE.Vector3; spot?: Spot }>, zombies: Map<number, ZombieHit>,
     reach = Infinity, pass = { free: 0, left: !paint && (w === 'rifle' || w === 'sniper') ? 1 : 0 },
-  ): { point?: THREE.Vector3; clown?: boolean } {
+  ): { point?: THREE.Vector3; clown?: boolean; surface?: { normal: THREE.Vector3; material: string; on: THREE.Object3D } } {
     const hits = this.raycaster.intersectObjects(this.scene.children, true);
     let hit: THREE.Intersection | undefined;
     for (const h of hits) {
       if (h.distance > reach) break;
       if (!drawn(h.object) || h.object.userData.ignoreRay || !h.face) continue;
+      // A laser's beam goes through window glass, leaving a hot spot on it; a locked home's pane holds it, as it holds a bullet.
+      if (spec.beam && h.object.userData.glassIndex !== undefined && !this.paneHolds(h.object.userData.glassIndex)) {
+        this.onBeamPane(h.point.clone());
+        continue;
+      }
       const depth = COVER[String(h.object.userData.material ?? '')];
       if (depth && h.distance < pass.free) continue; // still inside the cover it is going through
       if (depth && pass.left > 0) {
@@ -1300,6 +1502,7 @@ export class Weapon {
     } else {
       const normal = hit.face.normal.clone().transformDirection(hit.object.matrixWorld);
       this.onImpact(hit.point.clone(), normal, String(hit.object.userData.material ?? ''), hit.object, w);
+      return { point, surface: { normal, material: String(hit.object.userData.material ?? ''), on: hit.object } };
     }
     return { point };
   }
@@ -1380,9 +1583,11 @@ export class Weapon {
   get spread(): number {
     const spec = this.spec;
     if (spec.rocket || spec.lob) return 0;
-    // The sniper rifle is only accurate through the scope; aiming steadies the others.
+    // The sniper rifle is only accurate through the scope; aiming steadies the others. The laser's beam goes exactly
+    // where you look standing or crouching still; only on the move does it wander a little.
     let spread = this.current === 'sniper'
       ? (this.aim > 0.85 ? .015 * Math.max(0, this.spreadMul - 1) : spec.hipSpread ?? 0.09)
+      : spec.beam ? spec.spread * Math.max(0, this.spreadMul - 1) * (1 - 0.6 * this.aim)
       : spec.spread * (1 - (spec.pellets > 1 ? .25 : .6) * this.aim);
     if (this.hasScope(this.current) && this.aim > 0.85) spread *= 0.25; // steady through a found scope
     return (spread * this.spreadMul * this.rest + this.bloom[this.current]) * 1.3;
@@ -1469,6 +1674,7 @@ export class Weapon {
         this.ammo[this.current] += load;
       } else if (this.reloading <= 0) this.ammo[this.current] = this.magOf(this.current);
     }
+    this.cool(dt);
     // It closes again once you let go. (It used to close faster than held fire could open it, so it never showed.)
     if (this.sinceShot > 0.15) for (const w of WEAPON_IDS) this.bloom[w] = Math.max(0, this.bloom[w] - dt * 0.06);
     this.flashTime = Math.max(0, this.flashTime - dt);
@@ -1585,6 +1791,14 @@ export class Weapon {
       this.recoil[2] * 2 - this.tilt * 0.06 + this.sprint * 0.22 - across * 0.025 * bob,
     );
     m.gun.rotation.z = hold * (tube ? -0.1 : lob ? 0.35 : 0.4);
+    // The laser rifle venting: tipped up and turned over a little, its glowing fins towards you, then back.
+    const vent = this.current === 'laser' && this.venting > 0 ? smooth(0, 0.18, SPECS.laser.beam!.vent - this.venting) * smooth(0, 0.3, this.venting) : 0;
+    if (vent > 0) {
+      m.root.rotation.x += 0.12 * vent;
+      m.root.rotation.z += 0.42 * vent;
+      m.root.position.x -= 0.006 * vent;
+      m.root.position.y += 0.004 * vent;
+    }
     // Standing still with nothing to do, you turn the gun over in your hands now and then and look at it.
     const idle = moving < 0.05 && !aiming && this.reloading <= 0 && this.sinceShot > 6 && this.shown === this.current && !look?.air;
     this.idle = idle ? this.idle + dt : 0;
@@ -1598,6 +1812,7 @@ export class Weapon {
       m.root.position.y += 0.012 * this.look;
     }
     this.animateParts(m, p);
+    if (this.shown === 'laser') this.lightLaser(m);
     // Pump or bolt worked: its click, and the spent case comes out.
     if ((this.current === 'shotgun' || this.current === 'sniper') && cycleBefore > spec.delay * 0.6 && this.cycleTime <= spec.delay * 0.6) {
       this.sound('cycle');
@@ -1617,6 +1832,65 @@ export class Weapon {
     if (Math.abs(this.camera.fov - fov) > 0.01) {
       this.camera.fov = fov;
       this.camera.updateProjectionMatrix();
+    }
+  }
+
+  /**
+   * The laser rifle's heat: it cools once you have stopped firing it for a moment (in your hands or not), ticking
+   * as it does; at full heat it vents, breathing steam out of its shroud, and comes out of it a little warm.
+   */
+  private cool(dt: number): void {
+    const beam = SPECS.laser.beam!;
+    this.laserHint = Math.max(0, this.laserHint - dt);
+    const held = this.current === 'laser' && this.shown === 'laser' && !this.hiddenFlag;
+    if (this.venting > 0) {
+      this.venting = Math.max(0, this.venting - dt);
+      this.heat = 0.15 + 0.85 * (this.venting / beam.vent);
+      this.ventPuff -= dt;
+      if (held && this.ventPuff <= 0) {
+        // Out of the slots in the shroud's top, behind the emitter of the gun in your hands.
+        this.ventPuff = 0.07;
+        const m = this.models.laser;
+        this.onVent(_a.set(0, 0.04, 0.12).add(m.muzzle.position).applyMatrix4(m.gun.matrixWorld).clone());
+      }
+      return;
+    }
+    if (this.heat <= 0 || (this.current === 'laser' && this.sinceShot < beam.wait)) return;
+    this.heat = Math.max(0, this.heat - beam.cool * dt);
+    // A tick now and then as the metal settles, while it is still warm.
+    this.coolTick -= dt;
+    if (held && this.heat > 0.2 && this.coolTick <= 0) {
+      this.coolTick = 0.22 + Math.random() * 0.25;
+      this.sound('tick');
+    }
+  }
+
+  /**
+   * The laser rifle's lit parts in your hands: the read-out's five bars show the cell's charge (the last one
+   * dimming as it is used), the lens behind the emitter's glass glows as the next shot charges (dark just after a
+   * shot, brightest when ready; dim with the cell empty), the shroud's fins glow with the heat, orange-red when it
+   * vents. A few units bright at most: under the half-float limit with room to spare.
+   */
+  private lightLaser(m: ViewModel): void {
+    const lit = m.lit;
+    if (!lit) return;
+    const spec = SPECS.laser;
+    const charge = this.ammo.laser / this.magOf('laser');
+    const reloading = this.reloading > 0 && this.current === 'laser';
+    lit.bars.forEach((mat, k) => {
+      const on = reloading ? 0 : Math.max(0, Math.min(1, charge * 5 - k));
+      mat.emissiveIntensity = 0.04 + 2.1 * on;
+    });
+    if (lit.lens) {
+      // A flash as the beam leaves, then dark and charging again.
+      const ready = this.current === 'laser' ? Math.min(1, this.sinceShot / spec.delay) : 1;
+      const flash = this.current === 'laser' && this.sinceShot < 0.05;
+      lit.lens.emissiveIntensity = flash ? 4.5 : charge > 0 && !reloading ? 0.6 + 3.2 * ready * ready : 0.15;
+    }
+    if (lit.fins) {
+      const h = Math.max(0, (this.heat - 0.25) / 0.75);
+      lit.fins.emissive.setRGB(1, 0.32 + 0.25 * h, 0.08 + 0.1 * h);
+      lit.fins.emissiveIntensity = this.venting > 0 ? 5 * h : 2.5 * h * h;
     }
   }
 
@@ -1807,7 +2081,7 @@ export class Weapon {
   }
 
   /** Short synthesized sounds: no audio files to download. */
-  private sound(kind: 'shot' | 'empty' | 'reload' | 'cycle' | 'throw', volume = 1, at?: THREE.Vector3, w: WeaponId = this.current, voice = VOICE[w]): void {
+  private sound(kind: 'shot' | 'empty' | 'reload' | 'cycle' | 'throw' | 'vent' | 'tick', volume = 1, at?: THREE.Vector3, w: WeaponId = this.current, voice = VOICE[w]): void {
     const ctx = sound.context();
     const dest = at ? sound.at(at.x, at.y, at.z, w === 'sniper' || w === 'shotgun' || w === 'launcher' ? 8 : w === 'bazooka' ? 14 : 4) : sound.out();
     if (!ctx || !dest) return;
@@ -1817,7 +2091,9 @@ export class Weapon {
     master.connect(dest);
     const out = ctx.createGain();
     out.connect(master);
-    if (kind === 'shot' && paintball.on) {
+    if ((kind === 'shot' && w === 'laser' && voice === VOICE.laser) || kind === 'vent' || kind === 'tick') {
+      laserSound(ctx, out, t, kind, at ? at.distanceTo(this.camera.getWorldPosition(new THREE.Vector3())) : 0);
+    } else if (kind === 'shot' && paintball.on) {
       // Paintball's pop: a puff of air through a band of noise, a soft thump, and a hiss after it.
       const p = POP[w];
       const len = p.len + 0.25;
@@ -1947,6 +2223,7 @@ export class Weapon {
         sniper: [[0.13 * r, 500], [0.64 * r, 700], [0.8 * r, 420], [0.9 * r, 620]],
         bazooka: [[0.62 * r, 400]],
         launcher: [[0.06 * r, 950], [0.19 * r, 260], [0.7 * r, 520], [0.89 * r, 340]], // the latch, the barrel dropping open, the grenade in, shut
+        laser: [[0.1 * r, 1150], [0.15 * r, 380], [0.62 * r, 300], [0.66 * r, 760]], // the cell's latch, it drops out, the new one seated and locked
       };
       const clicks = kind === 'empty' ? [[0, 900]] : kind === 'cycle' ? [[0, 420], [0.12, 620]] : reload[this.current];
       for (const [at2, f] of clicks) {
@@ -1960,6 +2237,7 @@ export class Weapon {
         click.start(t + at2);
         click.stop(t + at2 + 0.06);
       }
+      if (kind === 'reload' && this.current === 'laser') laserSound(ctx, master, t + 0.72 * r, 'cell', 0); // the new cell powering up
     }
   }
 }

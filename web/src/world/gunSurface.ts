@@ -21,7 +21,7 @@
  */
 import * as THREE from 'three';
 
-/** What wears through and how, per material of weapons.glb: the colour under the finish, how metallic and how rough that is, the grain's strength, the wood's streaks. */
+/** What wears through and how, per material of weapons.glb (and lasergun.glb): the colour under the finish, how metallic and how rough that is, the grain's strength, the wood's streaks. */
 interface Look {
   /** The finish itself, in place of the model's own: colour, metalness, roughness (the model's without) */
   finish?: [string, number, number];
@@ -49,6 +49,13 @@ const LOOKS: Record<string, Look> = {
   Warhead: { wear: '#686b63', metal: 0.7, rough: 0.4, grain: 0.25, amount: 0.6 },
   Wood: { wear: '#b98a5e', metal: 0, rough: 0.6, grain: 0.95, scale: [34, 34, 2.6], amount: 0.4 }, // oil finish worn to paler wood, in small patches along the grain
   Brass: { wear: '#d8b866', metal: 1, rough: 0.2, grain: 0.15 },
+  // The laser rifle (lasergun.glb): its upper is dark anodised aluminium, glossy, that wears through to bright bare
+  // metal on the edges; its lower and stock a paler matt polymer rubbed smoother; its fins bright metal like the
+  // steel parts (they also glow with the heat: weapon.ts); the emitter's glass a dark glossy glass with only a faint grain.
+  LaserAnodised: { finish: ['#23272e', 0.9, 0.2], wear: '#9aa0a8', metal: 1, rough: 0.22, grain: 0.22, amount: 0.55 },
+  LaserPolymer: { finish: ['#35373a', 0, 0.82], wear: '#4b4d51', metal: 0, rough: 0.6, grain: 0.5, amount: 0.6 },
+  LaserFin: { finish: ['#4d5056', 1, 0.3], wear: '#8a8e94', metal: 1, rough: 0.24, grain: 0.25, amount: 0.5 },
+  LaserGlass: { finish: ['#0a1c26', 0, 0.03], wear: '#0a1c26', metal: 0, rough: 0.03, grain: 0.05, amount: 0 },
   // Your hands and arms: the sleeve's cloth (a fine weave, faded where it rubs), the glove's leather and its trim.
   Sleeve: { wear: '#ffffff', metal: 0, rough: 0.95, grain: 0.75, scale: [70, 70, 70], amount: 0.5, fade: true },
   Glove: { wear: '#ffffff', metal: 0, rough: 0.7, grain: 0.25, scale: [46, 46, 46], amount: 0.2, fade: true }, // its pieces are painted (tools/gloves.py): a little grain over them

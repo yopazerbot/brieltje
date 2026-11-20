@@ -9,6 +9,8 @@ import { splatSound, Splats, type Paint } from './splats';
 import { flashSheet, HOLE, PARTICLE } from './sprites';
 import { waterLevel } from './water';
 import { drawn } from './rayShown';
+import { LaserBeams } from './laserBeam';
+import { mood } from './mood';
 
 /**
  * Impact bursts that depend on what was hit: dust and chips from plaster and
@@ -53,6 +55,8 @@ const DUST: Record<string, string> = {
 };
 
 const color = (c: string) => new THREE.Color(c);
+/** The laser rifle's light: a cold cyan (its core is drawn nearly white). */
+const LASER = new THREE.Color('#3fc6ff');
 
 interface Rocket {
   mesh: THREE.Group;
@@ -138,6 +142,8 @@ export class Effects {
   readonly splats: Splats;
   /** Drops and rings on the ponds and ditches (world/splashes.ts) */
   readonly splashes: Splashes;
+  /** The laser rifle's beams (world/laserBeam.ts) */
+  readonly beams: LaserBeams;
   private group = new THREE.Group();
   private rockets: Rocket[] = [];
   private rocketBody = new THREE.CylinderGeometry(0.045, 0.045, 0.55, 8).rotateX(Math.PI / 2);
@@ -165,6 +171,7 @@ export class Effects {
     scene.add(this.group, this.particles.group);
     this.splats = new Splats(scene);
     this.splashes = new Splashes(scene, this.particles);
+    this.beams = new LaserBeams(scene);
     // Rays from a paint blast also meet sprites (name tags, health bars), which three.js only tests with a camera; they are no wall anyway.
     this.ray.camera = new THREE.PerspectiveCamera();
     // Casings: one instanced cylinder (brass, or red for shotgun shells), lying along x.
@@ -399,6 +406,118 @@ export class Effects {
     this.particles.spawn(s, true);
   }
 
+  /**
+   * A laser rifle's shot (weapon.ts): its beam from the emitter `from` to where it ended, `to`, a glow at the
+   * emitter, and, when it ended on a surface (`hit`), what the heat does there (laserHit). In paintball the
+   * "light tagger": a beam in `paint` (the team's or the gun's colour) and a glow of it where it lands, no scorch.
+   * `own`: from the gun in your own hands, drawn small and close to your eye: its emitter's glow as small.
+   */
+  laser(from: THREE.Vector3, to: THREE.Vector3, hit?: { normal: THREE.Vector3; material: string; on?: THREE.Object3D }, paint?: string, own = false): void {
+    const c = paintball.on ? color(paint ?? GUN_PAINT.laser) : LASER;
+    this.beams.fire(from, to, c);
+    const k = own ? 0.12 : 1;
+    this.throw(from, UP, 1, 0, 0, (s) => {
+      Object.assign(s, { life: 0.07, size0: 0.09 * k, size1: 0.05 * k, alpha: 1, cell: PARTICLE.glow });
+      s.c0.copy(c).multiplyScalar(2.2);
+      s.c1.copy(c);
+    }, true);
+    if (hit) this.laserHit(to, hit.normal, hit.material, hit.on, c);
+  }
+
+  /**
+   * Where a laser's beam ended on a surface: a white-hot flash, then a small scorch mark with a spot on it that
+   * glows orange and cools to dark red over a second or so, a thread of smoke, sparks off metal, a few embers off
+   * anything else; on water a hiss of steam and a ring, no mark; in the rain a puff of steam off the hot spot too.
+   * In paintball a glow in the beam's colour that fades, and nothing else.
+   */
+  laserHit(point: THREE.Vector3, normal: THREE.Vector3, material: string, on?: THREE.Object3D, c: THREE.Color = LASER): void {
+    const p = point.clone().addScaledVector(normal, 0.012);
+    if (paintball.on) {
+      this.throw(p, normal, 1, 0, 0, (s) => {
+        Object.assign(s, { life: 0.55, size0: 0.16, size1: 0.1, alpha: 1, cell: PARTICLE.glow });
+        s.c0.copy(c).multiplyScalar(2.2);
+        s.c1.copy(c).multiplyScalar(0.3);
+      }, true);
+      this.throw(p, normal, 6, 1.4, 0.8, (s) => {
+        Object.assign(s, { life: 0.3 + Math.random() * 0.25, size0: 0.03, size1: 0.01, alpha: 1, cell: PARTICLE.glow, drag: 2 });
+        s.c0.copy(c).multiplyScalar(1.8);
+        s.c1.copy(c);
+      }, true);
+      return;
+    }
+    const steam = (n: number, size: number, alpha: number) =>
+      this.throw(p, UP, n, 0.5, 0.4, (s) => {
+        Object.assign(s, { life: 0.9 + Math.random() * 0.6, size0: size * 0.3, size1: size, alpha, cell: PARTICLE.wisp, drag: 2.5, gravity: -0.6, spin: (Math.random() - 0.5) * 2 });
+        s.c0.set('#f2f4f6');
+        s.c1.set('#dfe3e6');
+      });
+    if (material === 'water') {
+      steam(7, 0.55, 0.42);
+      this.splashes.ring(point.x, point.y, point.z, 0.35, 1, 0.3);
+      return;
+    }
+    if (material !== 'cat') this.decals.add(point, normal, HOLE.scorch, 0.07, on);
+    // The flash where the beam struck, then the hot spot cooling.
+    this.throw(p, normal, 1, 0, 0, (s) => {
+      Object.assign(s, { life: 0.06, size0: 0.2, size1: 0.12, alpha: 1, cell: PARTICLE.glow });
+      s.c0.copy(c).multiplyScalar(2.4);
+      s.c1.copy(c);
+    }, true);
+    this.throw(p, normal, 1, 0, 0, (s) => {
+      Object.assign(s, { life: 1.3 + Math.random() * 0.4, size0: 0.055, size1: 0.035, alpha: 1, cell: PARTICLE.glow });
+      s.c0.setRGB(2.6, 1.0, 0.25);
+      s.c1.setRGB(0.3, 0.035, 0.0);
+    }, true);
+    if ((KIND[material] ?? 'dust') === 'sparks') {
+      this.throw(p, normal, 10, 4.5, 0.8, (s) => {
+        Object.assign(s, { life: 0.15 + Math.random() * 0.25, size0: 0.011, size1: 0.005, alpha: 1, cell: PARTICLE.glow, gravity: 9.8, stretch: 0.06 });
+        s.c0.setRGB(3.6, 2.6, 1.4);
+        s.c1.setRGB(2.2, 0.6, 0.1);
+      }, true);
+    } else {
+      this.throw(p, normal, 4, 1.6, 0.7, (s) => {
+        Object.assign(s, { life: 0.3 + Math.random() * 0.35, size0: 0.012, size1: 0.006, alpha: 1, cell: PARTICLE.glow, gravity: 6, drag: 1 });
+        s.c0.setRGB(3, 1.3, 0.3);
+        s.c1.setRGB(1.2, 0.2, 0.0);
+      }, true);
+    }
+    this.throw(p, UP, 1, 0.3, 0.3, (s) => {
+      Object.assign(s, { life: 1 + Math.random() * 0.5, size0: 0.04, size1: 0.22, alpha: 0.2, cell: PARTICLE.wisp, drag: 2, gravity: -0.4, spin: 1 });
+      s.c0.set('#9a9894');
+      s.c1.set('#c4c2bc');
+    });
+    if (mood.wet > 0.35) steam(3, 0.3, 0.28); // rain on the hot spot
+  }
+
+  /** A laser's beam went through a pane: a hot spot glows on the glass a moment, no crack. */
+  laserPane(point: THREE.Vector3): void {
+    if (paintball.on) return;
+    this.throw(point, UP, 1, 0, 0, (s) => {
+      Object.assign(s, { life: 0.45, size0: 0.06, size1: 0.04, alpha: 1, cell: PARTICLE.glow });
+      s.c0.setRGB(2.2, 1.5, 0.8);
+      s.c1.setRGB(0.4, 0.08, 0.0);
+    }, true);
+  }
+
+  /**
+   * The laser rifle venting its heat (weapon.ts): a breath of steam out of the shroud at `at`. `k`: its size, of a
+   * real gun's (the one in your own hands is drawn at about a fifth of its size, close to your eye).
+   */
+  laserVent(at: THREE.Vector3, k = 1): void {
+    if (paintball.on) return;
+    this.throw(at, UP, 1, 0.35 * k, 0.5, (s) => {
+      Object.assign(s, { life: 0.6 + Math.random() * 0.4, size0: 0.03 * k, size1: 0.16 * k, alpha: 0.35, cell: PARTICLE.wisp, drag: 2.5, gravity: -0.5 * k, spin: 1.5 });
+      s.c0.set('#f4f7fa');
+      s.c1.set('#dde1e6');
+    });
+    // The heat glowing in the slots it leaves by.
+    this.throw(at, UP, 1, 0.08 * k, 0.4, (s) => {
+      Object.assign(s, { life: 0.22, size0: 0.05 * k, size1: 0.025 * k, alpha: 1, cell: PARTICLE.glow });
+      s.c0.setRGB(2.4, 0.75, 0.15);
+      s.c1.setRGB(0.6, 0.08, 0.0);
+    }, true);
+  }
+
   /** A little smoke where a gun went off. */
   muzzleSmoke(at: THREE.Vector3): void {
     const wind = windAt(at.x, at.z);
@@ -618,6 +737,7 @@ export class Effects {
 
   update(dt: number): void {
     this.splashes.update(dt);
+    this.beams.update(dt);
     for (let i = this.rockets.length - 1; i >= 0; i--) {
       const r = this.rockets[i];
       r.travelled = Math.min(r.length, r.travelled + r.speed * dt);

@@ -24,7 +24,7 @@ import { FlagWorld } from './world/flags';
 import { FlagRacks } from './world/flagRack';
 import { AssaultCamp, type SupplyAim } from './world/assaultCamp';
 import { WAIT_OF } from '../shared/assaultFields.mjs';
-import { fieldEdge, fieldOf, vehicleTeam } from '../shared/flagFields.mjs';
+import { FLAG_COLORS, fieldEdge, fieldOf, vehicleTeam } from '../shared/flagFields.mjs';
 import { CLOWN_DEFAULTS, Clowns, KINDS, type Kind } from './world/clowns';
 import { bruteDamage, hurtBy } from '../shared/brutes.mjs';
 import { prepareShotRaycasts } from './world/shotRaycast';
@@ -1321,7 +1321,7 @@ window.addEventListener('keydown', (e) => {
 /** A bullet hole's size by gun, of the usual one: a shotgun pellet's is small, a sniper's bullet's large. */
 const HOLE_SIZE: Partial<Record<WeaponId, number>> = { pistol: 0.9, rifle: 1, shotgun: 0.6, sniper: 1.5 };
 weapon.onImpact = (point, normal, material, on, w) => {
-  effects.shot(point, normal, material, on, HOLE_SIZE[w] ?? 1);
+  if (w !== 'laser') effects.shot(point, normal, material, on, HOLE_SIZE[w] ?? 1); // a laser's mark is its beam's (onBeam)
   looseProps.shot(point, normal, on); // a post rings, a bin rocks
   vehicleWear.shot(on, w); // a car or a helicopter in a team match: the server is told
 };
@@ -1329,6 +1329,11 @@ weapon.onPaintball = (from, to, paint) => effects.paintShot(from, to, paint);
 weapon.onEject = (w) => effects.casing(camera, w, weapon.aimAmount);
 weapon.onTracer = (from, to) => effects.tracer(from, to);
 weapon.onBullet = (from, to, dt) => effects.bullet(from, to, dt);
+// The laser rifle: its beam (in Steal the flag's paint look your team's colour), the hot spot on a pane it passes, a locked home's pane stops it, its vent's steam.
+weapon.onBeam = (from, to, hit) => effects.laser(from, to, hit, flagTeam() ? FLAG_COLORS[flagTeam()!] : undefined, true);
+weapon.onBeamPane = (point) => effects.laserPane(point);
+weapon.paneHolds = (i) => glass.locked(i);
+weapon.onVent = (at) => effects.laserVent(at, 0.22); // at the gun in your hands, drawn small
 
 /** The walking speed together: the real pace for everyone (alone, the menu's own). Running is 2.5 times it. */
 const REAL_WALK = 1.4;
@@ -2436,7 +2441,7 @@ function fire(): void {
   player.yaw += shot.yaw;
   if (solo) solo.horde.noise(player.x, player.z, weapon.current, performance.now(), SOLO_ME); // gunfire draws the zombies (together the server does this)
   // Smoke at the muzzle: from every shot of the big guns, now and then from the others (not paint guns).
-  if (!paintball.on && !shot.rocket && (weapon.current === 'shotgun' || weapon.current === 'sniper' || shot.lob || Math.random() < 0.3)) effects.muzzleSmoke(weapon.muzzlePoint());
+  if (!paintball.on && !shot.rocket && weapon.current !== 'laser' && (weapon.current === 'shotgun' || weapon.current === 'sniper' || shot.lob || Math.random() < 0.3)) effects.muzzleSmoke(weapon.muzzlePoint());
   rumble(weapon.current === 'pistol' ? 0.25 : 0.6, 0.6, weapon.current === 'rifle' ? 50 : 90);
   if (shot.rocket) fireRocket(shot.rocket.from, shot.rocket.to);
   else if (shot.lob) {
@@ -3150,10 +3155,11 @@ net.onMessage = (m: ServerMsg) => {
       weapon.remoteShot(from, m.w as WeaponId);
       life.scare(from);
       const muzzle = avatars.flash(m.name);
-      if (muzzle) effects.muzzleSmoke(muzzle);
+      if (muzzle && m.w !== 'laser') effects.muzzleSmoke(muzzle);
       if (m.tx !== undefined && m.ty !== undefined && m.tz !== undefined) {
         const to = new THREE.Vector3(m.tx, m.ty, m.tz);
-        effects.tracer(muzzle ?? from, to); // their tracer
+        if (m.w === 'laser') effects.laser(muzzle ?? from, to); // their beam (the server passes its end on only once it allows it: a later step)
+        else effects.tracer(muzzle ?? from, to); // their tracer
         // Passing close by your head (and from more than a few metres off): you hear it and flinch.
         const line = new THREE.Line3(from, to);
         const eye = camera.getWorldPosition(new THREE.Vector3());
@@ -4168,6 +4174,7 @@ renderer.setAnimationLoop((now: number) => {
     hud.setRing(helping ? (helping.start ? (now - helping.start) / helping.ms : 0) : null);
     if (pad) prompt = ''; // the list says it all
     else if (!stallAim && (!inCar || onBike) && portalNear(player.x, player.z) && (onHorse || onBike || !rules.portals || games.fenced || games.flagOn)) prompt = t(onHorse ? 'prompt.horsePortal' : onBike ? 'prompt.bikePortal' : games.fenced ? 'prompt.portalGame' : games.flagOn ? 'prompt.flagPortal' : 'prompt.portalsOff');
+    if (!prompt && weapon.laserHint > 0 && weapon.current === 'laser') prompt = t(`laser.hint.${mode}`, { shoot: key('shoot', mode), reload: key('reload', mode) }); // its keys, a few seconds
     hud.setPrompt(goals.prompt(prompt, mode)); // when it says nothing else: a timed route's race on offer (world/goals.ts)
     const armed = action && !dead && !inCar;
     hud.setWeapon(armed, dead || inCar ? '' : weapon.status);
@@ -5110,6 +5117,8 @@ if (import.meta.env.DEV) {
       throwGrenade,
       /** Alone only: the grenade launcher with `n` grenades in your hands (false, and nothing, when playing together). */
       giveLauncher: (n = SPECS.launcher.lob!.rounds) => !net.connected && (weapon.giveLauncher(n), true),
+      /** Alone only: the laser rifle in your hands, its cell full (false, and nothing, when playing together). */
+      giveLaser: () => !net.connected && (weapon.giveLaser(), true),
       pickups,
       goals,
       cats,
