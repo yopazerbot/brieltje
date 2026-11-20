@@ -5,7 +5,7 @@
 // come in waves from all over that area, out of sight, each wave bigger, a little faster and a
 // little tougher than the last, with a break between them (breakAfter: a little longer each wave, to
 // restock at the stall). In a wave they come in pulses, groups from two or three sides at once, with
-// peaks and short rests between (Horde.plan). From wave 3 some of them are
+// peaks and short rests between (Horde.plan); far off and out of sight they hurry. From wave 3 some of them are
 // runners: as fast as you nearly, and fragile. A zombie goes for the nearest player who fights
 // (Action or Paintball), round walls, fences, hedges and the parked cars, and into the houses after
 // them: up their stairs, through their doors (a closed one it shoves open) and through a pane that
@@ -111,6 +111,15 @@ export const ZOMBIE = {
   groupSpread: 7,
   /** Two sides of one pulse are at least a quarter turn apart round the players (the cosine of the angle between them at most this) */
   flank: 0.2,
+  /**
+   * m/s: a zombie further than `hurryFrom` m along the way from every player and out of everyone's sight (as far as
+   * `sightFar` m) walks at least this fast, the big one `bigHurry`, so a group doesn't trickle in round the houses. In
+   * sight it walks at its own pace again.
+   */
+  hurry: 1.8,
+  bigHurry: 1.3,
+  hurryFrom: 12,
+  sightFar: 60,
   /** Runners: from this wave, this share of the wave (a little more each wave, at most `runMax`) */
   runFrom: 3,
   runShare: 0.12,
@@ -1390,6 +1399,7 @@ export class Horde {
       this.nav.field(from.length ? from : [this.homeNode], up);
       this.perched(now, targets, ev);
       if (this.phase === 'wave' && targets.length) this.rehome(now, targets, ev);
+      this.lookout(targets);
     }
     if (this.phase === 'wave') this.spawn(now, targets, ev);
     this.move(now, dt, targets, ev);
@@ -1737,6 +1747,31 @@ export class Horde {
     return null;
   }
 
+  /**
+   * After each distance field: which zombies hurry (ZOMBIE.hurry), those further than hurryFrom along the way from every
+   * player who fights and in nobody's sight (as far as sightFar; with a house between, through its walls as a swipe is).
+   */
+  lookout(targets) {
+    const nav = this.nav;
+    for (const z of this.zombies.values()) {
+      z.hurry = false;
+      if (z.act === 'down' || !targets.length || this.phase !== 'wave') continue;
+      const way = nav.distance(z.node);
+      if (!(way > ZOMBIE.hurryFrom) || way === Infinity) continue;
+      let seen = false;
+      for (const p of targets) {
+        const d = Math.hypot(p.x - z.x, p.z - z.z);
+        if (d > ZOMBIE.sightFar) continue;
+        const inside = z.node >= nav.outdoor || nav.inHouse(p.x, p.z);
+        if (inside ? nav.reach(p.x, p.y + 1.6, p.z, z.x, z.y + 1.4, z.z) : nav.clear(p.x, p.z, z.x, z.z, true)) {
+          seen = true;
+          break;
+        }
+      }
+      z.hurry = !seen;
+    }
+  }
+
   /** Whether a zombie has had no way to the players for ZOMBIE.lostMs (rehome may bring it back). */
   lostDue(now) {
     for (const z of this.zombies.values()) if (z.act !== 'down' && z.lostAt !== undefined && now - z.lostAt >= ZOMBIE.lostMs) return true;
@@ -1923,7 +1958,9 @@ export class Horde {
     const lulled = now < (z.lullUntil ?? 0) ? z.lull ?? 1 : 1;
     // Faster for a moment after it heard a shot; slower for good once shot in the legs.
     const stirred = (now < (z.alertUntil ?? 0) ? ZOMBIE.alert : 1) * (z.lame ? ZOMBIE.lame : 1);
-    const speed = stop ? 0 : z.top * (0.3 + 0.7 * facing) * wading * lulled * stirred *(now < (z.climbUntil ?? 0) ? ZOMBIE.climb : 1);
+    // Far off and out of everyone's sight: at least the hurry pace (lookout).
+    const rush = z.hurry ? Math.max(1, (big ? ZOMBIE.bigHurry : ZOMBIE.hurry) / Math.max(z.top * stirred, 0.1)) : 1;
+    const speed = stop ? 0 : z.top * rush * (0.3 + 0.7 * facing) * wading * lulled * stirred *(now < (z.climbUntil ?? 0) ? ZOMBIE.climb : 1);
     const vx = Math.sin(z.yaw) * speed + push.x;
     const vz = Math.cos(z.yaw) * speed + push.z;
     const bx = z.x;

@@ -1,6 +1,6 @@
-// The horde's pacing in a wave (shared/zombies.mjs Horde.plan, spawn): pulses that come out at once in groups from two
-// or three sides, near and out of sight, peaks and short rests, the big ones as an event. Alone and together it is one
-// code path; in the duel both rooms get the same.
+// The horde's pacing in a wave (shared/zombies.mjs Horde.plan, spawn, lookout): pulses that come out at once in groups
+// from two or three sides, near and out of sight, peaks and short rests, the big ones as an event, and a hurry for
+// those far off and out of everyone's sight. Alone and together it is one code path; in the duel both rooms get the same.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { makeBounds } from './bounds.mjs';
@@ -135,6 +135,29 @@ test('a peak that goes on too long still ends its rest after restMax', () => {
   h.spawn(1000 + ZOMBIE.restMax, players(4), []);
   assert.equal(h.resting, 0);
   assert.equal(h.nextSpawn, 1000 + ZOMBIE.restMax + ZOMBIE.rest);
+});
+
+test('far off and out of everyone\'s sight a zombie hurries; in sight it walks at its own pace', () => {
+  const h = new Horde(nav, spots, { home: { x: 0, z: 0 }, rand: dice(2) });
+  h.selectWave(0, 1, 1);
+  h.toSpawn = 0;
+  h.bigs = 0;
+  const ps = [{ name: 'p0', x: 0, y: 0, z: 0, alive: true, fighter: true, safe: false }];
+  const put = (id, x, z) => h.zombies.set(id, { id, kind: 0, x, y: 0, z, node: nav.locate(x, 0, z), yaw: 0, speed: 0, top: 0.65, hp: 50, max: 50, damage: 10, act: 'walk', actAt: 0, until: 0, struck: false, next: 0, downAt: 0, target: null });
+  put(1, 0, 40); // behind the house to the north, about 40 m round it
+  put(2, 30, 30); // in the open, in sight
+  put(3, -40, 0); // behind the house to the west
+  h.tick(0, 0.05, ps);
+  assert.equal(h.zombies.get(1).hurry, true);
+  assert.equal(h.zombies.get(2).hurry, false, 'in sight');
+  assert.equal(h.zombies.get(3).hurry, true);
+  const before = { x: h.zombies.get(1).x, z: h.zombies.get(1).z };
+  for (let now = 50; now < 1000; now += 50) h.tick(now, 0.05, ps);
+  const went = Math.hypot(h.zombies.get(1).x - before.x, h.zombies.get(1).z - before.z);
+  assert.ok(went > 1.0, `hurried ${went.toFixed(2)} m in about a second`);
+  assert.ok(went < ZOMBIE.hurry * 1.2, 'no faster than the hurry');
+  const open = h.zombies.get(2);
+  assert.ok(open.speed <= 0.65 * 1.01 + 0.3, 'its own pace in sight');
 });
 
 test('the duel: the same dice, the same pulses and the same zombies in the same order in both rooms', () => {

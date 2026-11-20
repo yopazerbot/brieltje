@@ -58,6 +58,10 @@ export const ZOMBIE: {
   stagger: number;
   groupSpread: number;
   flank: number;
+  hurry: number;
+  bigHurry: number;
+  hurryFrom: number;
+  sightFar: number;
   runFrom: number;
   runShare: number;
   runGrow: number;
