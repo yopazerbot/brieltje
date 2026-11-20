@@ -10,6 +10,7 @@ import { DONE_MS as ZOMBIES_DONE_MS, RECONNECT_MS as ZOMBIES_RECONNECT_MS, Zombi
 import { arenaOf, portalOf } from '../shared/arenas.mjs';
 import { BACK_MS, FIELDS, FLAG_COLORS, FLAG_MS, FLAG_TEAMS, FlagGame, SAFE_MS, SUDDEN_MS } from './flags.mjs';
 import { AssaultGame } from './assault.mjs';
+import { ROUND_FIELDS } from '../shared/assaultFields.mjs';
 
 const HIDE_MS = 30_000; // the seeker counts with eyes shut
 const SEEK_MS = 180_000;
@@ -26,6 +27,10 @@ const GRACE_MS = 15_000; // a seeker or "it" whose connection drops has this lon
 export const TEAM_GOAL = 25; // kills of the other team that win the teams game
 export const TEAM_NAMES = { house: 'House', bungalow: 'Bungalow' };
 export const TEAM_COLORS = { house: '#4fa3e0', bungalow: '#ff9f43' };
+/** A zombie grid made in the host's countdown (Modes.prepare) is handed to its game's start this long after (the countdown: 10 s). */
+export const READY_MS = 20_000;
+/** When in the countdown each of its grids is made: one per timer, never two in one go (each holds the server some 20 ms). */
+export const READY_AT = [800, 2600, 4400];
 export const KINDS = { hide: 'Hide and seek', tag: 'Tag', treasure: 'Treasure hunt', teams: 'House against bungalow', zombies: 'Zombies', flag: 'Steal the flag' };
 /** Steal the flag's teams in the chat's English (server/flags.mjs). */
 const FLAG_NAMES = { blue: 'Blue', red: 'Red' };
@@ -268,6 +273,57 @@ export class Modes {
   }
 
   /**
+   * The places whose zombie grids (game.mjs zombieGround, shared/zombies.mjs makeNav) a game's start makes: Attack and
+   * defend both its rounds' (server/assaultSupply.mjs: where a trap stands, what a turret sees), Zombies its own
+   * (server/zombies.mjs); the others none.
+   */
+  gridsOf(kind, place) {
+    if (kind === 'assault' || (kind === 'flag' && place === 'assault')) return ROUND_FIELDS.map((id) => arenaOf(FIELDS[id].red));
+    if (kind === 'zombies') return [arenaOf(place)];
+    return [];
+  }
+
+  /**
+   * The host queued `kind` at `place` (server/host.mjs startIn, its countdown of ten seconds): the zombie grids its start
+   * would make are made now, one per timer (READY_AT), and handed to that start (readyGround). Each holds the server some
+   * 20 ms (up to 90 the first time after the server starts); all at the start held it 0.15 to 0.2 s with 30 players,
+   * and every player saw the hitch. The same
+   * grids as the start made, from the cars as they stand a few seconds before it (those that stand there at a start
+   * are as much where they happen to be). Queued again, called off (unprepare) or not taken in time (READY_MS): gone.
+   */
+  prepare(kind, place) {
+    this.unprepare();
+    const ready = { grounds: new Map(), timers: [] };
+    this.ready = ready;
+    this.gridsOf(kind, place).forEach((arena, i) => {
+      const timer = setTimeout(() => {
+        if (this.ready === ready) ready.grounds.set(arena.id, { at: Date.now(), ground: this.game.zombieGround(arena) });
+      }, READY_AT[i]);
+      timer.unref?.();
+      ready.timers.push(timer);
+    });
+  }
+
+  /** The grids made in a countdown dropped, and those still to come called off (Stop, Cancel, a game started). */
+  unprepare() {
+    for (const t of this.ready?.timers ?? []) clearTimeout(t);
+    this.ready = null;
+  }
+
+  /**
+   * The grid made in the countdown for `arena` (game.mjs zombieGround asks first), handed over once, while fresh, with
+   * the house's panes as they are now (a Zombies start mends them all); else null and the grid is made as before.
+   */
+  readyGround(arena, now = Date.now()) {
+    const r = this.ready?.grounds.get(arena.id);
+    if (!r) return null;
+    this.ready.grounds.delete(arena.id);
+    if (now - r.at > READY_MS) return null;
+    if (!arena.center) r.ground.nav.setPanes(this.game.broken);
+    return r.ground;
+  }
+
+  /**
    * The admin starts a game (or 'free' to stop one); Zombies at `place` (shared/arenas.mjs). `opts` from the host's
    * programme (server/host.mjs, checked there): `minutes`, how long it lasts (not Zombies), `goal`, the teams' kills to win,
    * `look`, see LOOKS (checked again here). A game started otherwise (the menu, another one over it) has no look.
@@ -372,6 +428,7 @@ export class Modes {
       this.game.freshRound();
     }
     this.send();
+    this.unprepare(); // a grid of the countdown's not taken (another game started meanwhile): gone
   }
 
   near(a, b, reach) {

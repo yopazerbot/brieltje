@@ -873,6 +873,8 @@ export class Game {
    * edge. About 40 ms at home, 5 in the village.
    */
   zombieGround(arena) {
+    const ready = this.modes?.readyGround?.(arena); // made in the host's countdown (server/modes.mjs prepare)
+    if (ready) return ready;
     const edge = arenaEdge(arena, BOUNDS);
     const boxes = Object.values(this.cars).filter((c) => edge.inside(c.x, c.z)).map((c) => {
       const s = carSpec(c);
@@ -3202,5 +3204,20 @@ export class Game {
     for (const [name, p] of this.players) if (name !== except && p.ws.readyState === p.ws.OPEN) (p.ws.send(data), n++);
     for (const w of this.watchers) if (w.ws.readyState === w.ws.OPEN) (w.ws.send(data), n++); // the admin's watch views (src/watch.ts)
     monitor.out(data.length, n);
+  }
+
+  /**
+   * `fn` (a game's start, its round change, a Stop: every player placed and told at once) with every page's socket
+   * corked: the same messages in the same order, written once per socket as `fn` ends, not one write each (with 30
+   * players a thousand writes, some 20 ms on Windows). Its result.
+   */
+  corked(fn) {
+    const socks = [...this.players.values(), ...this.watchers].map((p) => p.ws?._socket).filter((s) => s && !s.destroyed && s.cork);
+    for (const s of socks) s.cork();
+    try {
+      return fn();
+    } finally {
+      for (const s of socks) s.uncork();
+    }
   }
 }

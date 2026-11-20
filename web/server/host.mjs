@@ -356,7 +356,7 @@ export class Host {
       case 'stop':
         this.callOff(); // a game counting down goes too: Stop means nothing plays (before, it started 10 s later anyway)
         g.hub?.duel?.stop(by); // the Zombies duel: both rooms at once
-        g.modes.start('free', by);
+        this.corked(() => g.modes.start('free', by));
         return { ok: true };
       case 'swap': // Steal the flag's sides, only at the host's request (server/modes.mjs swapSides: its game, its clock)
         return g.modes.swapSides(now);
@@ -426,12 +426,13 @@ export class Host {
     const timer = setTimeout(() => {
       if (this.countdown?.timer !== timer) return; // called off or replaced meanwhile: never a stale start
       this.countdown = null;
-      if (!duel) return this.game.modes.start(e.kind === 'assault' ? 'flag' : e.kind, by, e.place, { minutes: e.minutes, goal: e.goal, look: e.look, defend: e.defend }); // Attack and defend: a flag game of its own
+      if (!duel) return this.corked(() => this.game.modes.start(e.kind === 'assault' ? 'flag' : e.kind, by, e.place, { minutes: e.minutes, goal: e.goal, look: e.look, defend: e.defend })); // Attack and defend: a flag game of its own
       const r = duel.start(e, by);
       if (r.error) this.game.broadcast({ t: 'system', text: `The Zombies duel could not start: ${r.error}`, code: r.code, args: r.args }); // its reason, in the page's language
     }, COUNTDOWN_MS);
     timer.unref?.();
     this.countdown = { kind: e.kind, until, timer };
+    if (!duel) this.game.modes.prepare?.(e.kind, e.place); // its heavy part (the zombie grids) made in the countdown, not at its start
     this.game.broadcast({ t: 'announce', code: 'nextGame', args: { kind: e.kind }, text: `Next: ${KINDS[e.kind] ?? (e.kind === 'assault' ? ASSAULT_TITLE : 'Zombies duel')}`, ms: COUNTDOWN_MS, count: true });
     return { ok: true };
   }
@@ -446,7 +447,13 @@ export class Host {
     const was = !!this.countdown;
     if (was) clearTimeout(this.countdown.timer);
     this.countdown = null;
+    this.game.modes.unprepare?.(); // the grids its start would have taken (server/modes.mjs prepare)
     if (was || always) this.game.broadcast({ t: 'announce', text: '', ms: 0 });
+  }
+
+  /** `fn` with every page's socket corked while it tells them all (game.mjs corked), where the game has that. */
+  corked(fn) {
+    return this.game.corked ? this.game.corked(fn) : fn();
   }
 
   /** Everyone here on a team, as evenly as can be, in random order, the extra ones on any team (the host not counted). */

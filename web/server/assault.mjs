@@ -43,6 +43,11 @@ import { FlagGame, REGRAB_MS, RETURN_MS, TOUCH } from './flags.mjs';
 import { AssaultArms, AssaultSupply } from './assaultSupply.mjs';
 
 const other = (team) => (team === 'blue' ? 'red' : 'blue');
+/**
+ * `fn` (a round's end, the break, round 2: thirty players placed and told at once) with every page's socket corked
+ * (game.mjs corked): the same messages, one write per socket instead of one per message.
+ */
+const corked = (game, fn) => (game.corked ? game.corked(fn) : fn());
 const round2 = (v) => Math.round(v * 100) / 100;
 /** The truck's start places round it: [across, along] in its own frame (behind it and beside its back). */
 const TRUCK_SPOTS = [[0, 5.2], [-2.4, 3.2], [2.4, 3.2], [-2.4, 0], [2.4, 0], [0, 7.2]];
@@ -321,7 +326,7 @@ export class AssaultGame extends FlagGame {
     this.supply.fallen();
     const armed = this.arms.step(now);
     if (this.phase === 'break') {
-      if (now >= s.until) return this.secondRound(now, modes);
+      if (now >= s.until) return corked(this.game, () => this.secondRound(now, modes));
       if (armed) modes.send();
       return;
     }
@@ -334,8 +339,8 @@ export class AssaultGame extends FlagGame {
     this.truckWas = was;
     if (events.length) modes.flagEvents(events);
     const cap = events.find((e) => e.ev === 'captured');
-    if (cap) return this.roundOver(now, modes, cap.name);
-    if (now >= s.until) return this.roundOver(now, modes, null);
+    if (cap) return corked(this.game, () => this.roundOver(now, modes, cap.name));
+    if (now >= s.until) return corked(this.game, () => this.roundOver(now, modes, null));
     if (events.length || armed || traps || truck) modes.send();
   }
 
