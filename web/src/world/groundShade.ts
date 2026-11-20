@@ -7,6 +7,7 @@ import { snowOn } from './snowCover';
 import { wetOn } from './wetGround';
 import { compileDrawn, compileQuad } from './warmShaders';
 import { groundNoise } from './groundNoise';
+import { SPRUCE_WOOD } from './cardTrees';
 
 /**
  * Light on the ground of the whole neighbourhood, worked out once when the sky
@@ -74,6 +75,9 @@ uniform sampler2D terrainMap; // the relief's heights (m)
 uniform vec3 terrainArea; // its first point x, z, and the step
 uniform vec2 terrainSize; // its number of points along x and z
 uniform float sunTap; // metres between the sun's taps
+uniform vec3 sunDir; // towards the sun
+uniform float sunRange; // metres from the sun image's nearest depth to its furthest
+const vec3 SPRUCE_WOOD = vec3(${SPRUCE_WOOD.map((v) => v.toFixed(1)).join(', ')});
 varying vec2 vUv;
 
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -106,6 +110,25 @@ float solidAt(vec2 xz) {
   vec2 uv = project(topMatrix, vec3(xz.x, 0.0, xz.y), d);
   return topRange.x - texture2D(solidDepth, uv).r * topRange.y - ground - terrainAt(xz);
 }
+/**
+ * How much sun comes through what blocks it at \`occ\`, if that is a tree's crown: high off the ground (a crown's
+ * underside, not a hedge) and well above whatever stands solid there (a wall, a roof, which let nothing through).
+ * At the end of November the broad-leaved crowns are half bare: about two fifths of the sun gets through them, more
+ * where their branches leave gaps of a few metres and less where they close; a spruce's needles let through a tenth.
+ * The Sparrenhof's wood is spruces (world/cardTrees.ts SPRUCE_WOOD).
+ */
+float crownLight(vec3 occ) {
+  float high = occ.y - ground - terrainAt(occ.xz);
+  if (high < 3.5 || high < solidAt(occ.xz) + 1.0) return 0.0;
+  float spruce = 0.86 * smoothstep(SPRUCE_WOOD.z + 10.0, SPRUCE_WOOD.z - 40.0, distance(occ.xz, SPRUCE_WOOD.xy));
+  float gap = noise(occ.xz / 3.1) * 0.6 + noise(occ.xz / 1.3 + 7.0) * 0.4;
+  return clamp(mix(0.42, 0.1, spruce) * (0.45 + 1.1 * gap), 0.0, 1.0);
+}
+/** The same for the sky: how much of it shows through what stands \`high\` metres over the ground at \`at\`, if a crown. */
+float crownSky(vec2 at, float high) {
+  if (high < 3.5 || high < solidAt(at) + 1.0) return 0.0;
+  return mix(0.5, 0.22, 0.86 * smoothstep(SPRUCE_WOOD.z + 10.0, SPRUCE_WOOD.z - 40.0, distance(at, SPRUCE_WOOD.xy)));
+}
 void main() {
   vec2 xz = area.xy + (vUv * 2.0 - 1.0) * area.z;
   float base = ground + terrainAt(xz); // the ground here, on the relief
@@ -119,8 +142,11 @@ void main() {
   for (int x = -2; x <= 2; x++)
     for (int y = -2; y <= 2; y++) {
       vec2 tap = xz + vec2(x, y) * (sunTap * 0.6);
-      vec2 uv = project(sunMatrix, vec3(tap.x, ground + terrainAt(tap) + 0.06, tap.y), d);
-      lit += d - sunBias <= texture2D(sunDepth, uv).r ? 1.0 : 0.0;
+      vec3 at = vec3(tap.x, ground + terrainAt(tap) + 0.06, tap.y);
+      vec2 uv = project(sunMatrix, at, d);
+      float near = texture2D(sunDepth, uv).r;
+      // In the shade: of a crown, some of the sun still comes through (what blocks it, up the sun's ray).
+      lit += d - sunBias <= near ? 1.0 : crownLight(at + sunDir * (d - near) * sunRange);
     }
   lit /= 25.0;
 
@@ -133,11 +159,11 @@ void main() {
       float dist = float(r * r) * 0.5;
       vec2 q = xz + dir * dist;
       float h = heightAt(q) - ground - terrainAt(q);
-      occ += clamp(h / (dist * 2.5), 0.0, 1.0) / float(r);
+      occ += clamp(h / (dist * 2.5), 0.0, 1.0) / float(r) * (1.0 - crownSky(q, h));
     }
   }
   float above = heightAt(xz) - base; // under a crown or an overhang
-  float ao = 1.0 - 0.5 * clamp(occ / 14.0, 0.0, 1.0) - (above > 1.5 ? 0.25 : 0.0);
+  float ao = 1.0 - 0.5 * clamp(occ / 14.0, 0.0, 1.0) - (above > 1.5 ? 0.25 * (1.0 - crownSky(xz, above)) : 0.0);
 
   // Contact: in each of 16 directions out to 2 m the nearest wall, hedge, fence or shed, weighed by how close it is
   // against a reach that grows with its height (80 cm for a low fence, 2.3 m for a house wall). Half the
@@ -706,6 +732,8 @@ export class GroundShade {
       terrainArea: { value: new THREE.Vector3(terrain.x0, terrain.z0, terrain.step) },
       terrainSize: { value: new THREE.Vector2(terrain.nx, terrain.nz) },
       sunTap: { value: (1.5 * 2 * r) / depth }, // a texel and a half of the sun's image, as before
+      sunDir: { value: dir.clone() },
+      sunRange: { value: sunCam.far - sunCam.near },
     };
     const combine = this.combiner();
     Object.assign(combine.uniforms, uniforms);

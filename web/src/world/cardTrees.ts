@@ -554,7 +554,7 @@ export function spotHash(x: number, z: number, n: number): number {
 }
 
 /** The Sparrenhof's wood: within this many metres of the café its trees are spruces. */
-const SPRUCE_WOOD: [number, number, number] = [638, 942, 320];
+export const SPRUCE_WOOD: [number, number, number] = [638, 942, 320];
 
 /** Which kind a tree is: `wood` if it stands in a wood of the open data. */
 export function treeKind(t: TreeSpot, wood: boolean): Kind {
