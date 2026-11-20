@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { coverRoofs } from './coverMap';
 import { facesMaterial, looseProps, type Face, type Place } from './looseProps';
 import { drawBack, drawPlate, drawSign, drawStopPlate, drawTimetable, FaceSheet, outlineOf } from './signFaces';
 import type { V3 } from './rigid';
@@ -210,6 +211,7 @@ export function buildRoadside(data: RoadsideData, tiles: Tiles, groundAt: (x: nu
       const m = new THREE.Matrix4().compose(new THREE.Vector3(sx, groundAt(sx, sz), sz), new THREE.Quaternion().setFromAxisAngle(up, sYaw), new THREE.Vector3(1, 1, 1));
       t.solid.push(shelterFrame.clone().applyMatrix4(m));
       t.glass.push(shelterGlass.clone().applyMatrix4(m));
+      coverRoofs.push({ x: sx, z: sz, yaw: sYaw, hl: 1.7, hw: 0.85, top: groundAt(sx, sz) + 2.38 }); // the rain stops at its roof (world/coverMap.ts)
     }
   }
 

@@ -4,6 +4,8 @@ import {
   skipCycle, winterAt,
 } from '../../shared/moods.mjs';
 import { bakeMood } from './bakedLight';
+import type { World } from './collision';
+import { CoverMap, type CoverCrown } from './coverMap';
 import { environment, loadSky, type SkyLook } from './environment';
 import { groundSkySun } from './groundShade';
 import type { IndoorLight } from './indoorLight';
@@ -228,6 +230,7 @@ export class Weather {
   private sunDir = new THREE.Vector3();
   private now: Look = blendLook(look('sunny', { ...LOOKS.sunny }, ['#fff', '#fff', '#fff', '#fff']), LOOKS.sunny, LOOKS.sunny, 0);
   private tmp: Look = blendLook(look('sunny', { ...LOOKS.sunny }, ['#fff', '#fff', '#fff', '#fff']), LOOKS.sunny, LOOKS.sunny, 0);
+  private coverMap: CoverMap | null = null;
   private haze = new THREE.Color();
   private hazeB = new THREE.Color();
   private shadowOn = true;
@@ -283,6 +286,16 @@ export class Weather {
   /** The cycle's pace together (1, 10 or 60), for the admin's picker. */
   get serverSpeed(): number {
     return this.serverCycle?.speed ?? 1;
+  }
+
+  /**
+   * What the rain and the snow stop at (world/coverMap.ts), once the world is there: its blocks and drawn roofs, and
+   * the trees' crowns (a list that grows as the village comes in; `skipCrown`: a tree left out).
+   */
+  cover(world: World, crowns: CoverCrown[], skipCrown?: (x: number, z: number) => boolean): void {
+    this.coverMap = new CoverMap(world, crowns, skipCrown);
+    this.rain.setCover(this.coverMap);
+    this.snowfall.setCover(this.coverMap);
   }
 
   /** The player's own choice (the settings). */
@@ -346,7 +359,7 @@ export class Weather {
 
   /** The graphics preset: how many streaks of rain and flakes of snow. */
   setQuality(quality: string, phone: boolean): void {
-    this.rain.setCount(RAIN_COUNT[phone ? 'low' : quality] ?? RAIN_COUNT.medium);
+    this.rain.setCount(RAIN_COUNT[phone ? 'low' : quality] ?? RAIN_COUNT.medium, phone ? 'low' : quality);
     this.snowfall.setCount(SNOW_COUNT[phone ? 'low' : quality] ?? SNOW_COUNT.medium);
     this.lamps.setQuality(quality, phone);
   }
@@ -436,8 +449,10 @@ export class Weather {
     this.skipLying = 0;
     snowCover.value = this.lying;
 
+    // What is over the ground round the eye, for the rain and the snow to stop at (asked only while either falls).
+    this.coverMap?.update(eye, indoors, this.now.rain > 0.001 || falling > 0.001);
     this.rain.set(this.now.rain);
-    this.rain.update(dt, eye, indoors, this.now.skyGain * 1.1);
+    this.rain.update(dt, eye, indoors, this.now.skyGain * 1.1, this.renderer);
     this.snowfall.set(falling);
     this.snowfall.update(dt, eye, indoors, this.now.skyGain * 1.4, this.renderer);
     this.lamps.set(this.now.night, this.groundFill);

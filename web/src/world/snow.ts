@@ -1,12 +1,16 @@
 import * as THREE from 'three';
+import { COVER_GLSL, coverUniforms, type CoverMap } from './coverMap';
+import { windAt } from './wind';
 
 /**
  * Falling snow (world/weather.ts turns it on), round the eye like the rain (world/rain.ts): flakes drifting down
  * slowly, swaying, each its own way. One draw call of points: each flake has a fixed spot in a box of BOX metres
  * that moves with the eye, the vertex shader lets it fall and sway and wraps it round the box, so the flakes keep
  * their place in the world as you walk through them. A flake is a soft round dot, larger the nearer it is, a few
- * pixels across at most a few metres off: the graphics chip only shades those. Fewer on Low and on phones. None
- * indoors. Snow makes no sound of its own: the world goes quieter (world/ambience.ts, world/birdsong.ts).
+ * pixels across at most a few metres off: the graphics chip only shades those. Fewer on Low and on phones. They
+ * stop at what is over them (world/coverMap.ts: roofs, canopies, shelters; fewer under a tree's crown), so from
+ * indoors the snow is seen falling outside the windows; the wind (world/wind.ts) carries them. Snow makes no sound of
+ * its own: the world goes quieter (world/ambience.ts, world/birdsong.ts).
  */
 
 /** Metres across (x, z) and high (y) of the box of flakes round the eye. */
@@ -17,24 +21,32 @@ const SPEED = 1.1;
 const WRAP = 1280;
 /** A flake's size (m), drawn a little larger than a real one so it reads at a distance. */
 const FLAKE = 0.03;
+/** How much of the wind's speed the flakes drift sideways with. */
+const CARRY = 0.4;
 
 const vertexShader = /* glsl */ `
   attribute vec4 seed;
   uniform vec3 box;
   uniform vec3 eye;
   uniform float fall;
+  uniform vec2 drift;
   uniform float time;
   uniform float scale;
   varying float vAlpha;
+  ${COVER_GLSL}
   void main() {
-    // The flake's place, falling and swaying (each its own pace), wrapped into the box round the eye.
+    // The flake's place, falling and swaying (each its own pace), carried by the wind, wrapped into the box round the eye.
     float k = seed.w * 6.2832;
     vec3 p = seed.xyz * box;
     p.y -= fall * (0.75 + 0.125 * floor(fract(seed.w * 13.7) * 4.0)); // four speeds
-    p.x += sin(time * (0.5 + 0.3 * fract(seed.w * 7.1)) + k) * 0.7 + fall * 0.125;
-    p.z += cos(time * (0.4 + 0.3 * fract(seed.w * 5.3)) + k * 1.7) * 0.6 + fall * 0.05;
+    p.x += sin(time * (0.5 + 0.3 * fract(seed.w * 7.1)) + k) * 0.7 + drift.x;
+    p.z += cos(time * (0.4 + 0.3 * fract(seed.w * 5.3)) + k * 1.7) * 0.6 + drift.y;
     vec3 corner = eye - box * 0.5;
     vec3 world = corner + mod(p - corner, box);
+    // Not under what is over it (world/coverMap.ts; unknown cells: none indoors); under a crown fewer get through.
+    vec4 c = coverOver(world.xz);
+    float show = c.a > 0.5 ? step(c.r, world.y) : 1.0 - coverAt.w;
+    if (c.a > 0.5 && world.y < c.g && fract(seed.w * 41.3) > 0.35) show = 0.0;
     // Fade out towards the box's sides and top, so flakes don't pop in and out at its edges.
     vec2 off = abs(world.xz - eye.xz) / (box.xz * 0.5);
     float edge = 1.0 - smoothstep(0.6, 1.0, max(off.x, off.y));
@@ -44,7 +56,7 @@ const vertexShader = /* glsl */ `
     // Under two pixels it stays two, fainter (a smaller dot would flicker).
     vAlpha = edge * clamp(size / 2.0, 0.15, 1.0);
     gl_PointSize = clamp(size, 2.0, 24.0);
-    gl_Position = projectionMatrix * view;
+    gl_Position = show > 0.5 ? projectionMatrix * view : vec4(0.0, 0.0, 2.0, 1.0);
   }`;
 
 const fragmentShader = /* glsl */ `
@@ -60,15 +72,21 @@ const fragmentShader = /* glsl */ `
 
 export class Snow {
   readonly mesh: THREE.Points;
+  private cover = coverUniforms();
   private uniforms = {
     box: { value: BOX.clone() },
     eye: { value: new THREE.Vector3() },
     fall: { value: 0 },
+    drift: { value: new THREE.Vector2() },
     time: { value: 0 },
     scale: { value: 800 },
     color: { value: new THREE.Color(1, 1, 1) },
     opacity: { value: 0 },
+    ...this.cover,
   };
+  /** m/s the flakes are carried sideways now (eased towards the wind's) */
+  private carry = new THREE.Vector2();
+  private want = new THREE.Vector2();
   private geometry = new THREE.BufferGeometry();
   private count = 0;
   /** 0 to 1: how hard it snows (the weather's), and how much of it is seen (out of doors) */
@@ -107,23 +125,34 @@ export class Snow {
     this.mesh.geometry = this.geometry;
   }
 
+  /** The cover map the flakes stop at (world/coverMap.ts). */
+  setCover(map: CoverMap): void {
+    this.cover.coverMap.value = map.texture;
+    this.cover.coverAt.value = map.at.value;
+  }
+
   /** How hard it snows, 0 (none) to 1. */
   set(amount: number): void {
     this.amount = amount;
   }
 
   /**
-   * Each frame: the eye, whether it is indoors (no flakes there), the light on them, and the renderer (its height in
-   * pixels sets how large a flake is drawn).
+   * Each frame: the eye, whether it is indoors (where the cover map knows nothing yet a flake counts as under a roof),
+   * the light on them, and the renderer (its height in pixels sets how large a flake is drawn).
    */
   update(dt: number, eye: THREE.Vector3, indoors: boolean, brightness: number, renderer: THREE.WebGLRenderer): void {
-    this.seen += ((indoors ? 0 : this.amount) - this.seen) * (1 - Math.exp(-dt * 3));
+    this.seen += (this.amount - this.seen) * (1 - Math.exp(-dt * 3));
     if (this.seen < 0.01 && !this.amount) this.seen = 0;
     this.mesh.visible = this.seen > 0.01;
+    this.cover.coverAt.value.w = indoors ? 1 : 0;
     if (!this.mesh.visible) return;
     const u = this.uniforms;
     u.eye.value.copy(eye);
     u.fall.value = (u.fall.value + dt * SPEED) % WRAP;
+    // Carried by the wind at the eye (world/wind.ts), a share of it: flakes drift, they don't fly.
+    const w = windAt(eye.x, eye.z);
+    this.carry.lerp(this.want.set(w.x * CARRY, w.z * CARRY), 1 - Math.exp(-dt * 0.7));
+    u.drift.value.set((u.drift.value.x + this.carry.x * dt) % BOX.x, (u.drift.value.y + this.carry.y * dt) % BOX.z);
     u.time.value = (u.time.value + dt) % 10000;
     // Pixels per metre at a metre off, for the usual field of view (72 degrees high).
     u.scale.value = renderer.getDrawingBufferSize(this.size).y / (2 * Math.tan((36 * Math.PI) / 180));

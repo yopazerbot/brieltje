@@ -996,6 +996,7 @@ const helis = new HeliPilot(world, heliCrowns, (x, z) => treesLeftOut.has(treeKe
   dropView.handover(camera, at.x, at.feet, at.z, at.side);
 }, at: () => (player.jumped ? { x: player.x, z: player.z, feet: player.feet } : null) });
 scene.add(helis.group);
+weather.cover(world, heliCrowns, (x, z) => treesLeftOut.has(treeKey(x, z))); // what the rain and snow stop at: roofs, canopies, crowns (world/coverMap.ts)
 helis.chuteRule = () => rules.parachute !== false; // together, the jump only with the admin's parachute rule on
 // Cars and helicopters taking damage in a team match (world/vehicleWear.ts; the rules: server/vehicleDamage.mjs).
 const vehicleWear = new VehicleWear(effects, (k, id) => {
@@ -4272,7 +4273,7 @@ renderer.setAnimationLoop((now: number) => {
   combat.tick(dt);
   sound.listen(camera);
   roomSound.update(dt, inside, player.ground.name, camera.position);
-  weather.update(dt, camera.position, inside); // the rain round the eye (none indoors), the street lamps
+  weather.update(dt, camera.position, inside); // the rain round the eye (stopping at roofs), the wind, the street lamps
   keetLife.update(dt, camera.position, mood.night, !phone && quality !== 'low'); // the café's light and sounds (world/keet.ts)
   setWindowNight(mood.night); // lights in about half of the village's rooms at night (world/windows.ts)
   uplights.update(mood.night); // home 4's trees lit from below at night (world/uplights.ts)
