@@ -137,6 +137,7 @@ import { gunIndoors } from './world/gunSurface';
 import { Weather } from './world/weather';
 import { Torch } from './world/torch';
 import { warmPasses } from './world/warmShaders';
+import { aoOnOpaque } from './aoOpaque';
 import { snowOnModel } from './world/snowCover';
 import { Acoustics, acoustics } from './world/acoustics';
 import { MoodAdmin, moodNotice } from './ui/moodAdmin';
@@ -650,16 +651,9 @@ aoReach(ao, 150, 300); // none far off, where the depth is too coarse for it and
 // fence's gaps, glass, sprites and the zombies' posed bodies come out as they are drawn, where that second drawing,
 // with one plain material for everything, had to leave them out.
 ao.setGBuffer(target.depthTexture!);
-{
-  const own = ao.render.bind(ao);
-  ao.render = (r, write, read, dt, mask) => {
-    // The scene is drawn into the composer's read buffer, which alternates between its two targets.
-    const depth = read.depthTexture;
-    ao.gtaoMaterial.uniforms.tDepth.value = depth;
-    ao.pdMaterial.uniforms.tDepth.value = depth;
-    own(r, write, read, dt, mask);
-  };
-}
+// On the solid scene only, in the middle of its drawing, so mist, smoke, glass and glows are not darkened through
+// (src/aoOpaque.ts). The scene is drawn into the composer's read buffer, which alternates between its two targets.
+const aoOpaque = aoOnOpaque(scene, camera, ao, () => [composer.readBuffer, composer.writeBuffer]);
 composer.addPass(ao);
 const bloom = new BloomPass(); // the glow round bright light, Medium and up (src/bloom.ts)
 composer.addPass(bloom);
@@ -5170,7 +5164,7 @@ if (import.meta.env.DEV) {
         for (let i = 0; i < Math.max(1, Math.round(seconds * 60)); i++) player.update(1 / 60, { ...idle, ...partial }, camera);
         return { x: +player.x.toFixed(3), z: +player.z.toFixed(3), feet: +player.feet.toFixed(3), flying: player.flying };
       },
-      three: { renderer, scene, sun, ao, composer, environmentReady, applyQuality, autoDetect, quality: () => quality, groundShade, weather, sunShadow, bloom, presets: PRESETS, holdQuality: (on: boolean) => (qualityHeld = on), glassProbe },
+      three: { renderer, scene, sun, ao, aoOpaque, composer, environmentReady, applyQuality, autoDetect, quality: () => quality, groundShade, weather, sunShadow, bloom, presets: PRESETS, holdQuality: (on: boolean) => (qualityHeld = on), glassProbe },
       /** The weather's cycle moved on by this many seconds, on this page only (world/weather.ts forward), and where it is. */
       weatherAhead: (seconds: number) => weather.forward(seconds),
       weatherState: () => weather.state(),
