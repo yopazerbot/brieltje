@@ -54,6 +54,7 @@ const STEP = 7;
 const SIZE = 512;
 const LAYER_GRASS = 29;
 const LAYER_COVER = 30;
+const LAYER_WATER = 31;
 
 /**
  * A patch of grass: `blades` single blades, their feet on a jittered grid over a square of `side` metres round 0.
@@ -167,8 +168,11 @@ export class GrassTufts {
   private snow = { value: 0 };
   private drawnAt = new THREE.Vector3(Infinity, 0, 0);
   private drawnWhen = 0;
+  /** The eye jumped (or nothing is drawn yet): the images wait a frame for the ground round it (main.ts groundDetail). */
+  private waited = false;
   private heightPass: THREE.ShaderMaterial;
   private coverPass: THREE.ShaderMaterial;
+  private waterPass: THREE.ShaderMaterial;
 
   /**
    * `shade`: the ground's baked light (world/groundShade.ts); `grass`: the lawn's material; `fixed`: the roots of
@@ -240,6 +244,21 @@ const scattered = (one: THREE.BufferGeometry, count: number, kind: 'tuft' | 'lea
           if (over > 0.5 || over < -0.5) discard;
           // Covered, and how high over the relief (the highest of what lies there is kept: the depth test).
           gl_FragColor = vec4(1.0, over + 0.5, 0.0, 1.0);
+        }`,
+      side: THREE.DoubleSide,
+    });
+    // The ponds' and ditches' water covers the ground under it however deep (no blade under the water), and the wet
+    // mud up to some 15 cm over it in part (the blades thin out there). Its sheet runs on under a bank: none there.
+    this.waterPass = new THREE.ShaderMaterial({
+      uniforms: { gtArea: this.area, gtBase: this.base, gtHeights: { value: this.heights.texture } },
+      vertexShader: head,
+      fragmentShader: /* glsl */ `
+        uniform sampler2D gtHeights;
+        varying float vY;
+        void main() {
+          float over = vY - texture2D(gtHeights, gl_FragCoord.xy / ${SIZE}.0).r;
+          if (over < -0.15) discard;
+          gl_FragColor = vec4(smoothstep(-0.15, 0.0, over), clamp(over, -0.5, 0.5) + 0.5, 0.0, 1.0);
         }`,
       side: THREE.DoubleSide,
     });
@@ -431,7 +450,15 @@ ${blades ? `          float gtWild = clamp(1.0 - gs.a * 2.0, 0.0, 1.0);
   update(renderer: THREE.WebGLRenderer, scene: THREE.Scene, eye: THREE.Vector3, now: number): void {
     if (!this.mesh.visible) return;
     this.snow.value = mood.snow;
-    if (Math.hypot(eye.x - this.drawnAt.x, eye.z - this.drawnAt.z) < STEP && now - this.drawnWhen < 15) return;
+    const moved = Math.hypot(eye.x - this.drawnAt.x, eye.z - this.drawnAt.z);
+    if (moved < STEP && now - this.drawnWhen < 15) return;
+    // After a jump (a teleport, a portal, the start) the ground round the eye is only swapped in after this, this
+    // frame (its near pieces, with the ponds cut out, for the far ones): drawn now, the images held the far ground.
+    if (moved > 40 && !this.waited) {
+      this.waited = true;
+      return;
+    }
+    this.waited = false;
     this.drawnAt.copy(eye);
     this.drawnWhen = now;
     const half = this.reach.value + STEP + 3;
@@ -451,8 +478,9 @@ ${blades ? `          float gtWild = clamp(1.0 - gs.a * 2.0, 0.0, 1.0);
     scene.traverse((o) => {
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh) return;
-      if (mesh.material === this.grass) mesh.layers.enable(LAYER_GRASS);
-      else if (o.name.endsWith(' water')) mesh.layers.enable(LAYER_COVER);
+      // The lawn, and what wears it under a material of its own (a pond's banks: world/banks.ts).
+      if (mesh.material === this.grass || mesh.userData.lawn) mesh.layers.enable(LAYER_GRASS);
+      else if (o.name.endsWith(' water')) mesh.layers.enable(LAYER_WATER);
     });
     for (const root of this.fixed()) {
       root.traverse((o) => {
@@ -486,6 +514,10 @@ ${blades ? `          float gtWild = clamp(1.0 - gs.a * 2.0, 0.0, 1.0);
     this.camera.layers.set(LAYER_COVER);
     renderer.setRenderTarget(this.cover);
     renderer.clear();
+    renderer.render(scene, this.camera);
+    // The water over it, at any depth.
+    scene.overrideMaterial = this.waterPass;
+    this.camera.layers.set(LAYER_WATER);
     renderer.render(scene, this.camera);
     scene.overrideMaterial = override;
     scene.background = background;
