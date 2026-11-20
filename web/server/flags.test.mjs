@@ -659,6 +659,28 @@ test('a reconnecting player keeps their team', () => {
   assert.equal(s.game.modes.state.teams[r], 'red');
 });
 
+test('back after a reload: the page is told where the server has them, neither moved nor healed', () => {
+  const s = four();
+  const [r] = s.red;
+  // Out on the field, half hurt, then the page reloads (its socket closes, a new one joins).
+  const [mx, mz] = [640, -744];
+  s.put(r, mx, mz, s.game.players.get(r).state.y);
+  s.game.players.get(r).hp = 60;
+  s.game.players.get(r).hurtAt = s.game.players.get(r).hurtByPlayerAt = s.now();
+  s.leave(r);
+  s.tick();
+  s.join(r);
+  const p = s.game.players.get(r);
+  assert.equal(s.game.modes.state.teams[r], 'red');
+  assert.deepEqual([p.state.x, p.state.z], [mx, mz], 'where they were, as the server had them');
+  assert.deepEqual(s.sent.get(r).filter((m) => m.t === 'spawn'), [{ t: 'spawn', ok: false, x: mx, z: mz }], 'the page goes there (it starts at the house)');
+  assert.equal(s.sent.get(r).some((m) => m.t === 'respawn'), false, 'no respawn: not at the base, nobody healed by a reload');
+  assert.equal(p.hp, 60, 'the fight goes on with its health');
+  // A newcomer still starts at its base, with no such line.
+  s.join('eve');
+  assert.equal(s.sent.get('eve').some((m) => m.t === 'spawn'), false);
+});
+
 test('the host moves a player during the game: at once, the flag and the bazooka dropped, at the new base, protected, in the new colour', () => {
   const s = four();
   const [r] = s.red;

@@ -452,6 +452,11 @@ export class Modes {
       const side = this.game.host?.sideOf(name);
       if (!back) s.teams[name] = side ? (side === 'house' ? 'blue' : 'red') : this.smaller();
       this.game.teamsChanged([name], !back);
+      // Back (a reload, a new tab, Wi-Fi gone a moment): where the server has them, never moved or healed by it. Their page
+      // is told so, as for a refused start place (game.mjs spawn): a reloaded page starts at the house, and was held to the
+      // field's edge nearest to it while the server walked them over from where they were (up to a minute, unseen there).
+      const p = back ? this.game.players.get(name) : null;
+      if (p?.state) this.game.send(p.ws, { t: 'spawn', ok: false, x: p.state.x, z: p.state.z });
     }
     if (s.kind === 'hide') {
       if (!s.players.has(name)) s.seekers.add(name);
