@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import type { Prism } from './houseData';
 import { groundNoise } from './groundNoise';
+import { wind } from './wind';
+import { FOREST_BOUNCE, FOREST_COMMON, FOREST_FLOOR, woodDetail } from './forestFloor';
 
 /**
  * Rows in the fields, as they are at the end of October here, by the crop the farmers declared on
@@ -120,16 +122,20 @@ export function patchFields(material: THREE.MeshStandardMaterial): void {
     before.call(material, shader, renderer);
     shader.uniforms.rowDetail = rowDetail;
     shader.uniforms.fieldNoise = noise;
+    shader.uniforms.woodDetail = woodDetail;
+    shader.uniforms.windTime = wind.time;
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nattribute vec4 row;\nvarying vec4 vRow;\nvarying vec2 vFieldXZ;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvRow = row;\nvFieldXZ = (modelMatrix * vec4(transformed, 1.0)).xz;');
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform float rowDetail;\nuniform sampler2D fieldNoise;\nvarying vec4 vRow;\nvarying vec2 vFieldXZ;')
+      .replace('#include <common>', `#include <common>\nuniform float rowDetail;\nuniform sampler2D fieldNoise;\nvarying vec4 vRow;\nvarying vec2 vFieldXZ;\n${FOREST_COMMON}`)
       .replace(
         '#include <color_fragment>',
         `#include <color_fragment>
         float fieldSlope = 0.0;
         vec3 fieldAcross = vec3(0.0);
+        vec3 fieldTilt = vec3(0.0); // the fallen leaves' own tilt, near by (view space)
+        float fieldUnder = 0.0; // how much of the sun the crowns hold back here (the woods' floor), for their light's bounce
         float fieldPlant = 0.0; // how much of it plants cover: matte, and the soil's clods don't show through
         float fieldCode = floor(vRow.z * 127.0 + 0.5);
         float fieldKind = floor(fieldCode / 8.0);
@@ -138,22 +144,7 @@ export function patchFields(material: THREE.MeshStandardMaterial): void {
         vec3 texel = diffuseColor.rgb / max(vColor.rgb, vec3(0.05));
         float texelLum = dot(texel, vec3(0.3, 0.55, 0.15));
         if (fieldKind > 8.5) {
-          // The woods' floor at the start of November: fallen leaves, rust, ochre and brown, in drifts of a few
-          // metres, darker where they lie damp and old, with patches of moss and ivy; near by, single leaves.
-          float fA = texture2D(fieldNoise, vFieldXZ / 7.0).r;
-          float fB = texture2D(fieldNoise, vFieldXZ / 1.9 + 0.31).r;
-          float fC = texture2D(fieldNoise, vFieldXZ / 26.0 + 0.57).r;
-          vec3 litter = mix(vec3(0.15, 0.075, 0.03), vec3(0.22, 0.14, 0.045), fB);
-          litter = mix(litter, vec3(0.075, 0.05, 0.03), smoothstep(0.6, 0.9, fA) * 0.7);
-          float mossy = smoothstep(0.6, 0.85, fC * 0.6 + fA * 0.4);
-          vec3 c = mix(litter, vec3(0.045, 0.075, 0.02) * (0.8 + 0.4 * fB), mossy * 0.85);
-          // Near by, leaf-sized blotches, lighter and darker (the noise tile again, a third of a metre across).
-          vec2 leafAt = vFieldXZ / 0.33;
-          float leafNear = clamp((0.6 - max(fwidth(leafAt.x), fwidth(leafAt.y))) * 3.0, 0.0, 1.0) * rowDetail;
-          float leafPick = texture2D(fieldNoise, leafAt + 0.13).r;
-          c *= mix(1.0, 0.65 + 0.7 * leafPick, leafNear * (1.0 - mossy * 0.6));
-          diffuseColor.rgb = c * (0.8 + 0.4 * clamp(texelLum / 0.13, 0.0, 1.5));
-          fieldPlant = 1.0;
+          ${FOREST_FLOOR}
         } else if (fieldKind > 0.5 && rowDetail > 0.0) {
           vec2 dir = normalize(vRow.xy + vec2(1e-4, 0.0));
           vec2 perp = vec2(-dir.y, dir.x);
@@ -304,14 +295,16 @@ export function patchFields(material: THREE.MeshStandardMaterial): void {
         '#include <normal_fragment_maps>',
         `#include <normal_fragment_maps>
         normal = normalize(mix(normal, nonPerturbedNormal, fieldPlant * 0.7));
-        if (fieldSlope != 0.0) normal = normalize(normal + fieldAcross * fieldSlope);`,
+        if (fieldSlope != 0.0) normal = normalize(normal + fieldAcross * fieldSlope);
+        normal = normalize(normal + fieldTilt);`,
       )
       // Leaves don't mirror the sky as bare soil does (before the ground's shading, which comes after this).
       .replace(
         '#include <lights_fragment_end>',
         `#include <lights_fragment_end>
         reflectedLight.directSpecular *= 1.0 - 0.75 * fieldPlant;
-        reflectedLight.indirectSpecular *= 1.0 - 0.75 * fieldPlant;`,
+        reflectedLight.indirectSpecular *= 1.0 - 0.75 * fieldPlant;
+        ${FOREST_BOUNCE}`,
       );
   };
   const key = material.customProgramCacheKey.bind(material);

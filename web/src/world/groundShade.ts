@@ -480,6 +480,9 @@ export class GroundShade {
           vec2 gsEdge = abs(vGroundUv - 0.5);
           float gsFine = smoothstep(0.5, 0.46, max(gsEdge.x, gsEdge.y));
           vec4 gs = vec4(1.0, 1.0, 0.5, 0.5);
+          // The share of the sky photo's sun a surface gets at least (the woods' floor: what comes through the crowns
+          // on average, world/forestFloor.ts, however its flecks fall).
+          float gsSkySunFloor = 0.0;
           if (gsFine < 1.0) {
             vec2 gsAll = abs(vGroundUvAll - 0.5);
             if (max(gsAll.x, gsAll.y) < 0.5) gs = texture2D(groundShadeAll, vGroundUvAll);
@@ -516,7 +519,7 @@ export class GroundShade {
           #if NUM_DIR_LIGHTS > 0
             gsSkySun *= dot(directLight.color, vec3(1.0)) / max(dot(directionalLights[0].color, vec3(1.0)), 1e-5);
           #endif
-          reflectedLight.indirectDiffuse *= gs.g * mix(1.0, gsSkySun, groundSkySun);
+          reflectedLight.indirectDiffuse *= gs.g * mix(1.0, max(gsSkySun, gsSkySunFloor), groundSkySun);
           // What the sky's light hides; not what a wet street mirrors (world/wetGround.ts: the mirror has it already).
           reflectedLight.indirectSpecular *= mix(gs.g * ${sheen.toFixed(2)}, 1.0, wetMirrorW);`,
         );

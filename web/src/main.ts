@@ -107,6 +107,7 @@ import { setWaterDetail, waterLevel, wetGround } from './world/water';
 import { buildHorizon } from './world/horizon';
 import { FarTrees, patchFarLand, setArea as setFarArea } from './world/farLand';
 import { patchMeadowLook } from './world/meadowLook';
+import { woodDetail } from './world/forestFloor';
 import { modelTint } from './world/modelTints';
 import { wearLonePatches, weatherYards } from './world/yards';
 import { detailModelPaving, detailPaving, pavingMeshes, planPaving, usePavingPlan } from './world/pavingDetail';
@@ -746,6 +747,7 @@ function applyQuality(q: Quality): void {
   undergrowth.setQuality(q, phone);
   bankPlants.setQuality(q, phone);
   farTrees.mesh.visible = q !== 'low' && !phone; // the far land's tree strips: some 250 000 vertices a frame
+  woodDetail.value = q !== 'low' && !phone ? 1 : 0; // the woods' fallen leaves and sun flecks near by (world/forestFloor.ts)
   grassTufts.setQuality(q, phone);
   dynScale = 1;
   resize();
