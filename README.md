@@ -20,6 +20,15 @@ In team games, press V to mark your position for teammates for eight seconds; th
 
 The whole project was made with AI. Yoshi Parlevliet, a cybersecurity consultant rather than a game developer, directed development and used both [OpenAI Codex](https://openai.com/codex/) and [Claude Code](https://claude.com/claude-code) to build the game, the data tools and the Blender scripts. Every choice and the reason for it is in [DECISIONS.md](DECISIONS.md).
 
+## Recent updates — 20 November 2026
+
+- **The Brook Spirit.** A boss in the wood by the brook: a floating spirit of mist with a lantern heart, sculpted in Blender. It wakes when you step into its wood with a gun. Shoot the heart when it opens, shoot out the lanterns among the trees when its shell shuts, and walk out of its attacks. Alone or together; the server decides every hit.
+- **Water that looks like water.** Ponds, ditches and creeks are fuller and follow the land, with rounded muddy banks, clear shallows, and reed, bulrush and rushes along the edges.
+- **Real undergrowth.** Bracken, bramble, holly, hazel and young beech in the woods, in stands with clearings between them.
+- **Cars leave the ground.** Over a crest or off a bank a car flies and lands on its springs.
+- **No walls in the woods.** The game's edge is the outer edge of the built world.
+- **Cleaner light.** Kerbs no longer draw black, garage doors read as doors, and mist, smoke and glass are no longer darkened through on High and Ultra.
+
 ## Recent updates — 11 November 2026
 
 - **LAN nights.** Up to 32 players at once. Double-click `lan.cmd` to host on your own computer in Docker: it asks for an admin password, and players type https://lan.brieltje.be (Caddy in front of the game, with a real certificate; `lan.cmd -Http` for plain http on the computer's address). Watch players on `/admin/watch/`: one, or up to four side by side, to put on a projector. The host runs the evening from `/admin/host/`: lock the doors, announce on every screen, freeze everyone, bring players to you, mute, a word filter, teams for the evening, a programme of games with a countdown, and tonight's scoreboard per player and per team, also on the big screen. The evening's own games are blue against red: Steal the flag (a compact field in Smetlede, or the whole village from the church to Sparrenhof, with cars, bikes and helicopters that take damage and can be destroyed, a bazooka on a rack at each base, teams set by the host, and guards the host can add for a test round) and a Zombies duel (each team in its own room at Sparrenhof, the same waves for both). Each game in the programme can be child-friendly (paint) or real. The watch page is the hall screen: a bar with the game, the clock and both scores over the views, steered from the keyboard.

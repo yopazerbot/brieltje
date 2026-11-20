@@ -308,6 +308,10 @@ The open-data houses' variety (`web/src/world/facadeLook.ts`) is a stable hash o
 
 The horizon is `web/src/world/horizon.ts`, the yards' weathering `yards.ts`, the woods' undergrowth `undergrowth.ts` (only near the eye).
 
+The woods' undergrowth is our own Blender models (`tools/undergrowth.py` writes `web/public/models/undergrowth.glb`), near and far, laid out in stands and clearings by a density map per kind. The ponds' and ditches' shape is `web/src/world/bankShape.ts` (no three.js, so the walked floor, the water and the tests share it), drawn by `banks.ts`; the plants along them are `bankPlants.ts` and `bankPlantsPlan.ts` (`tools/bank_plants.py`). The game's edge is `web/shared/bounds.json`, made by `tools/bounds.py --fresh` from the area the world is built in.
+
+The Brook Spirit: its place and every number in `web/shared/brookSpirit.json`, the fight in `web/shared/brookSpirit.mjs` (the server steps it together, the page alone), `web/server/brookSpirit.mjs` (who fights it, every check on a hit), `web/src/world/spiritFight.ts` (hit boxes, lanterns, both runners), `spiritFx.ts` (the attacks' tells as mist), `spiritSound.ts`, and the look in `brookSpirit.ts`, `spiritSkin.ts` and `spiritMist.ts` from `tools/brook_spirit.py` and `tools/brook_spirit_mist.py` (both write the same files on every run). On the dev server `briel.spiritLook({ open: 1 })` stands the creature alone at its grove, and `/brook-spirit-preview.html` shows it on a page of its own.
+
 ## Vegetation and recent geometry repairs
 
 Brieltje's public contact address is `yoshi@brieltje.be`, including both game translations and public-page mail links. The privacy regulator's complaint address is a separate third-party contact.
