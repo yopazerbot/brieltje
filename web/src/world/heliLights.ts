@@ -3,7 +3,7 @@ import * as THREE from 'three';
 /**
  * The helicopter's lights as seen from outside (world/heli.ts): the lamps on the model are a few centimetres across, so
  * from the ground they were lost. Each lamp gets a glow, one draw of points for the whole machine, never smaller on
- * screen than two or three pixels, so a machine 250 m off still shows them: the red light on the left and the green on
+ * screen than three or four pixels, so a machine 250 m off still shows them: the red light on the left and the green on
  * the right of the stabiliser, the white at the tail, steady; the red beacon on the fin flashing once a second and the
  * white strobe under the boom twice every second and a half, by day too (fainter); the landing lights under the chin
  * and the belly at dusk and night while the rotor runs. The landing light also lights the ground where it points
@@ -44,7 +44,7 @@ void main() {
   float flash = step( 0.5, k ) * step( k, 2.5 );
   float size = mix( 0.28, 0.85, lampNight ) * mix( 1.0, 1.7, flash ) * ( k > 2.5 ? 1.6 : 1.0 );
   float px = size * lampScale / max( -mv.z, 0.1 );
-  float least = mix( 2.0, 3.2, flash );
+  float least = mix( 3.0, 4.5, flash ); // pixels: a lamp 250 m off still a clear point
   vOn = on * mix( mix( 0.12, 0.6, flash ), 1.0, lampNight );
   vColor = color;
   gl_PointSize = on > 0.001 ? max( px, least ) : 0.0;
