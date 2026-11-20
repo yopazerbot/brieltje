@@ -1,4 +1,4 @@
-import type { Opening, Prism } from './houseData';
+import type { Opening, Prism, RoofSpec } from './houseData';
 import { BlockGrid, Houses, inside, isBrick, renderOf, stable } from './houseKeys';
 import { houseStyle, type PlinthKind } from './houseStyle';
 
@@ -532,6 +532,87 @@ export function planOpeningTops(openings: Opening[]): OpeningTop {
     }
     return top;
   };
+}
+
+// ---- Openings that stand out of their walls ----
+
+/** An opening may reach this far (m) over the top of what stands behind it (its frame's own thickness, rounding). */
+export const OPENING_SLACK = 0.05;
+
+/**
+ * A roof's height over (x, z) as world/surroundings.ts draws it, or null where the point is not over the walls' part of
+ * its rectangle (the overhang left out). Its corners as world/houseTrim.ts `roofFrame` turns them (c[0]-c[1] a long
+ * side unless the data fixes them); a hip's ends slope as its sides do.
+ */
+export function roofOver(r: RoofSpec, x: number, z: number): number | null {
+  const c = r.p.slice();
+  const d = (i: number, j: number) => Math.hypot(c[j][0] - c[i][0], c[j][1] - c[i][1]);
+  if (!r.fixed && !r.windows && !r.gableWindows && d(0, 1) < d(1, 2)) c.push(c.shift()!);
+  const L = d(0, 1);
+  const W = d(0, 3);
+  if (L < 1e-6 || W < 1e-6) return null;
+  const [ax, az] = [(c[1][0] - c[0][0]) / L, (c[1][1] - c[0][1]) / L];
+  const [bx, bz] = [(c[3][0] - c[0][0]) / W, (c[3][1] - c[0][1]) / W];
+  const a = (x - c[0][0]) * ax + (z - c[0][1]) * az;
+  const b = (x - c[0][0]) * bx + (z - c[0][1]) * bz;
+  if (a < 0 || a > L || b < 0 || b > W) return null;
+  const o = 0.3;
+  if (r.closed) {
+    const { at, far } = r.closed;
+    return b <= at ? r.y + ((r.ridge - r.y) * b) / Math.max(0.01, at) : far + ((r.ridge - far) * (W - b)) / Math.max(0.01, W - at);
+  }
+  if (r.shape === 'shed') return r.y + ((r.ridge - r.y) * b) / Math.max(0.5, W);
+  const eave = r.y - 0.15;
+  let t = (Math.min(b, W - b) + o) / (W / 2 + o);
+  if (r.shape === 'hip') t = Math.min(t, (Math.min(a, L - a) + o) / (W / 2 + o));
+  return eave + Math.min(1, t) * (r.ridge - eave);
+}
+
+/**
+ * The openings that would stand out of their house: whose top is over everything behind them (the top of the wall
+ * blocks there, or the roof drawn over them: a gable end's triangle, a single slope's end walls) or whose foot is under
+ * the walls' foot. The data puts a house's rows of windows on all its walls from its tallest part, so a low part (a
+ * bungalow's wing, a garage, a back room under a flat roof) had upper windows floating over its roof. Looked at 30 cm
+ * behind the opening's middle and both its ends; where no wall stands behind any of them it is kept (nothing to judge
+ * by). `roofs`: the roofs as drawn (world/roofPlan.ts). These are left out of everything (frames, glass, holes, trims).
+ */
+export function planFloating(openings: Opening[], houses: Houses, roofs: RoofSpec[]): Set<Opening> {
+  const grid = new BlockGrid();
+  const roofOf = new Map<Prism, RoofSpec>();
+  for (const r of roofs) {
+    const q: Prism = { m: 'roof', y0: r.y, y1: r.ridge, p: [r.p] };
+    roofOf.set(q, r);
+    grid.add(q);
+  }
+  const out = new Set<Opening>();
+  for (const o of openings) {
+    const l = Math.hypot(o.n[0], o.n[1]) || 1;
+    const [nx, nz] = [o.n[0] / l, o.n[1] / l];
+    const w = Math.hypot(o.b[0] - o.a[0], o.b[1] - o.a[1]);
+    const [dx, dz] = w > 1e-6 ? [(o.b[0] - o.a[0]) / w, (o.b[1] - o.a[1]) / w] : [0, 0];
+    const inset = Math.min(0.15, w / 2);
+    let judged = false;
+    let fits = true;
+    for (const s of [w / 2, inset, w - inset]) {
+      const x = o.a[0] + dx * s - nx * 0.3;
+      const z = o.a[1] + dz * s - nz * 0.3;
+      const walls = houses.wallsAt(x, z);
+      if (!walls.length) continue;
+      judged = true;
+      let top = Math.max(...walls.map((p) => p.p.y1));
+      const foot = Math.min(...walls.map((p) => p.p.y0));
+      for (const q of grid.at(x, z)) {
+        const y = roofOver(roofOf.get(q)!, x, z);
+        if (y !== null && y > top) top = y;
+      }
+      if (o.y[1] > top + OPENING_SLACK || o.y[0] < foot - OPENING_SLACK) {
+        fits = false;
+        break;
+      }
+    }
+    if (judged && !fits) out.add(o);
+  }
+  return out;
 }
 
 // ---- Downpipes from the flat roofs ----

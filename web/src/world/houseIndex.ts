@@ -1,6 +1,6 @@
-import type { Prism, RoofSpec, Surroundings } from './houseData';
+import type { Opening, Prism, RoofSpec, Surroundings } from './houseData';
 import { BlockGrid, Houses } from './houseKeys';
-import { planBases, planDownpipes, planOpeningTops, planReveals, type BasePlan, type Downpipe, type GroundAt, type OpeningTop, type RevealPlan } from './housePlan';
+import { planBases, planDownpipes, planFloating, planOpeningTops, planReveals, type BasePlan, type Downpipe, type GroundAt, type OpeningTop, type RevealPlan } from './housePlan';
 import { chimneyRoofs } from './houseTrim';
 import { planRoofs } from './roofPlan';
 
@@ -31,6 +31,8 @@ export interface HouseIndex {
   drawn: Map<RoofSpec, RoofSpec>;
   /** The house under a roof (a drawn one): both halves of a pair take the larger half's, so they look one roof */
   keyOf: (r: RoofSpec) => number;
+  /** The openings that would stand out of their house (over its walls and roof, or under its walls): not drawn (world/housePlan.ts) */
+  floating: Set<Opening>;
 }
 
 const built = new WeakMap<object, HouseIndex>();
@@ -71,18 +73,22 @@ export function houseIndex(set: Pick<Surroundings, 'roofs' | 'prisms' | 'opening
   };
   const pitched = new Set<number>();
   for (const r of roofs) if (r.shape !== 'shed' || r.closed || plan.partner.has(r)) pitched.add(keyOf(r));
-  const bases = planBases(prisms, set.openings ?? [], houses, groundAt);
+  // No opening over the top of its walls (or the roof drawn over them) or under their foot: not drawn, cut or trimmed.
+  const floating = planFloating(set.openings ?? [], houses, roofs);
+  const openings = (set.openings ?? []).filter((o) => !floating.has(o));
+  const bases = planBases(prisms, openings, houses, groundAt);
   index = {
     houses,
     chimneys: chimneyRoofs(roofs, prisms, keyOf, (r) => plan.partner.get(r)),
     pitched,
     bases,
     lids,
-    reveals: planReveals(set.openings ?? [], houses, bases, groundAt),
-    downpipes: planDownpipes(prisms, set.openings ?? [], houses, lids, groundAt),
-    openingTop: planOpeningTops(set.openings ?? []),
+    reveals: planReveals(openings, houses, bases, groundAt),
+    downpipes: planDownpipes(prisms, openings, houses, lids, groundAt),
+    openingTop: planOpeningTops(openings),
     drawn: plan.drawn,
     keyOf,
+    floating,
   };
   built.set(set, index);
   return index;

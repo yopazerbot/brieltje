@@ -775,7 +775,9 @@ export function buildTile(data: TileData, poles: Pole[], renderer: THREE.WebGLRe
     out.push({ material: mat, geometry: geos.length > 1 ? mergeGeometries(geos) : geos[0], tag, shadow, order, small });
     if (geos.length > 1) geos.forEach((g) => g.dispose());
   }
-  if (data.openings?.length) out.push(...buildOpenings(data.openings, ground, houses, pitched, index.reveals.holes));
+  // Not those that would stand out of their house, over its walls and roof (world/housePlan.ts `planFloating`).
+  const openings = (data.openings ?? []).filter((o) => !index.floating.has(o));
+  if (openings.length) out.push(...buildOpenings(openings, ground, houses, pitched, index.reveals.holes));
   if (data.poleIds.length || data.wires?.length) out.push(...buildLamps(poles, data.poleIds, data.wires ?? [], ground));
   if (data.solar?.length || madeSolar.length) out.push(...buildSolar([...(data.solar ?? []), ...madeSolar]));
   if (data.posts?.length) out.push(...buildPosts(data.posts, ground));

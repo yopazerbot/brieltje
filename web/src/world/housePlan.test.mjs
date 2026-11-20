@@ -11,7 +11,8 @@ registerHooks({
   },
 });
 const { Houses, BlockGrid, inside } = await import('./houseKeys.ts');
-const { planBases, planSteps, cutAt, isPlinthOf, area, planReveals, planDownpipes, planOpeningTops, alongFace, FRAME } = await import('./housePlan.ts');
+const { planBases, planSteps, cutAt, isPlinthOf, area, planReveals, planDownpipes, planOpeningTops, alongFace, FRAME, planFloating, roofOver, OPENING_SLACK } = await import('./housePlan.ts');
+const { planRoofs } = await import('./roofPlan.ts');
 const { makeTerrain } = await import('../../shared/terrain.mjs');
 
 const read = (file) => JSON.parse(fs.readFileSync(new URL(file, import.meta.url), 'utf8'));
@@ -174,7 +175,63 @@ for (const [name, set] of Object.entries(sets)) {
       assert.ok(top(a, b, o.y[1], o.y[1] + 1) >= o.y[1] + FRAME - 1e-9, `${name}: the opening at (${o.a[0]}, ${o.a[1]}) not found`);
     }
   });
+  test(`${name}: no opening is drawn over the top of its walls (or the roof over them) or under their foot`, () => {
+    const plan = planRoofs(set.roofs, prisms, set.openings ?? [], set.solar ?? []);
+    const roofs = set.roofs.map((r) => plan.drawn.get(r) ?? r);
+    const floating = planFloating(set.openings ?? [], houses, roofs);
+    let kept = 0;
+    for (const o of set.openings ?? []) {
+      if (floating.has(o)) continue;
+      // Behind its middle: the walls' top, or the roof drawn over them where that is higher (a gable end's triangle).
+      const l = Math.hypot(o.n[0], o.n[1]) || 1;
+      const x = (o.a[0] + o.b[0]) / 2 - (o.n[0] / l) * 0.3;
+      const z = (o.a[1] + o.b[1]) / 2 - (o.n[1] / l) * 0.3;
+      const walls = houses.wallsAt(x, z);
+      if (!walls.length) continue;
+      kept++;
+      const over = Math.max(...walls.map((w) => w.p.y1), ...roofs.map((r) => roofOver(r, x, z) ?? -Infinity));
+      const foot = Math.min(...walls.map((w) => w.p.y0));
+      assert.ok(o.y[1] <= over + OPENING_SLACK + 1e-9, `${name}: an opening's top ${o.y[1]} over ${over.toFixed(2)} at (${x.toFixed(1)}, ${z.toFixed(1)})`);
+      assert.ok(o.y[0] >= foot - OPENING_SLACK - 1e-9, `${name}: an opening's foot ${o.y[0]} under ${foot.toFixed(2)} at (${x.toFixed(1)}, ${z.toFixed(1)})`);
+    }
+    // Only a few are left out, never a door, and the gable ends' windows stay.
+    assert.ok(floating.size < 0.06 * (set.openings ?? []).length, `${name}: ${floating.size} left out`);
+    assert.ok(kept > 0.9 * (set.openings ?? []).length, `${name}: ${kept} kept`);
+    for (const o of floating) assert.equal(o.k, 'w');
+    if (name === 'village') {
+      // The white bungalow on Pastorijwegel: the upper row (from its taller part) floated over its roof; the lower stays.
+      const at = (o) => Math.hypot((o.a[0] + o.b[0]) / 2 - 440, (o.a[1] + o.b[1]) / 2 + 722) < 7;
+      const here = set.openings.filter(at);
+      const low = (o) => {
+        const l = Math.hypot(o.n[0], o.n[1]) || 1;
+        const walls = houses.wallsAt((o.a[0] + o.b[0]) / 2 - (o.n[0] / l) * 0.3, (o.a[1] + o.b[1]) / 2 - (o.n[1] / l) * 0.3);
+        return walls.length && Math.max(...walls.map((w) => w.p.y1)) < 9; // its own walls, not the taller part's
+      };
+      const upper = here.filter((o) => o.y[0] > 9.5 && low(o));
+      assert.ok(upper.length >= 8 && upper.every((o) => floating.has(o)), `${upper.length} upper windows over the bungalow`);
+      assert.ok(here.filter((o) => o.y[0] < 8).every((o) => !floating.has(o)));
+    }
+  });
 }
+
+test('a window in a gable end under its roof stays; one over the eaves, over a hip end or under the walls goes', () => {
+  // A house 10 by 8 m, walls 0 to 3 m, a gable roof along x (ridge 7 m) or a hip roof.
+  const walls = [{ m: 'nb_red', y0: 0, y1: 3, p: [[[0, 0], [10, 0], [10, 8], [0, 8]]] }];
+  const houses = new Houses(walls);
+  const gable = { p: [[0, 0], [10, 0], [10, 8], [0, 8]], y: 3, ridge: 7, fixed: true };
+  const hip = { ...gable, shape: 'hip' };
+  const gableEnd = { k: 'w', a: [0, 4.6], b: [0, 3.4], n: [-1, 0], y: [3.6, 4.8] }; // in the triangle at x = 0
+  const eaveSide = { k: 'w', a: [4, 0], b: [5.2, 0], n: [0, -1], y: [3.6, 4.8] }; // over the eaves at z = 0
+  const low = { k: 'w', a: [6, 0], b: [7.2, 0], n: [0, -1], y: [1, 2.2] };
+  const sunk = { k: 'w', a: [8, 0], b: [9, 0], n: [0, -1], y: [-0.5, 1] };
+  const list = [gableEnd, eaveSide, low, sunk];
+  const g = planFloating(list, houses, [gable]);
+  assert.ok(!g.has(gableEnd) && g.has(eaveSide) && !g.has(low) && g.has(sunk));
+  const h = planFloating(list, houses, [hip]);
+  assert.ok(h.has(gableEnd) && h.has(eaveSide) && !h.has(low));
+  // With no wall behind it, nothing to judge by: kept.
+  assert.equal(planFloating([{ ...eaveSide, a: [40, 0], b: [41, 0] }], houses, [gable]).size, 0);
+});
 
 test('an eave over no opening finds none, and one 40 cm off the wall line is not under it', () => {
   const o = { k: 'w', a: [0, 0], b: [1.2, 0], n: [0, 1], y: [1, 2.2] };
