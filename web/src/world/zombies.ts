@@ -7,6 +7,7 @@ import { sound } from '../sound';
 import { paintball } from '../paintball';
 import { daylight } from './daylight';
 import { hitBoxMaterial } from './hitBox';
+import { figureSplat, PAINT_SPLAT_GLSL, paintSheet, splatLook } from './paintOn';
 import { HEAD_UP, PART_BONES, PARTS, Ragdoll, segmentOf, SEGS, type RagdollWorld } from './ragdoll';
 
 /**
@@ -121,6 +122,11 @@ interface Spot {
   z: number;
   r: number;
   color: THREE.Color;
+  /** The way the body faced there (rest pose), and the splat's cell and turn (world/paintOn.ts splatLook) */
+  nx: number;
+  ny: number;
+  nz: number;
+  look: number;
 }
 
 export interface ZombieState {
@@ -221,17 +227,20 @@ function skinnedStandard(base: THREE.Material, bones: THREE.Texture, paint: THRE
   m.onBeforeCompile = (shader) => {
     shader.uniforms.uBones = { value: bones };
     shader.uniforms.uPaint = { value: paint };
+    shader.uniforms.uPaintMap = { value: paintSheet() };
     shader.uniforms.uFlashLight = flashLight;
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', `#include <common>\n${SKIN_PARS}`)
-      .replace('#include <beginnormal_vertex>', `#include <beginnormal_vertex>\n${SKIN_MATRIX}\nobjectNormal = normalize(mat3(zSkin) * objectNormal);\nvRest = position;\nvLook = aLook;`)
+      .replace('#include <common>', `#include <common>\n${SKIN_PARS}\nvarying vec3 vRestN;`)
+      .replace('#include <beginnormal_vertex>', `#include <beginnormal_vertex>\nvRestN = objectNormal;\n${SKIN_MATRIX}\nobjectNormal = normalize(mat3(zSkin) * objectNormal);\nvRest = position;\nvLook = aLook;`)
       .replace('#include <begin_vertex>', '#include <begin_vertex>\ntransformed = (zSkin * vec4(transformed, 1.0)).xyz;');
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `#include <common>
 uniform highp sampler2D uPaint;
 uniform float uFlashLight;
 varying vec3 vRest;
-varying vec4 vLook;`)
+varying vec3 vRestN;
+varying vec4 vLook;
+${PAINT_SPLAT_GLSL}`)
       .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
 // Fading out (fallen): a dither, so no sorting is needed.
 if (vLook.y < 0.999) {
@@ -239,14 +248,18 @@ if (vLook.y < 0.999) {
   if (n > vLook.y) discard;
 }`)
       .replace('#include <color_fragment>', `#include <color_fragment>
-// Paintball: its paint spots, round blobs with a ragged edge, on the body as it stood (so they move with it).
-for (int i = 0; i < ${SPOTS}; i++) {
-  if (float(i) >= vLook.z) break;
-  vec4 s = texelFetch(uPaint, ivec2(i * 2, int(vLook.w)), 0);
-  vec4 c = texelFetch(uPaint, ivec2(i * 2 + 1, int(vLook.w)), 0);
-  vec3 d = vRest - s.xyz;
-  float wob = 0.18 * sin(d.x * 61.0 + d.y * 47.0) * sin(d.z * 53.0 - d.y * 37.0);
-  if (length(d) < s.w * (1.0 + wob)) diffuseColor.rgb = c.rgb;
+// Paintball: its paint spots, splats of the paint sheet laid on the body as it stood (so they move with it), as on the players (world/paintOn.ts).
+float px = length(fwidth(vRest));
+if (vLook.z > 0.5) {
+  vec3 pn = normalize(vRestN);
+  for (int i = 0; i < ${SPOTS}; i++) {
+    if (float(i) >= vLook.z) break;
+    vec4 s = texelFetch(uPaint, ivec2(i * 3, int(vLook.w)), 0);
+    vec4 c = texelFetch(uPaint, ivec2(i * 3 + 1, int(vLook.w)), 0);
+    vec4 o = texelFetch(uPaint, ivec2(i * 3 + 2, int(vLook.w)), 0);
+    vec2 a = paintSplat(vRest, pn, px, s, o);
+    diffuseColor.rgb = mix(diffuseColor.rgb, c.rgb * a.y, a.x);
+  }
 }`)
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += vec3(0.55, 0.5, 0.4) * vLook.x * uFlashLight;');
   };
@@ -479,7 +492,7 @@ export class Zombies {
   private zs = new Map<number, Z>();
   private boneTex: THREE.DataTexture | null = null;
   private paintTex: THREE.DataTexture;
-  private paintData = new Uint16Array(SPOTS * 2 * 4 * SLOTS);
+  private paintData = new Uint16Array(SPOTS * 3 * 4 * SLOTS);
   private freeSlots = Array.from({ length: SLOTS }, (_, i) => SLOTS - 1 - i);
   private pose = [0, 0, 0, 0];
   private patches = shadowPatches(MAX * 2);
@@ -511,7 +524,7 @@ export class Zombies {
     this.group.name = 'zombies';
     this.group.add(this.patches);
     this.hits.name = 'zombie-hits';
-    this.paintTex = new THREE.DataTexture(this.paintData, SPOTS * 2, SLOTS, THREE.RGBAFormat, THREE.HalfFloatType);
+    this.paintTex = new THREE.DataTexture(this.paintData, SPOTS * 3, SLOTS, THREE.RGBAFormat, THREE.HalfFloatType);
     this.paintTex.minFilter = this.paintTex.magFilter = THREE.NearestFilter;
     this.paintTex.generateMipmaps = false;
     this.paintTex.needsUpdate = true;
@@ -1056,6 +1069,8 @@ export class Zombies {
     let at: [number, number, number, number, number] | null = null; // triangle's corners and the hit's barycentric u, v
     const tri = new THREE.Triangle();
     const bary = new THREE.Vector3();
+    const normal = new THREE.Vector3();
+    let flip = false;
     const idx = k.index;
     for (let t = 0; t < idx.length; t += 3) {
       a.fromArray(posed, idx[t] * 3);
@@ -1067,6 +1082,8 @@ export class Zombies {
       best = d;
       tri.set(a, b, c).getBarycoord(hit, bary);
       at = [idx[t], idx[t + 1], idx[t + 2], bary.y, bary.z];
+      // Which way round the triangle is wound as posed, seen from the shot: its rest normal turned the same way faces out.
+      flip = tri.getNormal(normal).dot(ray.direction) > 0;
     }
     const rest = new THREE.Vector3();
     if (at) {
@@ -1074,6 +1091,8 @@ export class Zombies {
       rest.fromBufferAttribute(k.rest, i0).multiplyScalar(1 - u - v)
         .addScaledVector(_w.fromBufferAttribute(k.rest, i1), u)
         .addScaledVector(_w.fromBufferAttribute(k.rest, i2), v);
+      tri.set(a.fromBufferAttribute(k.rest, i0), b.fromBufferAttribute(k.rest, i1), c.fromBufferAttribute(k.rest, i2)).getNormal(normal);
+      if (flip) normal.negate();
     } else {
       let near = 0;
       let nd = Infinity;
@@ -1082,13 +1101,16 @@ export class Zombies {
         if (d < nd) [nd, near] = [d, i];
       }
       rest.fromBufferAttribute(k.rest, near);
+      normal.set(rest.x, 0, rest.z).normalize(); // out from the middle of the body
     }
     if (z.slot < 0) {
       const slot = this.freeSlots.pop();
       if (slot === undefined) return;
       z.slot = slot;
     }
-    z.spots.push({ x: rest.x, y: rest.y, z: rest.z, r: Math.min(0.1, size * 0.16) * (z.kind === BIG ? 1.4 : 1), color: color.clone() });
+    // As big as on a player (world/paintOn.ts), a little bigger on the big one.
+    const r = figureSplat(Math.min(0.32, size * 0.62)) * (z.kind === BIG ? 1.3 : 1);
+    z.spots.push({ x: rest.x, y: rest.y, z: rest.z, r, color: color.clone(), nx: normal.x, ny: normal.y, nz: normal.z, look: splatLook() });
     if (z.spots.length > SPOTS) z.spots.shift();
     this.writeSpots(z);
   }
@@ -1101,11 +1123,11 @@ export class Zombies {
 
   private writeSpots(z: Z): void {
     const h = THREE.DataUtils.toHalfFloat;
-    const base = z.slot * SPOTS * 2 * 4;
+    const base = z.slot * SPOTS * 3 * 4;
     z.spots.forEach((s, i) => {
-      const o = base + i * 8;
-      const c = s.color.clone().convertSRGBToLinear();
-      this.paintData.set([h(s.x), h(s.y), h(s.z), h(s.r), h(c.r), h(c.g), h(c.b), h(1)], o);
+      const o = base + i * 12;
+      const c = s.color; // already linear (THREE.Color), as the shader takes it
+      this.paintData.set([h(s.x), h(s.y), h(s.z), h(s.r), h(c.r), h(c.g), h(c.b), h(1), h(s.nx), h(s.ny), h(s.nz), h(s.look)], o);
     });
     this.paintTex.needsUpdate = true;
   }
