@@ -164,6 +164,8 @@ import { Crash } from './world/crash';
 import { TyreSpray } from './world/tyreSpray';
 import { clearOpenGround, cutOut, fitStreetModel, loadStreetModel } from './world/streetModel';
 import { TrunkBlocks } from './world/trunkBlocks';
+import { SPIRIT, SpiritFight, spiritDev } from './world/spiritFight';
+import { render as spiritSound } from './world/spiritSound';
 import { boxAround, RoofField } from './world/roofField';
 import { addModelRoofs, privateHomes, villageRoofs } from './world/modelRoofs';
 import { type TreeSpot, zombieTrunks } from '../shared/trees.mjs';
@@ -908,7 +910,7 @@ let localClown = 1000; // ids for clowns placed alone
 const zombies = new Zombies((x, z, y) => world.groundAt(x, z, y, 0).y, world, () => quality === 'low' || phone);
 scene.add(zombies.group, zombies.hits);
 // The controller's aim assist against zombies only (src/controls/aimAssist.ts): no snap through a wall.
-const aimAssist = new AimAssist(zombies.hits, (a, b) => !world.blocked(a, b, 0.25));
+const aimAssist = new AimAssist(zombies.hits, (a, b) => !world.blocked(a, b, 0.25), (eye) => spiritFight.assistTargets(eye)); // and the Brook Spirit's open heart and lit lights
 // Their shaders compile in the background (see precompile) once the models and the sky's light are in, and again
 // as a Zombies game begins (a moment if nothing changed): hidden until a wave comes, they would compile on first
 // draw and stop the game just as the zombies appear. The sky's light changes their shader, so not before it.
@@ -1992,21 +1994,29 @@ clowns.onLand = (at, what) => {
     soloHurt(hp);
   }
 };
-/** Alone, a strongman hurt you: your health goes down here; at nothing you're out for 3 seconds. */
-function soloHurt(amount: number): void {
+/** Alone, a strongman (or `who`) hurt you: your health goes down here; at nothing you're out for 3 seconds (back at `back`, on foot, if given). */
+function soloHurt(amount: number, who = t('char.strongman'), back?: { x: number; z: number; y: number; fx: number; fz: number }): void {
   combat.hurt(Math.max(0, combat.hp - amount));
   rumble(0.8, 0.5, 180);
   if (combat.hp > 0) return;
-  combat.died(t('char.strongman'), false);
-  combat.kill(t('char.strongman'), t('char.you'), false, '');
+  combat.died(who, false);
+  combat.kill(who, t('char.you'), false, '');
   setTimeout(() => {
     // In the Zombies game alone a fall is its end: it puts you back at its start, on the ground (stopSolo).
     if (net.connected || combat.alive || solo) return;
-    respawnAt(OUTSIDE_SPAWNS[Math.floor(Math.random() * OUTSIDE_SPAWNS.length)]);
-    if (rules.parachute !== false) beginDrop();
+    respawnAt(OUTSIDE_SPAWNS[Math.floor(Math.random() * OUTSIDE_SPAWNS.length)], back);
+    if (!back && rules.parachute !== false) beginDrop();
   }, 3000);
 }
 weapon.onClownHit = (id, point, spot) => clownHit(id, point, weapon.current, spot);
+// The Brook Spirit in the wood by the brook (world/spiritFight.ts): alone its fight runs here, together the server's is drawn.
+const spiritFight = new SpiritFight({
+  scene, renderer, ground: groundY, trees: house.surroundings?.trees ?? [], addBlock: (p) => world.addPrisms([p]), send: (m) => net.send(m),
+  hurt: (hp, x, z) => (combat.hitFrom(Math.atan2(-(x - player.x), -(z - player.z)) - player.yaw), soloHurt(hp, t('char.spirit'), { ...SPIRIT.wake, fx: SPIRIT.grove.x, fz: SPIRIT.grove.z })),
+  marker: () => combat.hitMarker(false), giveLauncher: (n) => weapon.giveLauncher(n),
+});
+weapon.onSpiritHit = (part, point, w) => spiritFight.shot(part, point, w);
+spiritFight.onEngaged = (on) => combat.setActive((!!me || !!solo || on) && weapon.enabled); // your health shows while you fight it alone
 $('newround-btn').addEventListener('click', () => net.send({ t: 'newround' }));
 
 // ---- The Zombies game (shared/zombies.mjs). Together the server runs it: a shot that hits zombies
@@ -2368,6 +2378,7 @@ function explode(at: THREE.Vector3, mine: boolean, w: 'bazooka' | 'grenade' = 'b
   zombies.blast(at, radius, w); // the fallen near it thrown a little outward (only how they fall: the server decides who)
   looseProps.blast(at, radius); // bins and bikes thrown, posts bent (on this page only)
   if (!mine) return;
+  spiritFight.blast(at, radius, w === 'grenade' ? GRENADE.damage : ROCKET.damage); // alone only (together the server's blast)
   for (const i of glass.near(at, radius * 0.7)) if (glass.break(i, at, at)) net.send({ t: 'glass', i });
   for (const i of cats.near(at, radius)) catHit(i, at, w);
   for (const id of villagers.near(at, radius)) villagerHit(id, villagers.where(id)?.setY(at.y) ?? at, w);
@@ -2952,6 +2963,7 @@ net.onMessage = (m: ServerMsg) => {
       villagers.setDown(m.vils);
       villagers.setPaint((m.vilPaint ?? []).map(([i, w, ms]) => [i, GUN_PAINT[w] ?? GUN_PAINT.pistol, ms]));
       clowns.setAll(m.clowns ?? CLOWN_DEFAULTS);
+      spiritFight.welcome(m.spirit); // missing in a room: no spirit there
       furnishing.setAll(m.furniture ?? []);
       games.me = m.you;
       games.guest = m.role === 'guest';
@@ -3207,6 +3219,11 @@ net.onMessage = (m: ServerMsg) => {
     case 'rock':
     case 'stomp':
       clowns.event(m);
+      break;
+    case 'sp':
+    case 'spe':
+    case 'sgl':
+      spiritFight.message(m); // checked there (readSpirit and its own checks)
       break;
     case 'clownhit':
       clowns.down(m.id, m.ms / 1000);
@@ -3872,7 +3889,7 @@ renderer.setAnimationLoop((now: number) => {
       player.ground = world.groundAt(k.x, k.z, k.y + 0.1, 0.3);
     } else {
       // Dead: only looking around. The seeker in hide and seek: eyes shut, not even that.
-      aimAssist.shape(frame, dt, player, camera.position, settings.value.aimAssist && menu.mode === 'pad' && games.zombies && weapon.enabled && !dead, weapon.current === 'sniper');
+      aimAssist.shape(frame, dt, player, camera.position, settings.value.aimAssist && menu.mode === 'pad' && (games.zombies || spiritFight.assisting) && weapon.enabled && !dead, weapon.current === 'sniper');
       const still = games.blindfolded ? NO_INPUT : { ...NO_INPUT, mouseX: frame.mouseX, mouseY: frame.mouseY, lookX: frame.lookX, lookY: frame.lookY };
       player.update(dt, dead || games.blindfolded ? still : frame, camera);
     }
@@ -4322,6 +4339,8 @@ renderer.setAnimationLoop((now: number) => {
   // Alone, the strongmen fight here, going for you when you fight (in multiplayer the server runs them).
   if (!net.connected) clowns.stepAlone(dt, combat.alive && weapon.enabled && !driving && !riding && !helis.aboard && !games.peaceful ? { x: player.x, y: player.feet, z: player.z } : null);
   clowns.update(camera.position);
+  const afoot = !driving && !riding && !helis.aboard && horses.mounted < 0 && !bikes.mounted && !player.flying && player.chute === null;
+  spiritFight.update(dt, camera, { x: player.x, feet: player.feet, z: player.z, fighter: combat.alive && weapon.enabled && afoot && !games.peaceful, armed: weapon.enabled, flying: player.flying, connected: net.connected, game: games.active || !!solo, control: menu.mode ?? 'kbm', low: phone || quality === 'low' });
   // The Zombies game: alone its horde steps here; together the server's ticks move them. Then they're drawn.
   if (!net.connected) soloTick(dt);
   zombies.update(dt, camera.position);
@@ -5119,6 +5138,7 @@ if (import.meta.env.DEV) {
       season: { fake: (day: string | null) => fakeDay(day), now: () => seasonNow() },
       zombiesSolo: { start: startSolo, stop: stopSolo, state: () => solo },
       duelLine, // the Zombies duel's live line (src/ui/duelLine.ts): set(view) for a picture without a server
+      spirit: spiritDev(spiritFight, spiritSound), // the Brook Spirit's fight (world/spiritFight.ts): tools/dev/spirit_shots.mjs
       /** Zombies' rewards: those lying and the claymores down, and what you have. */
       rewards,
       kit: () => kit,

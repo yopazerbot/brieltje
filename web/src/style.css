@@ -557,6 +557,11 @@ body.touch #modebar, body.touch #hud-top { left: 280px; right: 160px; }
 #duel-line.hidden { display: none; }
 #duel-line.done { font-size: 17px; padding: 6px 14px; color: var(--lamp, #ffd36b); }
 body.touch #duel-line { font-size: 12px; padding: 3px 10px; max-width: 100%; }
+/* The Brook Spirit's line near its wood (src/ui/spiritLine.ts): as small, its edge by what the fight asks of you. */
+#spirit-line { position: absolute; left: 50%; top: 96px; transform: translateX(-50%); max-width: calc(100vw - 480px); padding: 4px 12px; font-size: 14px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background: var(--panel); border-left: 3px solid #8fd8b6; }
+#spirit-line.hidden { display: none; }
+#spirit-line[data-tone='open'], #spirit-line[data-tone='gift'] { color: #c9ffe2; border-left-color: #c9ffe2; }
+body.touch #spirit-line { font-size: 12px; padding: 3px 10px; max-width: 100%; }
 /* The connection is down: the game may be over on the server, so the bar greys and its clock stops. */
 #modebar.stale { opacity: 0.5; }
 /* Above the chat's lines in the HUD; the touch buttons (outside the HUD) stay usable. */

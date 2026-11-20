@@ -12,7 +12,8 @@
  *
  * Weaker with the sniper rifle and further off, nothing beyond 60 m. Only while the controller is what you
  * play with (the last look input came from it): the mouse and touch never get it. Never players, clowns,
- * cats or villagers: the targets are the zombies' own hit boxes (world/zombies.ts `hits`).
+ * cats or villagers: the targets are the zombies' own hit boxes (world/zombies.ts `hits`), and the Brook
+ * Spirit's open heart and lit lights (world/spiritFight.ts assistTargets, `extra`).
  *
  * Purely the page shaping its own input. No message, nothing new on the server: the server still decides
  * every hit (zhit) with its own checks, as for a mouse player.
@@ -172,11 +173,13 @@ export class AimAssist {
   private list: Target[] = [];
   private hits: HitGroups;
   private clear: (a: Vec, b: Vec) => boolean;
+  private extra: (eye: Vec) => Target[];
 
-  /** `clear(a, b)`: nothing solid between the two points. */
-  constructor(hits: HitGroups, clear: (a: Vec, b: Vec) => boolean) {
+  /** `clear(a, b)`: nothing solid between the two points. `extra`: more targets than the zombies (their ids below 0). */
+  constructor(hits: HitGroups, clear: (a: Vec, b: Vec) => boolean, extra: (eye: Vec) => Target[] = () => []) {
     this.hits = hits;
     this.clear = clear;
+    this.extra = extra;
   }
 
   /** The zombies up now, near enough, as lines (their hit boxes: a fallen one's are hidden). */
@@ -192,6 +195,7 @@ export class AimAssist {
       if ((p.x - eye.x) ** 2 + (p.z - eye.z) ** 2 > far2) continue;
       out.push({ id: body.userData.zombie, foot: { x: p.x, y: p.y + 0.35, z: p.z }, top: head.position, radius: 0.275 * body.scale.x });
     }
+    for (const t of this.extra(eye)) if ((t.foot.x - eye.x) ** 2 + (t.foot.z - eye.z) ** 2 <= far2) out.push(t);
     return out;
   }
 
