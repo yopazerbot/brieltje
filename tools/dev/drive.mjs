@@ -278,7 +278,7 @@ async function feelHelpers() {
         const rows = [], speeds = [];
         const t0 = performance.now(), x0 = car.x, z0 = car.z;
         let last = car.yaw, turned = 0, next = every, stoodAt = null, backAt = null, gripAt = null, camBackAt = null, least = 0, lit = 0, standing = 0, camMost = 0, steerMost = 0, camRateMost = 0;
-        let camLast = car.camHeading + car.camYaw, tLast = 0;
+        let camLast = car.camHeading + car.camYaw, tLast = 0, airFrames = 0;
         const yawAt = [];
         for (;;) {
           const t = (performance.now() - t0) / 1000;
@@ -308,6 +308,7 @@ async function feelHelpers() {
           if (backAt === null && car.speed < -0.2) backAt = tt;
           if (stoodAt === null) least = Math.min(least, car.speed);
           if (frames) speeds.push([+tt.toFixed(3), +car.speed.toFixed(3)]);
+          if (car.air) airFrames++; // off the ground (world/carBody.ts rideHeight): the tyres hold nothing
           if (tt >= next) { rows.push([+tt.toFixed(2), Math.round(deg(turned)), Math.round(deg(slip())), Math.round(v() * 3.6), Math.round(deg(cam()))]); next += every; }
           if (tt > s || (until === 'still' && v() < 0.05) || (until === 'back' && car.speed < -0.2)) break;
         }
@@ -321,7 +322,7 @@ async function feelHelpers() {
           seconds: (performance.now() - t0) / 1000, metres: Math.hypot(car.x - x0, car.z - z0), turnedDeg: deg(turned), rateDeg: deg(rate),
           radius: Math.abs(rate) > 1e-3 ? speed / Math.abs(rate) : Infinity, kmh: v() * 3.6, along: car.speed, steer: car.steer, steerMost, camMostDeg: deg(camMost), camRateMostDeg: deg(camRateMost),
           slipDeg: deg(slip()), turnRate: car.turn, stoodAt, backAt, gripAt, camBackAt, least, litWhileStanding: standing ? lit / standing : null, rows, speeds,
-          yawAt: yawAt.map((p) => [+p[0].toFixed(3), +deg(p[1]).toFixed(1)]), grip: [...car.grip], crashed: car.crashed, atEdge: car.atEdge,
+          yawAt: yawAt.map((p) => [+p[0].toFixed(3), +deg(p[1]).toFixed(1)]), grip: [...car.grip], crashed: car.crashed, atEdge: car.atEdge, airFrames,
         };
       },
       state: () => ({ x: car.x, z: car.z, yaw: car.yaw, kmh: v() * 3.6, slip: deg(slip()), cam: deg(cam()), turn: car.turn, steer: car.steer }),
@@ -355,8 +356,8 @@ async function circles() {
     // The heading after the first second: how quickly it turns in.
     const first = (r) => Math.abs(r.yawAt.find((p) => p[0] >= 1)?.[1] ?? 0);
     keep(`circle-${kmh}`, {
-      stick: { radius: r1(stick.radius), rateDeg: r1(stick.rateDeg, 0), firstSecondDeg: r1(first(stick), 0), wheelDeg: r1(Math.abs(stick.steer) * 57.3), kmhEnd: r1(stick.kmh, 0), camMostDeg: r1(stick.camMostDeg, 0), camRateMostDeg: r1(stick.camRateMostDeg, 0), grip: stick.grip[0], crashed: stick.crashed || stick.atEdge },
-      keysWA: { radius: r1(keys.radius), rateDeg: r1(keys.rateDeg, 0), firstSecondDeg: r1(first(keys), 0), wheelDeg: r1(Math.abs(keys.steer) * 57.3), ofFullLock: r1(Math.abs(keys.steer / stick.steer), 2), kmhEnd: r1(keys.kmh, 0), crashed: keys.crashed || keys.atEdge },
+      stick: { radius: r1(stick.radius), rateDeg: r1(stick.rateDeg, 0), firstSecondDeg: r1(first(stick), 0), wheelDeg: r1(Math.abs(stick.steer) * 57.3), kmhEnd: r1(stick.kmh, 0), camMostDeg: r1(stick.camMostDeg, 0), camRateMostDeg: r1(stick.camRateMostDeg, 0), grip: stick.grip[0], crashed: stick.crashed || stick.atEdge, airFrames: stick.airFrames },
+      keysWA: { radius: r1(keys.radius), rateDeg: r1(keys.rateDeg, 0), firstSecondDeg: r1(first(keys), 0), wheelDeg: r1(Math.abs(keys.steer) * 57.3), ofFullLock: r1(Math.abs(keys.steer / stick.steer), 2), kmhEnd: r1(keys.kmh, 0), crashed: keys.crashed || keys.atEdge, airFrames: keys.airFrames },
     });
   }
 }
@@ -366,7 +367,7 @@ async function stops(weather) {
   for (const kmh of weather === 'dry' ? [50, 100, 200] : [50, 100]) {
     await rollAt(kmh);
     const r = await run({ input: { ...none, brake: 1 }, until: 'still' });
-    keep(`stop-${weather}-${kmh}`, { metres: r1(r.metres), seconds: r1(r.seconds, 2), g: r1(kmh / 3.6 / r.seconds / 9.81, 2), grip: r1(r.grip[0], 2) });
+    keep(`stop-${weather}-${kmh}`, { metres: r1(r.metres), seconds: r1(r.seconds, 2), g: r1(kmh / 3.6 / r.seconds / 9.81, 2), grip: r1(r.grip[0], 2), airFrames: r.airFrames });
   }
 }
 

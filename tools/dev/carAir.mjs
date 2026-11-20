@@ -1,0 +1,344 @@
+// A car leaving the ground and landing (world/car.ts, world/carBody.ts rideHeight) in the real game, on a running
+// dev server: over the school's plateau on Smetlededorp at 30, 50 and 90 km/h, off a ditch's bank at 50 km/h, and
+// along the straight road out in the fields at 50 to 200 km/h, where it must never leave the ground. The throttle
+// holds the speed; nothing is in the car's way (fences, hedges, trees: as tools/dev/drive.mjs --open), the ground
+// is the real one. For each run: the greatest height of the car over the ground under its middle, the time with its
+// tyres off the ground, how far it flew, and how fast it came down. With --out, a picture from beside the car in
+// the air over the ditch, coming down (the car held there while it is taken).
+// With --mp, two players on a throwaway game server, through a dev server whose proxy points at it (API_PORT=<server
+// port> npx vite --port <n>), as tools/dev/drive_mp.mjs: Alice drives the Tesla over the ditch nearest the house,
+// Bob rides along beside her (his page draws the car from the server's states, as anyone watching it does). Checks
+// that Bob sees it leave the ground and land, about as high as Alice flew it, and that the server took every state
+// (Bob sees it end where Alice has it, and at her height).
+//   node tools/dev/carAir.mjs --url http://localhost:5320/ --port 9421 [--out <folder>] [--json <file>] [--quality low]
+//   node tools/dev/carAir.mjs --mp --url http://localhost:5320/ --ports 9422,9423 [--out <folder>]
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { launch, localOnly, options, startGame } from './cdp.mjs';
+
+const o = options({ url: 'http://localhost:5320/', port: '9421', ports: '9422,9423', mp: false, out: '', json: '', quality: 'low', width: '960', height: '540' });
+if (o.mp) {
+  await together();
+  process.exit(process.exitCode ?? 0);
+}
+const b = await launch({ port: Number(o.port), width: Number(o.width), height: Number(o.height) });
+const results = [];
+const r2 = (x) => (x == null ? null : Math.round(x * 100) / 100);
+const keep = (row) => {
+  console.log(JSON.stringify(row));
+  results.push(row);
+};
+const shot = async (name) => {
+  if (!o.out) return;
+  mkdirSync(o.out, { recursive: true });
+  await b.screenshot(join(o.out, `${name}.png`));
+  console.log('picture:', join(o.out, `${name}.png`));
+};
+
+// The school's plateau (tools/road_detail.py, src/data/roadDetail.json): its centre line, ramp to ramp.
+const detail = JSON.parse(readFileSync(new URL('../../web/src/data/roadDetail.json', import.meta.url), 'utf8'));
+const p = detail.school.p;
+const plateau = { x0: p[0], z0: p[1], x1: p[p.length - 2], z1: p[p.length - 1] };
+// A ditch in the fields (src/data/village.json dips): the bank from its rim to its bottom.
+const village = JSON.parse(readFileSync(new URL('../../web/src/data/village.json', import.meta.url), 'utf8'));
+const ditches = village.dips.filter((d) => d.name === 'ditch' && d.depth >= 0.9 && d.rim.length >= 60);
+
+async function setUp() {
+  await b.send('Page.addScriptToEvaluateOnNewDocument', { source: `localStorage.setItem('briel.graphics','${o.quality}');localStorage.setItem('briel.lang','en');localStorage.setItem('briel.spawn','house');localStorage.setItem('briel.playMode','explore');` });
+  const url = new URL(o.url);
+  url.searchParams.set('nobake', '');
+  await startGame(b, url.href, { noAsk: true });
+  await b.waitFor('briel.cars.slice(0,2).every(c=>c.wheels.length===4)');
+  await b.evaluate("document.getElementById('cc-close')?.click(); briel.getIn()", false);
+  await b.waitFor('briel.driving()');
+  await b.evaluate("briel.three.weather.setSolo('sunny'); briel.weatherAhead(3600)", false);
+  await b.evaluate(`(() => {
+    const car = briel.currentCar();
+    const real = car.world, trees = car.trees;
+    const frame = () => new Promise((r) => requestAnimationFrame(r));
+    const kmh = () => Math.hypot(car.vx, car.vz) * 3.6;
+    const floor = () => real.groundAt(car.x, car.z, car.y, 0.3).y;
+    let input = null, hold = false, side = 0;
+    const landings = [];
+    const drive = car.drive, chase = car.chase, landed = car.landed;
+    car.drive = function (dt, i, others) { return hold ? 0 : drive.call(this, dt, input ? { ...i, ...input } : i, others); };
+    car.landed = function (speed, ...rest) { landings.push(speed); return landed.call(this, speed, ...rest); };
+    // From beside the car (side m to its right), level with it, instead of from behind.
+    car.chase = function (camera, dt, ...rest) {
+      chase.call(this, camera, dt, ...rest);
+      if (!side) return;
+      const fx = -Math.sin(car.yaw), fz = -Math.cos(car.yaw);
+      camera.position.set(car.x - fz * side + fx * 2, car.y + 1.1, car.z + fx * side + fz * 2);
+      camera.lookAt(car.x, car.y + 0.7, car.z);
+    };
+    window.__air = {
+      paused: false,
+      /** Nothing in the car's way, or the real world again. */
+      open(on) {
+        const put = { boxFree: on && (() => true), boxInBounds: on && (() => true), touching: on && (() => null) };
+        car.world = on ? new Proxy(real, { get: (t, k) => put[k] || (typeof t[k] === 'function' ? t[k].bind(t) : t[k]) }) : real;
+        car.trees = on ? [] : trees;
+      },
+      /** Standing at (x, z) facing (dx, dz). */
+      put(x, z, dx, dz) {
+        const g = real.groundAt(x, z, 50, 0.3);
+        car.place(x, g.y, z, Math.atan2(-dx, -dz));
+        return { y: g.y, mat: g.mat ?? null };
+      },
+      /** The ground's height along (x, z) + t (dx, dz) for t from a to b, every step m, as a car finds it (nothing over a kerb). */
+      profile(x, z, dx, dz, a, b, step) {
+        const out = [];
+        let y = real.groundAt(x + dx * a, z + dz * a, 50, 0.3).y;
+        for (let t = a; t <= b + 1e-9; t += step) {
+          y = real.groundAt(x + dx * t, z + dz * t, y, 0.3).y;
+          out.push(Math.round(y * 1000) / 1000);
+        }
+        return out;
+      },
+      /**
+       * Rolling straight on at kmh for s seconds, the throttle holding the speed. picture: once it has flown higher
+       * than that (m over the ground), it is held there, seen from beside it, until paused is put back to false.
+       */
+      async run({ kmh: want, s, picture = 0 }) {
+        const v = want / 3.6, fx = -Math.sin(car.yaw), fz = -Math.cos(car.yaw);
+        Object.assign(car, { vx: fx * v, vz: fz * v, speed: v, lastSpeed: v });
+        landings.length = 0;
+        let t = 0, last = performance.now(), most = 0, airTime = 0, airFrames = 0, took = null, down = null, vyLeast = 0, vyMost = 0, wasAir = false, shotTaken = false;
+        const x0 = car.x, z0 = car.z, yaw0 = car.yaw;
+        let kmhOff = null, kmhOn = null;
+        while (t < s) {
+          input = { throttle: kmh() < want ? 1 : 0, brake: 0, steer: 0, handbrake: false };
+          await frame();
+          const now = performance.now();
+          const dt = (now - last) / 1000;
+          last = now;
+          if (hold) continue;
+          t += dt;
+          const h = car.y - floor();
+          most = Math.max(most, h);
+          vyLeast = Math.min(vyLeast, car.vy);
+          vyMost = Math.max(vyMost, car.vy);
+          if (car.air) { airTime += dt; airFrames++; }
+          if (car.air && !wasAir) { took = { x: car.x, z: car.z }; kmhOff = kmh(); }
+          if (!car.air && wasAir) { down = { x: car.x, z: car.z }; kmhOn = kmh(); }
+          wasAir = car.air;
+          if (picture && !shotTaken && car.air && h > picture && car.vy < 0.5) {
+            shotTaken = true;
+            hold = true;
+            side = 7;
+            this.paused = true;
+            while (this.paused) await frame();
+            side = 0;
+            hold = false;
+            last = performance.now();
+          }
+        }
+        input = { throttle: 0, brake: 1, steer: 0, handbrake: true };
+        return {
+          most, airTime, airFrames, landings: [...landings], vyLeast, vyMost, kmhOff, kmhOn, picture: shotTaken,
+          flewM: took && down ? Math.hypot(down.x - took.x, down.z - took.z) : 0,
+          wentM: Math.hypot(car.x - x0, car.z - z0), turnedDeg: Math.atan2(Math.sin(car.yaw - yaw0), Math.cos(car.yaw - yaw0)) * 57.3,
+        };
+      },
+    };
+  })()`, false);
+}
+
+/** From `before` m ahead of (x, z) along (dx, dz), rolling at kmh for s seconds. */
+async function pass(name, at, kmh, s, picture = 0) {
+  const n = Math.hypot(at.dx, at.dz);
+  const [dx, dz] = [at.dx / n, at.dz / n];
+  const where = await b.evaluate(`__air.put(${at.x - dx * at.before}, ${at.z - dz * at.before}, ${dx}, ${dz})`);
+  await b.sleep(800);
+  const job = b.evaluate(`__air.run(${JSON.stringify({ kmh, s, picture })})`);
+  if (picture) {
+    // Held at the top of its flight: the picture from beside it, then on.
+    for (let i = 0; i < 200 && !(await b.evaluate('__air.paused')); i++) await b.sleep(50);
+    if (await b.evaluate('__air.paused')) {
+      await b.sleep(400);
+      await shot(`${name}-midair-side`);
+      await b.evaluate('__air.paused = false');
+    }
+  }
+  const r = await job;
+  keep({
+    run: name, kmh, startY: r2(where.y), mat: where.mat, mostOverGroundM: r2(r.most), airS: r2(r.airTime), airFrames: r.airFrames, flewM: r2(r.flewM),
+    landingMs: r.landings.map(r2), vyDown: r2(-r.vyLeast), vyUp: r2(r.vyMost), kmhTakeOff: r2(r.kmhOff), kmhLanded: r2(r.kmhOn), wentM: r2(r.wentM), turnedDeg: r2(r.turnedDeg), picture: r.picture,
+  });
+  return r;
+}
+
+try {
+  console.log('Browser PID:', b.pid);
+  await setUp();
+  await b.evaluate('__air.open(true)', false);
+  // Over the plateau, along its centre line from 40 m before it.
+  const pl = { x: plateau.x0, z: plateau.z0, dx: plateau.x1 - plateau.x0, dz: plateau.z1 - plateau.z0, before: 40 };
+  const len = Math.hypot(pl.dx, pl.dz);
+  console.log('plateau', JSON.stringify({ from: [plateau.x0, plateau.z0], lengthM: r2(len), profileEvery2m: await b.evaluate(`__air.profile(${pl.x}, ${pl.z}, ${pl.dx / len}, ${pl.dz / len}, -4, ${len + 4}, 2)`) }));
+  for (const kmh of [30, 50, 90]) await pass(`plateau-${kmh}`, pl, kmh, (40 + len + 20) / (kmh / 3.6));
+  // Off a ditch's bank: across the ditch whose bank drops furthest, square to its rim, from 40 m out.
+  let best = null;
+  for (const d of ditches) {
+    for (let i = 0; i < d.rim.length; i += Math.ceil(d.rim.length / 12)) {
+      const [rx, rz] = d.rim[i];
+      const [bx, bz] = d.bottom[i];
+      const n = Math.hypot(bx - rx, bz - rz) || 1;
+      const [dx, dz] = [(bx - rx) / n, (bz - rz) / n];
+      const prof = await b.evaluate(`__air.profile(${rx}, ${rz}, ${dx}, ${dz}, -12, 4, 0.5)`);
+      const run = prof.slice(0, 22); // 12 m to 1.5 m before the rim
+      const flat = Math.max(...run) - Math.min(...run); // the run-up must be even
+      const drop = prof[22] - Math.min(...prof.slice(22, 30)); // down the bank, within 4 m
+      if (flat < 0.3 && (!best || drop > best.drop)) best = { x: rx, z: rz, dx, dz, drop, flat, prof };
+    }
+  }
+  if (best) {
+    console.log('ditch', JSON.stringify({ rim: [r2(best.x), r2(best.z)], dropM: r2(best.drop), runUpRangeM: r2(best.flat), profileEveryHalfM: best.prof }));
+    await pass('ditch-50', { ...best, before: 40 }, 50, 4.5, 0.25);
+    await pass('ditch-50-again', { ...best, before: 40 }, 50, 4.5);
+  } else keep({ run: 'ditch-50', found: false });
+  // The straight road out in the fields (tools/dev/drive.mjs), the real ground: it must stay on it.
+  const road = { x: 636.6, z: 142.6, dx: 668.9 - 636.6, dz: 355.8 - 142.6, before: 0 };
+  for (const kmh of [50, 100, 150, 200]) await pass(`road-${kmh}`, road, kmh, Math.min(6, 190 / (kmh / 3.6)));
+  await b.evaluate('__air.open(false)', false);
+  if (o.json) writeFileSync(o.json, JSON.stringify(results, null, 1));
+  console.log('Browser errors:', JSON.stringify(b.logs.filter((l) => /^(error|exception)/.test(l)).slice(-10)));
+} finally {
+  b.close();
+}
+
+/** Two players: Alice drives over a ditch's bank, Bob rides along and sees it from the server's states. */
+async function together() {
+  localOnly(o.url, '--url'); // two players join and drive: a throwaway server on this computer only
+  const [pa, pb] = o.ports.split(',').map(Number);
+  let failed = 0;
+  const ok = (name, pass, extra = '') => {
+    console.log(`${pass ? 'ok  ' : 'FAIL'} ${name} ${extra}`);
+    if (!pass) failed++;
+  };
+  const player = async (port, name) => {
+    const p = await launch({ port, width: 800, height: 450 });
+    console.log(name, 'browser PID:', p.pid);
+    await p.send('Page.addScriptToEvaluateOnNewDocument', { source: "localStorage.setItem('briel.graphics','low');localStorage.setItem('briel.lang','en');localStorage.setItem('briel.spawn','house');localStorage.setItem('briel.playMode','explore');localStorage.setItem('briel.feedback','later');" });
+    const url = new URL(o.url);
+    url.searchParams.set('nobake', '');
+    await p.send('Page.navigate', { url: url.href });
+    await p.waitFor("!!document.querySelector('#choose-kbm')");
+    await p.sleep(6000); // the dev build attaches the start screen's handlers late
+    await p.evaluate(`(() => {
+      const n = document.querySelector('#nick'); n.value = '${name}'; n.dispatchEvent(new Event('input', { bubbles: true }));
+      document.querySelector('[data-mp=multi]').click();
+      const age = document.querySelector('#mp-age'); if (!age.checked) age.click();
+      document.querySelector('#choose-kbm').click();
+    })()`, false);
+    await p.waitFor('!!window.briel', 60000);
+    await p.waitFor("(() => { const s = document.getElementById('start-panel'); if (!s || s.offsetParent === null) return true; const c = getComputedStyle(s); return c.visibility === 'hidden' || Number(c.opacity) < 0.05; })()", 240000);
+    await p.waitFor('briel.cars.slice(0,2).every(c=>c.wheels.length===4)');
+    await p.evaluate("document.getElementById('cc-close')?.click()", false);
+    return p;
+  };
+  const tag = Math.random().toString(36).slice(2, 6); // names stay with whoever joined with them for the day
+  const alice = await player(pa, `Alice${tag}`);
+  const bob = await player(pb, `Bob${tag}`);
+  try {
+    // Alice at the wheel (the server moves her no faster than a run: ask until it lets her in), Bob beside her.
+    await alice.evaluate(`(() => { const car = briel.cars.find((c) => c.id === 'tesla'); const at = car.exitSpot(); briel.player.place(at.x, at.z, car.y, 0, 0); })()`, false);
+    for (let i = 0; i < 40 && !(await alice.evaluate('briel.driving()')); i++) {
+      await alice.evaluate('briel.getIn()', false);
+      await alice.sleep(1500);
+    }
+    ok('Alice drives the Tesla', await alice.evaluate('briel.driving()'));
+    await alice.evaluate(`(() => {
+      const car = briel.currentCar(), real = car.world, drive = car.drive;
+      window.__drive = { throttle: 0, brake: 0, steer: 0, handbrake: true };
+      car.drive = function (dt, input, others) { return drive.call(this, dt, { ...input, ...window.__drive }, others); };
+      // Nothing in its way (fences, hedges, trees): the server checks none of them; the ground is the real one.
+      const put = { boxFree: () => true, boxInBounds: () => true, touching: () => null };
+      car.world = new Proxy(real, { get: (t, k) => put[k] || (typeof t[k] === 'function' ? t[k].bind(t) : t[k]) });
+      car.trees = [];
+    })()`, false);
+    for (let i = 0; i < 40 && !(await bob.evaluate('briel.askState().riding')); i++) {
+      await bob.evaluate(`(() => { const car = briel.cars.find((c) => c.id === 'tesla'); const at = car.exitSpot(true); briel.player.place(at.x, at.z, car.y, 0, 0); briel.getIn(); })()`, false);
+      await bob.sleep(1500);
+    }
+    ok('Bob rides along', await bob.evaluate('briel.askState().riding'));
+    // The ditch or pond nearest the house with a bank that drops at least half a metre after an even run-up.
+    const dips = [...JSON.parse(readFileSync(new URL('../../web/src/data/village.json', import.meta.url), 'utf8')).dips, ...JSON.parse(readFileSync(new URL('../../web/src/data/house_shell.json', import.meta.url), 'utf8')).dips];
+    const car0 = await alice.evaluate('({ x: briel.currentCar().x, z: briel.currentCar().z })');
+    const near = dips.filter((d) => d.depth >= 0.6).map((d) => ({ d, far: Math.hypot(d.rim[0][0] - car0.x, d.rim[0][1] - car0.z) })).filter((n) => n.far < 300).sort((a, b) => a.far - b.far);
+    const jump = await alice.evaluate(`(() => {
+      const real = briel.world;
+      const profile = (x, z, dx, dz) => { const out = []; let y = real.groundAt(x - dx * 12, z - dz * 12, 50, 0.3).y; for (let t = -12; t <= 4; t += 0.5) { y = real.groundAt(x + dx * t, z + dz * t, y, 0.3).y; out.push(y); } return out; };
+      for (const { d } of ${JSON.stringify(near)}) {
+        for (let i = 0; i < d.rim.length; i += Math.ceil(d.rim.length / 12)) {
+          const [rx, rz] = d.rim[i], [bx, bz] = d.bottom[i];
+          const n = Math.hypot(bx - rx, bz - rz) || 1, dx = (bx - rx) / n, dz = (bz - rz) / n;
+          const p = profile(rx, rz, dx, dz), run = p.slice(0, 22);
+          if (Math.max(...run) - Math.min(...run) < 0.3 && p[22] - Math.min(...p.slice(22, 30)) > 0.5) return { x: rx, z: rz, dx, dz, drop: p[22] - Math.min(...p.slice(22, 30)) };
+        }
+      }
+      return null;
+    })()`);
+    ok('a ditch near the house', !!jump, JSON.stringify(jump));
+    if (!jump) return;
+    // To 40 m before its rim in hops the server allows (each within what a car covers in half a second).
+    const start = { x: jump.x - jump.dx * 40, z: jump.z - jump.dz * 40 };
+    const yaw = Math.atan2(-jump.dx, -jump.dz);
+    for (let i = 0; i < 40; i++) {
+      const p = await alice.evaluate('({ x: briel.currentCar().x, z: briel.currentCar().z })');
+      const d = Math.hypot(start.x - p.x, start.z - p.z);
+      const k = Math.min(1, 15 / Math.max(d, 1e-6));
+      await alice.evaluate(`(() => { const car = briel.currentCar(), x = ${p.x + (start.x - p.x) * k}, z = ${p.z + (start.z - p.z) * k}; car.place(x, briel.world.groundAt(x, z, car.y + 1, 0.3).y, z, ${yaw}); })()`, false);
+      await alice.sleep(1200);
+      if (k === 1) break;
+    }
+    await alice.sleep(2500);
+    // Both pages' view of the car every frame: Alice's own, Bob's from the server's states.
+    const watch = `(() => {
+      const car = briel.cars.find((c) => c.id === 'tesla');
+      window.__seen = []; window.__landed = [];
+      const landed = car.landed;
+      car.landed = function (speed, ...rest) { window.__landed.push(speed); return landed.call(this, speed, ...rest); };
+      const look = () => { if (window.__seen) { const g = briel.world.groundAt(car.x, car.z, car.y, 0.3).y; window.__seen.push({ t: performance.now(), x: car.x, y: car.y, z: car.z, over: car.y - g, air: car.air, flying: car.flying }); } requestAnimationFrame(look); };
+      requestAnimationFrame(look);
+    })()`;
+    await alice.evaluate(watch, false);
+    await bob.evaluate(watch, false);
+    // At 50 km/h over the bank, the throttle holding the speed, for 4 s; then the handbrake.
+    await alice.evaluate(`(async () => {
+      const car = briel.currentCar();
+      const v = 50 / 3.6, fx = -Math.sin(car.yaw), fz = -Math.cos(car.yaw);
+      Object.assign(car, { vx: fx * v, vz: fz * v, speed: v, lastSpeed: v });
+      const t0 = performance.now();
+      while (performance.now() - t0 < 4000) {
+        window.__drive = { throttle: Math.hypot(car.vx, car.vz) < v ? 1 : 0, brake: 0, steer: 0, handbrake: false };
+        await new Promise((r) => requestAnimationFrame(r));
+      }
+      window.__drive = { throttle: 0, brake: 0, steer: 0, handbrake: true };
+    })()`);
+    await alice.sleep(2500); // it stands; the last states arrive and are drawn a little behind
+    const mine = await alice.evaluate('window.__seen.splice(0)');
+    const seen = await bob.evaluate('window.__seen.splice(0)');
+    const landedA = await alice.evaluate('window.__landed');
+    const landedB = await bob.evaluate('window.__landed');
+    if (o.out) {
+      mkdirSync(o.out, { recursive: true });
+      await bob.screenshot(join(o.out, 'mp-bob-after.png'));
+    }
+    const sum = (f, key) => ({ most: Math.max(...f.map((s) => s.over)), frames: f.filter((s) => s[key]).length, seconds: f.filter((s) => s[key]).length && (f.findLast((s) => s[key]).t - f.find((s) => s[key]).t) / 1000 });
+    const a = sum(mine, 'air');
+    const bb = sum(seen, 'flying');
+    const [endA, endB] = [mine[mine.length - 1], seen[seen.length - 1]];
+    console.log(JSON.stringify({ ditch: jump, alice: { ...a, landings: landedA }, bob: { ...bb, landings: landedB }, endA, endB }));
+    ok('Alice flies off the bank', a.frames > 5 && a.most > 0.3, `${a.most.toFixed(2)} m over the ground, ${a.frames} frames`);
+    ok('Bob sees the car leave the ground', bb.frames > 3 && bb.most > 0.3, `${bb.most.toFixed(2)} m over the ground at most, drawn flying ${bb.frames} frames`);
+    ok('about as high as Alice flew it', Math.abs(bb.most - a.most) < 0.25, `${bb.most.toFixed(2)} against ${a.most.toFixed(2)} m`);
+    ok('Bob sees it land', landedB.length >= 1, `at ${landedB.map((s) => s.toFixed(2)).join(', ')} m/s (Alice ${landedA.map((s) => s.toFixed(2)).join(', ')})`);
+    ok('the server took every state: Bob sees it end where Alice has it', Math.hypot(endA.x - endB.x, endA.z - endB.z) < 0.3 && Math.abs(endA.y - endB.y) < 0.05, `${Math.hypot(endA.x - endB.x, endA.z - endB.z).toFixed(3)} m apart, heights ${endA.y.toFixed(2)} and ${endB.y.toFixed(2)}`);
+    for (const [who, p] of [['Alice', alice], ['Bob', bob]]) ok(`${who}: no errors on the page`, !p.logs.some((l) => /^(error|exception)/.test(l)), JSON.stringify(p.logs.filter((l) => /^(error|exception)/.test(l)).slice(-3)));
+  } finally {
+    alice.close();
+    bob.close();
+    process.exitCode = failed ? 1 : 0;
+  }
+}
