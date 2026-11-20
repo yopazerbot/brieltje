@@ -30,6 +30,35 @@ interface Solid {
   minZ: number;
   maxX: number;
   maxZ: number;
+  /** As a car meets it (boxFree `give`), made the first time it is asked */
+  brush?: Brush;
+}
+
+/**
+ * A block as a car meets it (world/carDamage.ts: a hedge it may push into): its material and name, how thick it is
+ * (m: twice its area over its outline's length, about the width of a long thin block), its middle, and whether a point
+ * is in it.
+ */
+export interface Brush {
+  readonly mat?: string;
+  readonly name?: string;
+  readonly thick: number;
+  readonly cx: number;
+  readonly cz: number;
+  has(x: number, z: number): boolean;
+}
+
+function brushOf(s: Solid): Brush {
+  if (s.brush) return s.brush;
+  const ring = s.rings[0];
+  let area = 0;
+  let edge = 0;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    area += ring[j][0] * ring[i][1] - ring[i][0] * ring[j][1];
+    edge += Math.hypot(ring[i][0] - ring[j][0], ring[i][1] - ring[j][1]);
+  }
+  const thick = edge > 0 ? Math.abs(area) / edge : 0; // (area/2) * 2 / edge
+  return (s.brush = { mat: s.mat, name: s.name, thick, cx: (s.minX + s.maxX) / 2, cz: (s.minZ + s.maxZ) / 2, has: (x, z) => inside(x, z, s.rings) });
 }
 
 export interface Point {
@@ -670,9 +699,10 @@ export class World {
   /**
    * Whether a rectangle on the plan (the car: its middle, heading, half length and half
    * width) is clear of every block between y0 and y1. The moving part `skip` (the car
-   * itself) doesn't count.
+   * itself) doesn't count. A fixed block that `give` lets in (a hedge, world/carDamage.ts) doesn't stop it either: it
+   * goes into `met`.
    */
-  boxFree(cx: number, cz: number, yaw: number, halfL: number, halfW: number, y0: number, y1: number, skip?: string): boolean {
+  boxFree(cx: number, cz: number, yaw: number, halfL: number, halfW: number, y0: number, y1: number, skip?: string, give?: (b: Brush) => boolean, met?: Brush[]): boolean {
     const fx = -Math.sin(yaw);
     const fz = -Math.cos(yaw);
     const box = [[1, 1], [1, -1], [-1, -1], [-1, 1]].map(([a, b]): [number, number] => [cx + fx * halfL * a - fz * halfW * b, cz + fz * halfL * a + fx * halfW * b]);
@@ -696,17 +726,25 @@ export class World {
       }
       return false;
     };
-    for (const i of this.near(minX, minZ, maxX, maxZ)) if (hits(this.solids[i])) return false;
+    for (const i of this.near(minX, minZ, maxX, maxZ)) {
+      const s = this.solids[i];
+      if (!hits(s)) continue;
+      if (!give?.(brushOf(s))) return false;
+      met?.push(brushOf(s));
+    }
     for (const [key, s] of this.moving) if (key !== skip && hits(s)) return false;
     return true;
   }
 
-  /** How far from a towards b (0..1) the way is clear, checked every 20 cm: the car's camera stays out of walls. */
-  clearance(a: Point, b: Point, skip?: string): number {
+  /**
+   * How far from a towards b (0..1) the way is clear, checked every 20 cm: the car's camera stays out of walls. A block
+   * that `give` lets through (the hedge a car is pushing through, world/carDamage.ts) doesn't count.
+   */
+  clearance(a: Point, b: Point, skip?: string, give?: (b: Brush) => boolean): number {
     const len = Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z);
     const moving = [...this.moving].filter(([key]) => key !== skip).map(([, s]) => s);
     const hit = (s: Solid, x: number, y: number, z: number) =>
-      !(s.off || x < s.minX || x > s.maxX || z < s.minZ || z > s.maxZ || y <= this.lo(s, x, z) || y >= this.hi(s, x, z)) && inside(x, z, s.rings);
+      !(s.off || x < s.minX || x > s.maxX || z < s.minZ || z > s.maxZ || y <= this.lo(s, x, z) || y >= this.hi(s, x, z)) && inside(x, z, s.rings) && !give?.(brushOf(s));
     for (let t = 0.2; t < len; t += 0.2) {
       const k = t / len;
       const x = a.x + (b.x - a.x) * k;
