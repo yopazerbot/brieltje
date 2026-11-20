@@ -7,14 +7,21 @@
 // flag on the whole village after that. Checked at every step: everyone's team the same in the game, in the evening's
 // teams and on the hall screen; every page told the same; nothing of one game left in the next (its parked vehicles,
 // its guards, its teams' colours); the evening's points adding up (each team's total is its players' points while on
-// it); the host's calls by name with capitals.
+// it); the host's calls by name with capitals. The host's Stop during a countdown calls it off (in free play, and with
+// a game on and the next one counting down): no game starts when it would have, every page's countdown goes, and a
+// player's own call to the host's controls is refused.
 //
-//   ADMIN_PASSWORD=... node tools/dev/gamenight_ws_check.mjs --api http://localhost:8620 [--players 12]
+// --stall: instead of the evening, how long the server is held in each game's countdown, at its start and stop (and
+// Attack and defend's round change and end, played through with rounds of a minute), from the hall screen's ticks: the longest gap
+// between two, less the tick's own 50 ms. Run it with --players 30 for a game night's hall; --only assault,zombies
+// for some of the games.
+//
+//   ADMIN_PASSWORD=... node tools/dev/gamenight_ws_check.mjs --api http://localhost:8620 [--players 12] [--stall [--only kinds]]
 import WebSocket from '../../web/node_modules/ws/wrapper.mjs';
 import { localOnly, options } from './cdp.mjs';
 import { FIELDS } from '../../web/shared/flagFields.mjs';
 
-const o = options({ api: 'http://localhost:8620', players: '12' });
+const o = options({ api: 'http://localhost:8620', players: '12', stall: false, only: '' });
 localOnly(o.api); // it logs in as the admin and starts games: a throwaway server on this computer only
 const password = process.env.ADMIN_PASSWORD;
 if (!password) throw new Error('ADMIN_PASSWORD is not set');
@@ -43,11 +50,12 @@ const view = async () => (await call('GET', '/api/host', null, adminCookie)).dat
 const connect = async (name, cookie, watch = false) => {
   const log = [];
   const ws = new WebSocket(`ws://${host}/ws?v=2${watch ? '&watch=1' : ''}`, { headers: { Cookie: cookie, Origin: o.api } });
-  const c = { name, ws, log, at: null, cookie, seen: new Map(), bikes: new Map(), send: (m) => ws.readyState === 1 && ws.send(JSON.stringify(m)), of: (t) => log.filter((m) => m.t === t) };
+  const c = { name, ws, log, at: null, cookie, seen: new Map(), bikes: new Map(), ticks: [], send: (m) => ws.readyState === 1 && ws.send(JSON.stringify(m)), of: (t) => log.filter((m) => m.t === t) };
   ws.on('message', (d) => {
     const m = JSON.parse(String(d));
     if (m.t === 'ping') return ws.send(JSON.stringify({ t: 'pong', n: m.n }));
     if (m.t === 's') {
+      if (watch) c.ticks.push(performance.now()); // when each tick came (--stall)
       for (const e of m.p ?? []) c.seen.set(e[0], { x: e[2], y: e[3], z: e[4] });
       for (const e of m.k ?? []) c.bikes.set(e[0], Date.now()); // when each bike was last in a tick
       return;
@@ -133,6 +141,86 @@ const atBases = (label, field, game, swapped = false, here = players) => {
   ok(`${label}: everyone at their base, the page where the server has them`, !bad.length, bad.map((p) => `${p.name} ${JSON.stringify(admin.seen.get(p.name))} page ${JSON.stringify(p.at)}`).join(' | '));
 };
 
+// ---- --stall: each game started from the host's controls (its countdown, then the game), a little played, stopped.
+if (o.stall) {
+  const TICK = 50;
+  /** The longest the server held its ticks back between `from` and `to` (performance.now()): the gap less a tick. */
+  const held = (from, to) => {
+    const t = hall.ticks.filter((x) => x >= from && x <= to);
+    let worst = 0;
+    for (let i = 1; i < t.length; i++) worst = Math.max(worst, t[i] - t[i - 1] - TICK);
+    return Math.round(worst);
+  };
+  const rows = [];
+  const lines = () => hall.of('system').map((m) => m.code);
+  const games = [
+    { kind: 'assault', minutes: 1, is: (m) => !!m.flag?.assault },
+    { kind: 'flag', place: 'compact', is: (m) => m.kind === 'flag' && m.flag?.field === 'compact' },
+    { kind: 'flag', place: 'village', is: (m) => m.kind === 'flag' && m.flag?.field === 'village' },
+    { kind: 'hide', is: (m) => m.kind === 'hide' },
+    { kind: 'tag', is: (m) => m.kind === 'tag' },
+    { kind: 'zombies', place: 'house', is: (m) => m.kind === 'zombies' },
+    { kind: 'teams', is: (m) => m.kind === 'teams' },
+    { kind: 'treasure', is: (m) => m.kind === 'treasure' },
+  ];
+  for (const e of games) {
+    const label = `${e.kind}${e.place ? ` ${e.place}` : ''}`;
+    if (o.only && !o.only.split(',').includes(e.kind)) continue;
+    const { is, ...entry } = e;
+    const t0 = performance.now();
+    console.log(`     ${label}: started at ${new Date().toISOString().slice(11, 23)}`); // to match a server's own log
+    ok(`${label}: the host starts it`, (await act({ op: 'start', ...entry }))?.ok === true);
+    await started(is);
+    const row = { game: label, countdown: held(t0, t0 + 9000), start: held(t0 + 9000, performance.now()) };
+    if (e.kind === 'assault') {
+      // Played through: round 1's clock, the break, round 2's clock, the end (its result, then free play).
+      const at = (code) => new Promise((res) => {
+        const from = Date.now();
+        const look = () => (lines().includes(code) || Date.now() - from > 200_000 ? res(performance.now()) : setTimeout(look, 100));
+        look();
+      });
+      const brk = await at('assaultBreak');
+      const r2 = await at('assaultRound2');
+      const end = await Promise.race(['assaultTime', 'assaultOnly', 'assaultFar', 'assaultTags', 'assaultDraw'].map(at));
+      await sleep(2000);
+      Object.assign(row, { break: held(brk - 1500, brk + 1500), round2: held(r2 - 1500, r2 + 1500), end: held(end - 1500, end + 1500) });
+      ok('Attack and defend played through: its break, its second round and its end', lines().includes('assaultRound2'));
+    } else await sleep(3000); // a little played
+    const s0 = performance.now();
+    await act({ op: 'stop' });
+    await sleep(2000);
+    row.stop = held(s0, performance.now());
+    rows.push(row);
+    console.log(`     ${label}: held ${JSON.stringify(row)} ms`);
+  }
+  console.log(`     the longest hold in a countdown, at a start, a round change, an end or a stop, ${N + 1} players and the hall screen (ms):`);
+  console.table(rows);
+  const worst = Math.max(...rows.flatMap((r) => Object.values(r).filter((v) => typeof v === 'number')));
+  ok('no countdown, start, round change, end or stop holds the server over 50 ms', worst <= 50, `${worst} ms`);
+  for (const p of [admin, hall, ...players]) p.ws.close();
+  await act({ op: 'reset' });
+  console.log(failed ? `${failed} failed` : 'all passed');
+  process.exit(failed ? 1 : 0);
+}
+
+// ---- The host's Stop during a countdown calls it off: nothing starts, every page's countdown goes. A player can't.
+const COUNTDOWN = 10_000;
+const calledOff = async (label, was) => {
+  const modes = hall.of('mode').length;
+  ok(`${label}: a player's own Stop or Cancel is refused, the countdown still on`, (await Promise.all(['stop', 'cancel'].map((op) => call('POST', '/api/host', { op }, players[1].join)))).every((x) => x.r.status === 403) && !!(await view()).countdown);
+  ok(`${label}: the host's Stop`, (await act({ op: 'stop' }))?.ok === true);
+  await sleep(500);
+  const bar = players.filter((p) => { const a = p.of('announce').at(-1); return !a || a.ms || a.text; });
+  ok(`${label}: the countdown is gone, on the host page and on every page (its bar away)`, (await view()).countdown === null && !bar.length, `${bar.length} still counting`);
+  await sleep(COUNTDOWN + 1500);
+  const now = lastMode(hall)?.kind ?? 'free';
+  ok(`${label}: and no game starts when it would have: free play`, now === 'free' && hall.of('mode').length === modes + (was === 'free' ? 0 : 1), `${now}, ${hall.of('mode').length - modes} mode changes`);
+};
+ok('Next starts a countdown', (await act({ op: 'next' }))?.ok === true && (await view()).countdown?.kind === 'flag');
+await sleep(1000);
+await calledOff('in free play', 'free');
+await act({ op: 'rewind', index: 0 }); // the called-off game is next again
+
 // ---- Steal the flag from the programme: Next, its countdown of ten seconds, then the game.
 ok('Next starts the programme\'s first game after its countdown', (await act({ op: 'next' }))?.ok === true && players.every((p) => p.of('announce').some((m) => m.code === 'nextGame')));
 await started((m) => m.kind === 'flag' && m.flag?.field === 'compact');
@@ -214,8 +302,11 @@ await started((m) => m.kind === 'flag' && !!m.flag?.assault);
 const notOn = [...players, hall].filter((p) => !(lastMode(p)?.kind === 'flag' && lastMode(p)?.flag?.assault));
 ok('Attack and defend is on for every page and the hall screen', !notOn.length, `${notOn.length} not: ${notOn.slice(0, 3).map((p) => `${p.name} ${lastMode(p)?.kind}`).join(', ')}; lines ${JSON.stringify(admin.log.filter((m) => m.t === 'system' || m.t === 'announce').slice(-4).map((m) => m.code ?? m.text))}`);
 t = await teamsAgree('Attack and defend');
-ok('Stop ends it', (await act({ op: 'stop' }))?.ok === true);
-await sleep(900);
+// The host queues the next game while this one runs, then thinks better of it: Stop ends this one and calls that off.
+ok('Next during Attack and defend starts the next one\'s countdown', (await act({ op: 'next' }))?.ok === true && (await view()).countdown?.kind === 'flag');
+await sleep(1000);
+await calledOff('with Attack and defend on', 'assault');
+await act({ op: 'rewind', index: 2 });
 ok('Next: Steal the flag on the whole village', (await act({ op: 'next' }))?.ok === true);
 await started((m) => m.kind === 'flag' && m.flag?.field === 'village');
 ok('the village field is on, its own field, both flags home, not swapped', [...players, hall].every((p) => lastMode(p)?.flag?.field === 'village' && !lastMode(p)?.flag?.swapped && lastMode(p)?.flag?.flags.blue.at === 'home' && !lastMode(p)?.flag?.assault));
