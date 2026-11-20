@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { terrain } from './terrain';
 import { wind } from './wind';
@@ -21,6 +22,13 @@ import { reflectionSkips } from './reflections';
  * towards the edge of the reach, in the vertex shader, so nothing pops in. They take the ground's baked
  * light and shade (world/groundShade.ts) at their foot, so under the crowns they are as dark as the floor.
  * On Low and on phones the reach is shorter and they stand sparser.
+ *
+ * The plants themselves are our own models (tools/undergrowth.py, public/models/undergrowth.glb), fetched once:
+ * bracken in three looks (the last green fronds upright, dead brown ones arching over or collapsed flat), two
+ * bramble mounds, holly, hazel and a young beech, and a fallen branch, a log or a stump; every leaflet real,
+ * opaque geometry. Each in two levels of detail: the near model within a dozen metres of the eye (five on Low and
+ * phones), the far one, a tenth of its triangles, beyond. Which model a plant is follows from its place, as the
+ * rest. Until the file is there (or if it can't be fetched), the simple shapes below stand in.
  */
 
 const CELL = 16;
@@ -166,6 +174,25 @@ const COLOURS: Record<Kind, THREE.Color[]> = {
   [Kind.Branch]: ['#6a5c50', '#574c42'].map((c) => new THREE.Color(c)),
 };
 
+/** The models of each kind in public/models/undergrowth.glb (each also as `<name>Far`), and how often each stands. */
+const MODELS: Record<Kind, [string, number][]> = {
+  // Most bracken dead by late November: brown, arching over or collapsed; a fifth still green.
+  [Kind.Fern]: [['BrackenGreen', 0.2], ['BrackenArch', 0.45], ['BrackenFlat', 0.35]],
+  [Kind.Bramble]: [['Bramble1', 0.5], ['Bramble2', 0.5]],
+  [Kind.Shrub]: [['Holly', 0.35], ['Hazel', 0.35], ['Beech', 0.3]],
+  [Kind.Branch]: [['Branch', 0.55], ['Log', 0.25], ['Stump', 0.2]],
+};
+/** Each model copy's tint (the models carry their own colours): a little lighter, darker, warmer or greyer. */
+const TINTS = ['#ffffff', '#f2ebe2', '#fff8ee', '#e6e2dc', '#f8f0dc'].map((c) => new THREE.Color(c));
+/** Near copies of each kind at most (within NEAR of the eye). */
+const NEAR_CAPACITY = [500, 160, 220, 40];
+
+/** One instanced mesh of the models: a kind's variant, near or far. */
+interface Planted {
+  mesh: THREE.InstancedMesh;
+  count: number;
+}
+
 export class Undergrowth {
   readonly group = new THREE.Group();
   private woods: Wood[] = [];
@@ -188,6 +215,10 @@ export class Undergrowth {
   private share = 1;
   private last = new THREE.Vector3(Infinity, 0, 0);
   private reachUniform = { value: 55 };
+  /** The models' meshes once fetched: per kind, per model, [near, far] */
+  private planted: Planted[][][] | null = null;
+  /** Metres from the eye within which the near models stand */
+  private near = 12;
 
   constructor(shade?: GroundShadeUniforms) {
     const geometries = [fernGeometry(), lumpGeometry(1.3, 0.75, 0.2), lumpGeometry(4.1, 1.2, 0.5), branchGeometry()];
@@ -215,6 +246,7 @@ export class Undergrowth {
     reflectionSkips.objects.add(this.group); // not in the reflections (world/reflections.ts)
     // The brambles and shrubs: leaf cards while the trees are (world/leafCards.ts: Medium and up, once painted).
     watchCards((full) => {
+      if (this.planted) return; // the models stand instead
       if (full && !card.map) {
         card.map = leafAtlas();
         card.needsUpdate = true;
@@ -224,16 +256,81 @@ export class Undergrowth {
         this.meshes[k].material = full ? card : lump;
       });
     });
+    // The plants as our own models, once fetched (the shapes above stand in until then, or if they can't be).
+    const plant = this.material('plant', shade);
+    new GLTFLoader().loadAsync('/models/undergrowth.glb').then(
+      (gltf) => this.useModels(gltf.scene, [fern, plant, plant, wood]),
+      () => {},
+    );
+  }
+
+  /** Put the models in the shapes' place: an instanced mesh per model, near and far. */
+  private useModels(root: THREE.Object3D, materials: THREE.Material[]): void {
+    root.updateMatrixWorld(true);
+    const geometry = (name: string): THREE.BufferGeometry | null => {
+      const o = root.getObjectByName(name);
+      if (!(o instanceof THREE.Mesh)) return null;
+      const source = o.geometry as THREE.BufferGeometry;
+      const g = new THREE.BufferGeometry();
+      g.setIndex(source.index);
+      g.setAttribute('position', source.getAttribute('position'));
+      // The corners' colours as three numbers each (the file has four bytes): the same shader as the shapes'.
+      const c = source.getAttribute('color');
+      const rgb = new Float32Array(c.count * 3);
+      for (let i = 0; i < c.count; i++) rgb.set([c.getX(i), c.getY(i), c.getZ(i)], i * 3);
+      g.setAttribute('color', new THREE.BufferAttribute(rgb, 3));
+      g.applyMatrix4(o.matrixWorld);
+      g.computeVertexNormals();
+      g.computeBoundingSphere();
+      return g;
+    };
+    const sets: [THREE.BufferGeometry, THREE.BufferGeometry][][] = [];
+    for (let k = 0; k < KINDS; k++) {
+      const list: [THREE.BufferGeometry, THREE.BufferGeometry][] = [];
+      for (const [name] of MODELS[k as Kind]) {
+        const near = geometry(name);
+        const far = geometry(`${name}Far`);
+        if (!near || !far) return; // not the file we know: the shapes stay
+        list.push([near, far]);
+      }
+      sets.push(list);
+    }
+    this.planted = sets.map((list, k) =>
+      list.map((pair, v) =>
+        pair.map((g, lod) => {
+          const mesh = new THREE.InstancedMesh(g, materials[k], lod ? CAPACITY[k] : NEAR_CAPACITY[k]);
+          mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+          mesh.setColorAt(0, new THREE.Color(1, 1, 1));
+          mesh.count = 0;
+          mesh.visible = false;
+          mesh.frustumCulled = false; // the copies spread round the eye; the reach keeps them few
+          mesh.userData.ignoreRay = true;
+          mesh.raycast = () => {};
+          mesh.name = `undergrowth ${MODELS[k as Kind][v][0]} ${lod ? 'far' : 'near'}`;
+          this.group.add(mesh);
+          return { mesh, count: 0 };
+        }),
+      ),
+    );
+    for (const mesh of this.meshes) {
+      this.group.remove(mesh);
+      mesh.dispose();
+    }
+    for (const g of new Set([...this.meshes.map((m) => m.geometry), ...this.looks.lumps, ...this.looks.cards])) g.dispose();
+    this.meshes = [];
+    this.last.set(Infinity, 0, 0);
   }
 
   /**
-   * The plants' material: the ground's shade at the foot, growing in with the reach, ferns swaying; lit as
-   * leaves are (the lumps get that from leafy(), with their leaves).
+   * The plants' material: the ground's shade at the foot, growing in with the reach, ferns swaying (the models of
+   * bramble and shrubs, `plant`, a little); lit as leaves are (the lumps get that from leafy(), with their leaves).
    */
-  private material(kind: 'fern' | 'lump' | 'wood' | 'cards', shade?: GroundShadeUniforms): THREE.MeshStandardMaterial {
+  private material(kind: 'fern' | 'lump' | 'wood' | 'cards' | 'plant', shade?: GroundShadeUniforms): THREE.MeshStandardMaterial {
     const fern = kind === 'fern';
     const cards = kind === 'cards';
-    const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, side: fern || cards ? THREE.DoubleSide : THREE.FrontSide, alphaTest: cards ? CUT : 0 });
+    const plant = kind === 'plant';
+    const sway = fern ? 0.06 : plant ? 0.025 : 0;
+    const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, side: fern || cards || plant ? THREE.DoubleSide : THREE.FrontSide, alphaTest: cards ? CUT : 0 });
     m.onBeforeCompile = (shader) => {
       shader.uniforms.ugReach = this.reachUniform;
       shader.uniforms.windTime = wind.time;
@@ -255,7 +352,7 @@ export class Undergrowth {
           vec3 ugRoot = (modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
           // Grown in towards the edge of the reach: nothing pops in or out.
           transformed *= smoothstep(ugReach, ugReach * 0.72, distance(cameraPosition, ugRoot));
-          ${fern ? `transformed.xz += vec2(-0.998, 0.057) * sin(windTime * 1.6 + ugRoot.x * 0.4 + ugRoot.z * 0.3) * 0.06 * transformed.y * windStrength;` : ''}
+          ${sway ? `transformed.xz += vec2(-0.998, 0.057) * sin(windTime * 1.6 + ugRoot.x * 0.4 + ugRoot.z * 0.3) * ${sway.toFixed(3)} * transformed.y * windStrength;` : ''}
           vUgLight = vec2(1.0);
           ${shade
             ? `{
@@ -272,7 +369,7 @@ export class Undergrowth {
           }`
             : ''}`,
         );
-      shader.fragmentShader = (kind === 'lump' ? shader.fragmentShader : leafLight(shader.fragmentShader, fern ? 0.5 : cards ? 0.35 : 0))
+      shader.fragmentShader = (kind === 'lump' ? shader.fragmentShader : leafLight(shader.fragmentShader, fern ? 0.5 : cards || plant ? 0.35 : 0))
         // Leaf cards: both sides of a card lit alike, by the bush's shape (world/leafCards.ts).
         .replace('#include <normal_fragment_begin>', cards ? '#include <normal_fragment_begin>\n#ifdef DOUBLE_SIDED\nnormal *= faceDirection;\n#endif' : '#include <normal_fragment_begin>')
         .replace('#include <common>', '#include <common>\nvarying vec2 vUgLight;')
@@ -351,6 +448,8 @@ export class Undergrowth {
     const low = quality === 'low' || phone;
     this.reach = low ? 32 : quality === 'medium' ? 45 : 55;
     this.share = low ? 0.5 : quality === 'medium' ? 0.75 : 1;
+    // The near models within a dozen metres (Medium ten); on Low and phones only those at your feet.
+    this.near = low ? 5 : quality === 'medium' ? 10 : 12;
     this.reachUniform.value = this.reach;
     this.last.set(Infinity, 0, 0);
     // The brambles and shrubs follow the trees: leaf cards or lumps (the constructor's watchCards).
@@ -429,31 +528,58 @@ export class Undergrowth {
             if (dx * dx + dz * dz > reach2) continue;
             const size = list[k + 4];
             q.setFromAxisAngle(up, list[k + 5]);
+            at.set(list[k], list[k + 1], list[k + 2]);
+            const colour = list[k + 6];
+            if (this.planted) {
+              // The models, at their own sizes: which one and its tint from the plant's own number, near or far by
+              // the distance.
+              let v = 0;
+              for (let pick = colour; v < MODELS[kind as Kind].length - 1 && pick >= MODELS[kind as Kind][v][1]; v++) pick -= MODELS[kind as Kind][v][1];
+              const pair = this.planted[kind][v];
+              const slot = dx * dx + dz * dz < this.near * this.near && pair[0].count < NEAR_CAPACITY[kind] ? pair[0] : pair[1];
+              if (kind === Kind.Fern) scale.setScalar(0.95 + size * 0.55);
+              else if (kind === Kind.Bramble) scale.set(0.85 + size * 0.4, 0.8 + size * 0.35, 0.85 + size * 0.4);
+              else if (kind === Kind.Shrub) scale.setScalar(0.8 + size * 0.45);
+              else scale.setScalar(0.75 + size * 0.5);
+              slot.mesh.setMatrixAt(slot.count, m.compose(at, q, scale));
+              slot.mesh.setColorAt(slot.count, TINTS[Math.floor(((colour * 977) % 1) * TINTS.length)]);
+              slot.count++;
+              counts[kind]++;
+              continue;
+            }
             if (kind === Kind.Fern) scale.setScalar(0.7 + size * 0.7);
             else if (kind === Kind.Bramble) scale.set(1.1 + size * 1.2, 0.8 + size * 0.5, 1 + size * 1.0);
             else if (kind === Kind.Shrub) scale.set(0.9 + size * 0.9, 0.8 + size * 0.8, 0.9 + size * 0.9);
             else scale.set(1.5 + size * 2.5, 0.08 + size * 0.08, 0.08 + size * 0.08);
-            at.set(list[k], list[k + 1], list[k + 2]);
             const mesh = this.meshes[kind];
             mesh.setMatrixAt(counts[kind], m.compose(at, q, scale));
             const colours = COLOURS[kind as Kind];
-            mesh.setColorAt(counts[kind], colours[Math.floor(list[k + 6] * colours.length) % colours.length]);
+            mesh.setColorAt(counts[kind], colours[Math.floor(colour * colours.length) % colours.length]);
             counts[kind]++;
           }
         }
       }
     }
-    this.meshes.forEach((mesh, k) => {
-      mesh.count = counts[k];
-      mesh.visible = counts[k] > 0;
-      if (counts[k]) {
+    const show = (mesh: THREE.InstancedMesh, count: number) => {
+      mesh.count = count;
+      mesh.visible = count > 0;
+      if (count) {
         mesh.instanceMatrix.clearUpdateRanges();
-        mesh.instanceMatrix.addUpdateRange(0, counts[k] * 16);
+        mesh.instanceMatrix.addUpdateRange(0, count * 16);
         mesh.instanceMatrix.needsUpdate = true;
         mesh.instanceColor!.clearUpdateRanges();
-        mesh.instanceColor!.addUpdateRange(0, counts[k] * 3);
+        mesh.instanceColor!.addUpdateRange(0, count * 3);
         mesh.instanceColor!.needsUpdate = true;
       }
-    });
+    };
+    this.meshes.forEach((mesh, k) => show(mesh, counts[k]));
+    for (const kind of this.planted ?? []) {
+      for (const pair of kind) {
+        for (const slot of pair) {
+          show(slot.mesh, slot.count);
+          slot.count = 0;
+        }
+      }
+    }
   }
 }
