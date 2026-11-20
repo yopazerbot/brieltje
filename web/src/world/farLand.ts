@@ -471,11 +471,133 @@ function toWorld(x: number, y: number): [number, number] {
 /** sRGB 0-255 to the linear colour a vertex carries. */
 const linear = (c: Rgb): Rgb => c.map((v) => Math.pow(v / 255, 2.2)) as Rgb;
 
+/** The kinds of crown in the far tree lines. */
+const BROAD = 0;
+const BARE = 1;
+const CONIFER = 2;
+const POPLAR = 3;
+
+/**
+ * The strips of the far tree lines (see FarTrees): for each two crowns next to each other a piece of strip, its top
+ * the two crowns' outlines meeting halfway. Every crown has its kind, height and colour:
+ *
+ * - at the end of November most broad-leaved crowns have turned (ochre, rust, brown) and a quarter are bare, a
+ *   purple-grey haze of twigs; a few are still dull green; a wood's edge has its dark spruces here and there, a
+ *   farmstead the odd ornamental conifer, and one hedgerow in five is a row of poplars, tall and slim;
+ * - a broad crown is round on top (a half ellipse as wide as the tree), a conifer pointed, a poplar a tall narrow
+ *   spindle; where two trees stand apart the strip dips between them to the hedge or the lower crowns behind;
+ * - the normal of each column leans the way the crown's outline faces there (along the row on its shoulders, up on
+ *   its top), so the low sun lights one side of every crown and leaves the other in its own shade;
+ * - `crown`: the crown's top height at the column, and how bare it is, for the shader's ragged, see-through top.
+ */
+function treeStrips(rows: TreeRow[]): THREE.BufferGeometry {
+  const pos: number[] = [];
+  const nor: number[] = [];
+  const col: number[] = [];
+  const along: number[] = [];
+  const crown: number[] = [];
+  const index: number[] = [];
+  let seed = 5309;
+  const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  // Colours (sRGB, the leaves' albedo in the light): still green, olive, ochre, rust, brown; bare twigs; spruce.
+  const turned: Rgb[] = [[72, 84, 45], [86, 86, 48], [112, 96, 50], [106, 76, 44], [90, 70, 46]];
+  const twigs: Rgb = [86, 78, 76];
+  const spruce: Rgb = [44, 56, 40];
+  const pick = (kind: number): Rgb => {
+    if (kind === BARE) return twigs;
+    if (kind === CONIFER) return spruce;
+    if (kind === POPLAR) return rand() < 0.5 ? [110, 100, 54] : [92, 90, 52];
+    const r = rand();
+    return turned[r < 0.18 ? 0 : r < 0.32 ? 1 : r < 0.6 ? 2 : r < 0.84 ? 3 : 4];
+  };
+  for (const row of rows) {
+    // Each row's own run of colour (one farm's trees, one wood's edge), every crown halfway between it and its own.
+    const rowHue = pick(BROAD);
+    const crowns = row.closed ? [...row.crowns, row.crowns[0]] : row.crowns;
+    // The row's mix: a wood's edge (closed and tall), a farmstead's ring (closed), or a hedgerow's trees.
+    const poplars = !row.closed && rand() < 0.2;
+    const wood = row.closed && row.tall >= 15;
+    const kindOf = (): number => {
+      if (poplars) return POPLAR;
+      const r = rand();
+      if (r < (wood ? 0.14 : row.closed ? 0.08 : 0.02)) return CONIFER;
+      return r < 0.32 ? BARE : BROAD;
+    };
+    const tops = crowns.map((c, i) => {
+      // The ring's closing crown is its first again.
+      const kind = row.closed && i === crowns.length - 1 ? -1 : kindOf();
+      const tall = row.tall * (kind === POPLAR ? 1.55 : kind === CONIFER ? 1.1 : 1) * (rand() < 0.2 ? 0.5 + rand() * 0.3 : 0.75 + rand() * 0.45);
+      const k = 0.85 + rand() * 0.3;
+      const own = pick(kind);
+      const c0 = kind === CONIFER ? own : own.map((v, j) => (v + rowHue[j]) / 2);
+      return { at: toWorld(c.x, c.y), kind, h: tall, c: linear([c0[0] * k, c0[1] * k, c0[2] * k]), bare: kind === BARE ? 0.7 + rand() * 0.3 : kind === POPLAR ? 0.35 : rand() * 0.3 };
+    });
+    if (row.closed && tops.length > 1) tops[tops.length - 1] = { ...tops[0], at: tops[tops.length - 1].at };
+    let run = rand() * 100; // metres along the row, for the leaves' pattern
+    for (let i = 0; i + 1 < tops.length; i++) {
+      const a = tops[i];
+      const b = tops[i + 1];
+      const dx = b.at[0] - a.at[0];
+      const dz = b.at[1] - a.at[1];
+      const len = Math.hypot(dx, dz);
+      if (len < 0.5 || len > 26 || (!row.closed && rand() < 0.08)) continue; // a gap in the row
+      const ux = dx / len;
+      const uz = dz / len;
+      // Halfway the strip drops to the hedge, or to the crowns of a wood behind, where the trees stand apart.
+      const low = Math.min(a.h, b.h) * (wood ? 0.72 : 0.38);
+      // Each half belongs to one crown: its outline from its middle (s 0) out to halfway (s = len / 2).
+      for (const [t0, t1, tree, side] of [[0, 0.5, a, 1], [0.5, 1, b, -1]] as const) {
+        const half = tree.kind === POPLAR ? 1.7 : tree.kind === CONIFER ? 2.6 : Math.min(len * 0.55, 3 + tree.h * 0.22);
+        const base = pos.length / 3;
+        for (let k = 0; k <= 3; k++) {
+          const t = t0 + ((t1 - t0) * k) / 3;
+          const s = Math.abs(t - (side > 0 ? 0 : 1)) * len; // metres from this crown's middle
+          const q = Math.min(1, s / half);
+          let h: number;
+          if (tree.kind === CONIFER) h = tree.h * (1 - 0.75 * q);
+          else if (tree.kind === POPLAR) h = tree.h * (1 - 0.55 * q * q);
+          else h = tree.h * (0.42 + 0.58 * Math.sqrt(Math.max(0, 1 - q * q)));
+          h = Math.max(low, s > half ? low : h);
+          // Facing along the row on the crown's shoulders (away from its middle), up on its top, and across the row
+          // (the shader turns that part towards the eye).
+          const out = side * (tree.kind === CONIFER ? 0.6 : 0.7) * q;
+          const up = tree.kind === CONIFER ? 0.9 : 0.5 + 1.1 * (1 - q);
+          // Lower down the crowns merge into one mass: the foot faces only across the row.
+          const n = new THREE.Vector3(-uz + ux * out, up, ux + uz * out).normalize();
+          const foot = new THREE.Vector3(-uz, 0.6, ux).normalize();
+          const x = a.at[0] + dx * t;
+          const z = a.at[1] + dz * t;
+          pos.push(x, -0.8, z, x, h, z);
+          nor.push(foot.x, foot.y, foot.z, n.x, n.y, n.z);
+          // The foot in the crowns' own shade, and where two crowns meet a little darker.
+          const meet = 1 - 0.22 * q * q;
+          col.push(tree.c[0] * 0.5, tree.c[1] * 0.5, tree.c[2] * 0.5, tree.c[0] * meet, tree.c[1] * meet, tree.c[2] * meet);
+          along.push(run + t * len, run + t * len);
+          crown.push(h, tree.bare, h, tree.bare);
+          if (k > 0) {
+            const v = base + (k - 1) * 2;
+            index.push(v, v + 2, v + 1, v + 1, v + 2, v + 3);
+          }
+        }
+      }
+      run += len;
+    }
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geometry.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  geometry.setAttribute('along', new THREE.Float32BufferAttribute(along, 1));
+  geometry.setAttribute('crown', new THREE.Float32BufferAttribute(crown, 2));
+  geometry.setIndex(index);
+  return geometry;
+}
+
 /**
  * The far land's rows of trees, its woods' edges and its farmsteads' rings stood up: a strip each, its top in a bump
  * for every crown, a few metres to some 20 high, on the ground's relief. From the air, at a slant, the land then has
  * tree lines along its fields, not only dark lines painted on it; seen from right above a strip is a line and the
- * painting shows. Solid (nothing cut out or blended), one draw call: one tile of them, copied (instanced) to where
+ * painting shows. Solid (nothing blended; only the ragged tops cut out), one draw call: one tile of them, copied (instanced) to where
  * the tile repeats round the eye. Only outside the data's area: inside it the vertex shader folds them flat (height
  * 0), as the mask says, so they never stand among the real hedges and trees.
  */
@@ -487,61 +609,7 @@ export class FarTrees {
     // The relief's heights (world/terrain.ts), each texel's centre on its grid point; past the grid its edge, as the skirt.
     const terrainMap = terrainTexture();
     const terrainBox = new THREE.Vector4(terrain.x0 - terrain.step / 2, terrain.z0 - terrain.step / 2, terrain.nx * terrain.step, terrain.nz * terrain.step);
-    const pos: number[] = [];
-    const nor: number[] = [];
-    const col: number[] = [];
-    const along: number[] = [];
-    const index: number[] = [];
-    let seed = 5309;
-    const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-    // Crowns at the start of November: each row one mix of trees, dull green, olive or turning brown, every crown a
-    // little different within it.
-    // (A little greener than they were, to match the near trees' crowns in the same light.)
-    const shades: Rgb[] = [[72, 92, 44], [84, 92, 46], [94, 86, 48], [64, 84, 42]];
-    for (const row of treeRows) {
-      const crowns = row.closed ? [...row.crowns, row.crowns[0]] : row.crowns;
-      const hue = shades[Math.floor(rand() * shades.length)];
-      // The top: a peak at each crown, a dip between two.
-      const tops = crowns.map((c) => {
-        const k = 0.88 + rand() * 0.24;
-        return { at: toWorld(c.x, c.y), h: row.tall * (rand() < 0.2 ? 0.45 + rand() * 0.3 : 0.75 + rand() * 0.4), c: linear([hue[0] * k, hue[1] * k, hue[2] * (0.9 + rand() * 0.2)]) };
-      });
-      let run = rand() * 100; // metres along the row, for the leaves' pattern
-      for (let i = 0; i + 1 < tops.length; i++) {
-        const a = tops[i];
-        const b = tops[i + 1];
-        const dx = b.at[0] - a.at[0];
-        const dz = b.at[1] - a.at[1];
-        const len = Math.hypot(dx, dz);
-        if (len < 0.5 || len > 26 || (!row.closed && rand() < 0.08)) continue; // a gap in the row
-        const at = (t: number): [number, number] => [a.at[0] + dx * t, a.at[1] + dz * t];
-        // Round crowns: their shoulders a little lower than their tops, a shallow dip where two meet (deeper where
-        // they stand apart).
-        const dip = Math.min(a.h, b.h) * (len > 9 ? 0.7 : 0.86);
-        // Facing across the row and up (the shader turns it towards the eye on the back): the side the sun is on
-        // lit, the other in the crowns' own shade, as a wood's edge is.
-        const n = new THREE.Vector3(-dz / len, 2, dx / len).normalize();
-        const columns: [number, number, Rgb][] = [[0, a.h, a.c], [0.28, a.h * 0.95, a.c], [0.5, dip, a.c], [0.72, b.h * 0.95, b.c], [1, b.h, b.c]];
-        for (let k = 0; k + 1 < columns.length; k++) {
-          const base = pos.length / 3;
-          for (const [t, h, c] of [columns[k], columns[k + 1]]) {
-            const [x, z] = at(t);
-            pos.push(x, -0.8, z, x, h, z);
-            nor.push(n.x, n.y, n.z, n.x, n.y, n.z);
-            col.push(c[0] * 0.55, c[1] * 0.55, c[2] * 0.55, c[0], c[1], c[2]);
-            along.push(run + t * len, run + t * len);
-          }
-          index.push(base, base + 2, base + 1, base + 1, base + 2, base + 3);
-        }
-        run += len;
-      }
-    }
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-    geometry.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
-    geometry.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-    geometry.setAttribute('along', new THREE.Float32BufferAttribute(along, 1));
-    geometry.setIndex(index);
+    const geometry = treeStrips(treeRows);
     const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, side: THREE.DoubleSide });
     material.onBeforeCompile = (shader) => {
       Object.assign(shader.uniforms, farLandUniforms, { ftTerrain: { value: terrainMap }, ftBox: { value: terrainBox }, ftNoise: { value: groundNoise() } });
@@ -550,12 +618,15 @@ export class FarTrees {
 uniform sampler2D ftTerrain;
 uniform vec4 ftBox;
 attribute float along;
+attribute vec2 crown;
 varying vec2 vFt;
+varying vec2 vFtCrown;
 ${FAR_LAND_GLSL}`)
         .replace(
           '#include <begin_vertex>',
           `#include <begin_vertex>
           vFt = vec2(along, transformed.y);
+          vFtCrown = crown;
           vec2 ftXZ = (modelMatrix * instanceMatrix * vec4(transformed, 1.0)).xz;
           // Folded flat inside the data's area; on the relief's ground outside it.
           transformed.y *= step(0.5, farLandOutside(ftXZ));
@@ -563,16 +634,21 @@ ${FAR_LAND_GLSL}`)
         );
       // Leaves: lighter and darker clumps of a few metres, finer ones near by (the noise tile's mipmaps fade them).
       shader.fragmentShader = shader.fragmentShader
-        .replace('#include <common>', '#include <common>\nuniform sampler2D ftNoise;\nvarying vec2 vFt;')
-        // Seen from its back a strip's normal is turned round whole, down into the ground: no sun, no sky, a black
-        // cut-out against the fields. Facing up on both sides instead, across the row towards whoever looks.
+        .replace('#include <common>', '#include <common>\nuniform sampler2D ftNoise;\nvarying vec2 vFt;\nvarying vec2 vFtCrown;')
+        // Seen from its back a strip's normal was turned round whole, down into the ground: no sun, no sky, a black
+        // cut-out against the fields. Its part across the row is turned towards whoever looks instead (on both sides),
+        // keeping its parts along the row and up: each crown's shoulders and top face the same way from either side.
         .replace(
           '#include <normal_fragment_begin>',
           `#include <normal_fragment_begin>
-          if (!gl_FrontFacing) {
-            vec3 ftUp = normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz);
-            normal = -normal;
-            normal = normalize(2.0 * dot(normal, ftUp) * ftUp - normal);
+          #ifdef DOUBLE_SIDED
+            normal *= faceDirection;
+          #endif
+          {
+            vec3 ftFace = normalize(cross(dFdx(vViewPosition), dFdy(vViewPosition)));
+            ftFace *= sign(dot(ftFace, vViewPosition) + 1e-6);
+            float ftAway = dot(normal, ftFace);
+            if (ftAway < 0.0) normal = normalize(normal - 2.0 * ftAway * ftFace);
           }`,
         )
         .replace(
@@ -580,7 +656,12 @@ ${FAR_LAND_GLSL}`)
           `#include <color_fragment>
           float ftClump = texture2D(ftNoise, vFt / vec2(6.0, 5.0)).r;
           float ftLeaf = texture2D(ftNoise, vFt / vec2(1.3, 1.1) + 0.41).r;
-          diffuseColor.rgb *= 0.62 + 0.5 * ftClump + 0.3 * (ftLeaf - 0.5);`,
+          diffuseColor.rgb *= 0.62 + 0.5 * ftClump + 0.3 * (ftLeaf - 0.5);
+          // The top ragged, not a cut line: clumps of leaves and twigs against the sky, the bare crowns' upper half a
+          // see-through haze of twigs. Far off the noise's mipmaps even out and the top is just a little lower.
+          float ftUp = clamp(vFt.y / max(vFtCrown.x, 1.0), 0.0, 1.0);
+          float ftRag = ftLeaf * 0.6 + ftClump * 0.4;
+          if (ftRag < smoothstep(0.72, 1.0, ftUp) * (0.6 + 0.3 * vFtCrown.y) + smoothstep(0.35, 0.95, ftUp) * vFtCrown.y * 0.32) discard;`,
         )
         // A strip stands for a mass of crowns, most of whose leaves are in the shade of others: the sun and the sky
         // reach a part of it only, so a wood's edge facing a low sun isn't paler than the flat fields in front of it.
@@ -596,7 +677,8 @@ ${FAR_LAND_GLSL}`)
         )
         // The haze over them a quarter less than over the ground at their distance (the ground haze is thick enough
         // to hide the tiles' end; the horizon's lines too keep under half of it at their tops): a tree line a few
-        // hundred metres off keeps its green instead of a pale ghost of it.
+        // hundred metres off keeps its green instead of a pale ghost of it. Further out the haze takes them over more,
+        // to nearly all of it at a kilometre and a half: line behind line, each paler, as tree lines go in autumn haze.
         .replace(
           '#include <fog_fragment>',
           `#ifdef USE_FOG
@@ -605,7 +687,7 @@ ${FAR_LAND_GLSL}`)
             #else
               float fogFactor = smoothstep(fogNear, fogFar, vFogDepth);
             #endif
-            gl_FragColor.rgb = mix(gl_FragColor.rgb, fogColor, fogFactor * 0.75);
+            gl_FragColor.rgb = mix(gl_FragColor.rgb, fogColor, fogFactor * mix(0.75, 0.95, smoothstep(500.0, 1500.0, vFogDepth)));
           #endif`,
         );
     };
