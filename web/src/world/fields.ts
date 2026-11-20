@@ -241,9 +241,13 @@ export function patchFields(material: THREE.MeshStandardMaterial): void {
             fieldPlant = 1.0;
           } else {
             // A cover crop sown in rows 12.5 cm apart (oats, mustard): dense and green. A game cover (own high)
-            // is rougher: taller patches going to seed, brown among the green.
+            // is rougher: taller patches going to seed, brown among the green, in clumps of a few metres. Two reads
+            // of the noise tile, turned against each other, not a product of waves: that laid the clumps on a
+            // lattice, a field of diamonds from the air.
             vec3 leaf = vec3(0.08, 0.14, 0.04) * (0.7 + 0.3 * texelLum / 0.13);
-            float seed = own * smoothstep(0.45, 0.65, 0.5 + 0.35 * sin(along * 0.9 + across * 1.3) * sin(along * 0.37 - across * 0.71) + (texelLum - 0.13) * 2.0);
+            float seedAt = texture2D(fieldNoise, vec2(along, across) / 9.3 + own * 5.0).r * 0.6
+              + texture2D(fieldNoise, mat2(0.809, 0.588, -0.588, 0.809) * vFieldXZ / 23.0 + 0.4).r * 0.4;
+            float seed = own * smoothstep(0.45, 0.65, 0.5 + (seedAt - 0.5) * 1.6 + (texelLum - 0.13) * 2.0);
             vec3 c = mix(leaf * mix(0.9, 1.06, smoothstep(0.5, 0.0, tri) * fade), vec3(0.2, 0.14, 0.07), seed);
             diffuseColor.rgb = mix(c, soil, 0.08 * (1.0 - own));
             fieldPlant = 1.0;
@@ -253,7 +257,11 @@ export function patchFields(material: THREE.MeshStandardMaterial): void {
           // and thinner growth). Lines narrower than a pixel keep only their share of it, so nothing shimmers.
           float fieldLane = fract(sin(own * 311.7 + fieldHue * 17.0) * 4375.85); // one more number of the field's own
           float fieldPx = max(fwidth(across), 1e-3); // metres a pixel, across the rows
-          diffuseColor.rgb *= mix(0.9, 1.07, texture2D(fieldNoise, vFieldXZ / 70.0 + own * 3.1).r);
+          // Two reads at scales that never meet (61 and 157 m), each turned its own way: one alone repeated every 70 m
+          // along the map's axes, a grid of soft blotches across a big field from the air.
+          float fieldPatch = texture2D(fieldNoise, vec2(along, across) / 61.0 + own * 3.1).r * 0.6
+            + texture2D(fieldNoise, mat2(0.914, -0.407, 0.407, 0.914) * vFieldXZ / 157.0 + 0.23).r * 0.4;
+          diffuseColor.rgb *= mix(0.9, 1.07, 0.5 + (fieldPatch - 0.5) * 1.4);
           if (fieldKind > 2.5 && fieldKind < 3.5 || fieldKind > 4.5 && fieldKind < 5.5) {
             // Winter cereal and beet: tramlines, the pair of wheel tracks the sprayer follows, 1.8 m apart, every 18 to
             // 27 m by the width of the farmer's boom; bare soil in them.
