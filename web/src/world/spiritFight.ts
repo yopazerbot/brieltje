@@ -143,7 +143,10 @@ export class SpiritFight {
   private readonly trunks: SpiritTrunk[];
   private readonly lightSpots = lightsOf(SPIRIT);
   readonly heartBox: THREE.Mesh;
-  /** While its shell is shut: shots stop on it (part -1, nothing counted) and it flares where they land */
+  /**
+   * While its shell is shut: shots stop on it (part -1) and it flares where they land; one with a lit light behind it
+   * on its line goes on to that light (lightBehind)
+   */
   readonly shellBox: THREE.Mesh;
   /** Its light, in the scene from the start on a graphics card (null on a chip it does not suit) */
   private readonly lamp: THREE.PointLight | null;
@@ -348,7 +351,13 @@ export class SpiritFight {
     this.lastShot = point.clone();
     if (part === -1) {
       this.look?.hurt(0.35, point); // on the shut shell: it flares there, nothing counts
-      return;
+      // A lit light behind it on the shot's line: the shot goes on through the storm to it (a shell that stopped
+      // shots at the lights behind it only sent players walking round it).
+      const i = this.lightBehind(point);
+      if (i < 0) return;
+      part = i + 1;
+      point = this.lightBoxes[i].position.clone();
+      this.fx.burst(point, 'glint', this.now / 1000);
     }
     if (!Number.isInteger(part) || part < 0 || part > this.lightSpots.length || this.last.absent) return;
     const spec = SPECS[w];
@@ -368,6 +377,51 @@ export class SpiritFight {
       queueMicrotask(() => this.flush());
     }
   }
+
+  /**
+   * The lit light (its index) that a shot stopped on the shell at `at` would have gone on to: the nearest whose hit box
+   * the line from your eye through `at` passes through beyond the shell, within the heart's range, with no trunk of the
+   * grove in between; -1 for none.
+   */
+  private lightBehind(at: THREE.Vector3): number {
+    const dir = this.dir.copy(at).sub(this.eye);
+    const from = dir.length();
+    if (from < 1e-3) return -1;
+    dir.divideScalar(from);
+    let best = -1;
+    let bestT = Infinity;
+    this.lightBoxes.forEach((b, i) => {
+      if (!b.visible) return;
+      const c = b.position;
+      const t = (c.x - this.eye.x) * dir.x + (c.y - this.eye.y) * dir.y + (c.z - this.eye.z) * dir.z;
+      if (t <= from || t > SPIRIT.heart.range || t >= bestT) return;
+      const px = this.eye.x + dir.x * t - c.x;
+      const py = this.eye.y + dir.y * t - c.y;
+      const pz = this.eye.z + dir.z * t - c.z;
+      if (px * px + py * py + pz * pz > SPIRIT.light.r * SPIRIT.light.r) return;
+      // A trunk between the shell and the light stops it (seen from above: the line past the trunk's circle), not the
+      // light's own tree, which it hangs in front of.
+      const ax = at.x;
+      const az = at.z;
+      const ex = this.eye.x + dir.x * t - ax;
+      const ez = this.eye.z + dir.z * t - az;
+      const l2 = ex * ex + ez * ez || 1;
+      const own = SPIRIT.lights[i].tree;
+      const blocked = this.trunks.some((tr) => {
+        if (Math.hypot(tr.x - own[0], tr.z - own[1]) < 0.2) return false;
+        const u = Math.max(0, Math.min(1, ((tr.x - ax) * ex + (tr.z - az) * ez) / l2));
+        return Math.hypot(ax + ex * u - tr.x, az + ez * u - tr.z) < tr.r;
+      });
+      if (blocked) return;
+      best = i;
+      bestT = t;
+    });
+    return best;
+  }
+
+  /** Where your eye was at the last frame (for a shot's line through the shell) */
+  private eye = new THREE.Vector3();
+  private dir = new THREE.Vector3();
 
   private flush(): void {
     this.flushing = false;
@@ -506,6 +560,7 @@ export class SpiritFight {
 
   /** Each frame, after you moved. */
   update(dt: number, camera: THREE.Camera, me: SpiritMe): void {
+    camera.getWorldPosition(this.eye);
     this.runner(me.connected || !!this.fake);
     const together = this.together;
     const g = SPIRIT.grove;
