@@ -547,7 +547,8 @@ function treeStrips(rows: TreeRow[]): THREE.BufferGeometry {
       const low = Math.min(a.h, b.h) * (wood ? 0.72 : 0.38);
       // Each half belongs to one crown: its outline from its middle (s 0) out to halfway (s = len / 2).
       for (const [t0, t1, tree, side] of [[0, 0.5, a, 1], [0.5, 1, b, -1]] as const) {
-        const half = tree.kind === POPLAR ? 1.7 : tree.kind === CONIFER ? 2.6 : Math.min(len * 0.55, 3 + tree.h * 0.22);
+        // A broad crown reaches past halfway where trees stand close: neighbours overlap, a shallow dip between them.
+        const half = tree.kind === POPLAR ? 1.7 : tree.kind === CONIFER ? 2.6 : Math.min(len * 0.66, 3 + tree.h * 0.25);
         const base = pos.length / 3;
         for (let k = 0; k <= 3; k++) {
           const t = t0 + ((t1 - t0) * k) / 3;
@@ -556,7 +557,7 @@ function treeStrips(rows: TreeRow[]): THREE.BufferGeometry {
           let h: number;
           if (tree.kind === CONIFER) h = tree.h * (1 - 0.75 * q);
           else if (tree.kind === POPLAR) h = tree.h * (1 - 0.55 * q * q);
-          else h = tree.h * (0.42 + 0.58 * Math.sqrt(Math.max(0, 1 - q * q)));
+          else h = tree.h * (0.58 + 0.42 * Math.sqrt(Math.max(0, 1 - q * q)));
           h = Math.max(low, s > half ? low : h);
           // Facing along the row on the crown's shoulders (away from its middle), up on its top, and across the row
           // (the shader turns that part towards the eye).
