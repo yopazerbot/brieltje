@@ -111,6 +111,7 @@ import { modelTint } from './world/modelTints';
 import { wearLonePatches, weatherYards } from './world/yards';
 import { detailModelPaving, detailPaving, pavingMeshes, planPaving, usePavingPlan } from './world/pavingDetail';
 import { Undergrowth } from './world/undergrowth';
+import { BankPlants } from './world/bankPlants';
 import { GrassTufts } from './world/grassTufts';
 import { HostNotice } from './ui/hostNotice';
 import { GroundShade } from './world/groundShade';
@@ -607,6 +608,8 @@ weatherYards(['pave_light', 'gravel'].map((n) => blockMaterial(n, renderer).mate
 const undergrowth = new Undergrowth(groundShade.uniforms);
 undergrowth.addWoods(house.surroundings?.prisms, house.surroundings?.trees);
 scene.add(undergrowth.group);
+const bankPlants = new BankPlants(groundShade.uniforms); // reed, rushes and grass along the water (world/bankPlants.ts)
+scene.add(bankPlants.group);
 // Blades of grass round the eye on Medium and up (world/grassTufts.ts).
 const grassTufts = new GrassTufts(groundShade.uniforms, grassMat, () => [built.group, hedgeLumps, doors.group, tiles.group, helis.pads]);
 scene.add(grassTufts.group);
@@ -743,6 +746,7 @@ function applyQuality(q: Quality): void {
   setHeliDetail(q === 'low' || phone); // the helicopter's simple copy from nearer (world/heli.ts)
   tiles.drawDistance = phone ? Math.min(FAR_PHONE, preset.far) : preset.far;
   undergrowth.setQuality(q, phone);
+  bankPlants.setQuality(q, phone);
   farTrees.mesh.visible = q !== 'low' && !phone; // the far land's tree strips: some 250 000 vertices a frame
   grassTufts.setQuality(q, phone);
   dynScale = 1;
@@ -811,6 +815,7 @@ const trunkBlocks = new TrunkBlocks(world);
 trunkBlocks.add(house.surroundings?.trees ?? []);
 const slideSound = new SlideSound();
 world.setDips(house.dips ?? []);
+bankPlants.addBodies(house.dips ?? [], world, house.surroundings?.grass?.lawns);
 // The edge of the game (shared/bounds.json): round the built-up area, or round the two houses while a game in the house runs.
 const edges = loadBounds(BOUNDS);
 world.bounds = edges.map;
@@ -4392,6 +4397,7 @@ renderer.setAnimationLoop((now: number) => {
   horizon.position.z = camera.position.z;
   tiles.update(dt, camera.position);
   undergrowth.update(camera.position);
+  bankPlants.update(camera.position);
   grassTufts.update(renderer, scene, camera.position, performance.now() / 1000);
   groundDetail(camera.position);
   homeStreet.update(dt, camera.position);
@@ -4732,6 +4738,7 @@ async function buildVillage(): Promise<void> {
   void playing.then(() => villageRoofs(world, models, house.ground, endHouse, [towerBox], () => player));
   world.addDips(data.dips);
   addDips(data.dips);
+  bankPlants.addBodies(data.dips, world, data.grass?.lawns);
   groundCuts.cells.push(...data.groundCuts.cells);
   groundCuts.tris.push(...data.groundCuts.tris);
   for (const key of new Set(data.groundCuts.cells.map((c) => pieceOf(c).join(',')))) {
