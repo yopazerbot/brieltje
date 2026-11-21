@@ -4751,10 +4751,11 @@ async function buildVillage(): Promise<void> {
     scene.add(pavingMeshes(paving, (m) => groundShade.apply(m, 0.5)));
   }
   for (const set of [made, roads.tiles]) {
-    tiles.addSet(set.filter((m) => !far(m) && !northwest(m) && !west(m)), false);
-    if (set.some(far)) tiles.addSet(set.filter(far), false, 100, 350);
-    if (set.some(northwest)) tiles.addSet(set.filter(northwest), false, 100, 350);
-    if (set.some(west)) tiles.addSet(set.filter(west), false, 100, 350);
+    // A material at a time, a frame between (world/tiles.ts addSetSoon): merged in one go they piled up at the start.
+    await tiles.addSetSoon(set.filter((m) => !far(m) && !northwest(m) && !west(m)), false, between);
+    if (set.some(far)) await tiles.addSetSoon(set.filter(far), false, between, 100, 350);
+    if (set.some(northwest)) await tiles.addSetSoon(set.filter(northwest), false, between, 100, 350);
+    if (set.some(west)) await tiles.addSetSoon(set.filter(west), false, between, 100, 350);
   }
   world.addPrisms(roads.blocks);
   await modelsCut;

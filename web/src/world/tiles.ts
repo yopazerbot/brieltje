@@ -38,6 +38,11 @@ const KEEP_ON_CPU = new Set(['position', 'normal', 'uv', 'uv1']);
 function dropArray(this: { array: unknown }): void {
   this.array = null;
 }
+/** A merged tile piece's arrays let go (its geometry object stays, empty): nothing draws or reads it after the merge. */
+function dropArrays(g: THREE.BufferGeometry): void {
+  g.setIndex(null);
+  for (const name of Object.keys(g.attributes)) g.deleteAttribute(name);
+}
 function freeAfterUpload(geometry: THREE.BufferGeometry): void {
   for (const [name, a] of Object.entries(geometry.attributes)) {
     if (KEEP_ON_CPU.has(name) || !(a instanceof THREE.BufferAttribute) || a instanceof THREE.InstancedBufferAttribute || a.usage !== THREE.StaticDrawUsage) continue;
@@ -182,6 +187,8 @@ export class Tiles {
   drawDistance = 725;
   private sets: TileSet[] = [];
   private tracked: { object: THREE.Object3D; box: THREE.Box3; reach: number }[] = [];
+  /** The geometries the sets' meshes draw: never emptied as a merged piece (addSet's steps) */
+  private drawn = new WeakSet<THREE.BufferGeometry>();
   private wait = 0;
   private last = new THREE.Vector3(Infinity, Infinity, Infinity);
   /** Where the shadow map's middle lies along the line, and whether the map follows the eye (shadowAt) */
@@ -194,6 +201,23 @@ export class Tiles {
    * tiles are drawn at most (the draw distance unless given).
    */
   addSet(tiles: { key: string; pieces: Piece[] }[], near: boolean, detailReach = DETAIL, reach = Infinity): void {
+    const steps = this.steps(tiles, near, detailReach, reach);
+    while (!steps.next().done);
+  }
+
+  /**
+   * addSet a material at a time, `between` awaited after each (the village's start): each material's tile pieces are
+   * merged and let go before the next is, so the pieces and their merged copies are not all held at once, and the
+   * collector can keep up (a phone's start ran out of memory with the village's sets merged in one go).
+   */
+  async addSetSoon(tiles: { key: string; pieces: Piece[] }[], near: boolean, between: () => Promise<unknown>, detailReach = DETAIL, reach = Infinity): Promise<void> {
+    const steps = this.steps(tiles, near, detailReach, reach);
+    // The frames between only on a phone (they make the start some 2 s longer); everywhere each material's pieces go
+    // as soon as they are merged.
+    while (!steps.next().done) if (FREE_AFTER_UPLOAD) await between();
+  }
+
+  private *steps(tiles: { key: string; pieces: Piece[] }[], near: boolean, detailReach: number, reach: number): Generator<void, void> {
     const order = tiles
       .map((t) => {
         const [i, j] = t.key.split(',').map(Number);
@@ -232,6 +256,9 @@ export class Tiles {
       mesh.userData.source = p.source ?? 'open data';
       this.group.add(mesh);
     };
+    // How often each piece geometry is merged here: one shared by several pieces keeps its arrays.
+    const uses = new Map<THREE.BufferGeometry, number>();
+    for (const { per } of merged.values()) for (const geos of per) for (const g of geos) uses.set(g, (uses.get(g) ?? 0) + 1);
     for (const { piece, per } of merged.values()) {
       const list = per.flat();
       const geometry = list.length > 1 ? mergeGeometries(list) : list[0];
@@ -239,9 +266,13 @@ export class Tiles {
       const size = (g: THREE.BufferGeometry) => g.index?.count ?? g.attributes.position.count;
       const offsets = [0];
       for (const geos of per) offsets.push(offsets[offsets.length - 1] + geos.reduce((s, g) => s + size(g), 0));
+      // The merged pieces' arrays go now (the caller's lists of pieces still name their geometries).
+      if (list.length > 1) for (const g of list) if (uses.get(g) === 1 && !this.drawn.has(g)) dropArrays(g);
+      this.drawn.add(geometry);
       const mesh = new THREE.Mesh(geometry, piece.material);
       if (FREE_AFTER_UPLOAD) freeAfterUpload(geometry);
       style(mesh, piece);
+      mesh.visible = false; // until the set is ranged (below): a frame between the steps draws none of it whole
       const run: Run = { mesh, offsets, small: piece.small };
       set.runs.push(run);
       if (mesh.castShadow) {
@@ -254,15 +285,18 @@ export class Tiles {
         };
         mesh.onAfterShadow = () => this.range(set, run);
       }
+      yield;
     }
     for (const { piece, per } of shapes.values()) {
       const all = per.flat();
       const mesh = new THREE.InstancedMesh(piece.geometry, piece.material, Math.max(1, all.length));
+      this.drawn.add(piece.geometry);
       const source = new Float32Array(all.length * 16);
       all.forEach((m, k) => m.toArray(source, k * 16));
       const offsets = [0];
       for (const ms of per) offsets.push(offsets[offsets.length - 1] + ms.length);
       style(mesh, piece);
+      mesh.visible = false;
       const run: Run = { mesh, offsets, source, small: piece.small, lod: piece.lod };
       set.runs.push(run);
       if (mesh.castShadow) {
@@ -288,6 +322,7 @@ export class Tiles {
     // on a phone's start, held for good (a heap snapshot's retainers). Let them go.
     merged.clear();
     shapes.clear();
+    uses.clear();
   }
 
   /**
