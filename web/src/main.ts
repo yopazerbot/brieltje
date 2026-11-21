@@ -3988,9 +3988,10 @@ renderer.setAnimationLoop((now: number) => {
     // A blast nearby shakes the view for a moment (on top of where you look, so aim comes back).
     if (shake > 0.002) {
       const t = now / 1000;
-      camera.rotation.x += (Math.sin(t * 53) + Math.sin(t * 31)) * 0.012 * shake;
-      camera.rotation.y += (Math.sin(t * 47) + Math.sin(t * 23)) * 0.012 * shake;
-      camera.rotation.z += Math.sin(t * 41) * 0.015 * shake;
+      const quake = settings.value.motion === 'off' ? 0 : shake; // Camera movement Off: none (the sound, rumble and dust stay)
+      camera.rotation.x += (Math.sin(t * 53) + Math.sin(t * 31)) * 0.012 * quake;
+      camera.rotation.y += (Math.sin(t * 47) + Math.sin(t * 23)) * 0.012 * quake;
+      camera.rotation.z += Math.sin(t * 41) * 0.015 * quake;
       shake *= Math.exp(-dt * 4);
     }
     combat.showBoard(frame.scoreHeld && !!me);
