@@ -243,19 +243,24 @@ function gloveMaps(m: THREE.MeshStandardMaterial): void {
 }
 
 /**
- * The weapons' model: one file, a node per weapon (tools/weapons.py); the laser rifle in a file of its own beside it
- * (tools/lasergun.py), its nodes laid out the same way. Without its file the laser rifle stays a block gun.
+ * The weapons' model: one file, a node per weapon (tools/weapons.py). A gun named in GUN_FILES has a file of its own
+ * beside it, its nodes laid out the same way (the laser rifle: tools/lasergun.py; a gun modelled again: tools/guns/), and
+ * is taken from that file. If its file does not come it is taken from weapons.glb when it is in there; the laser rifle
+ * is not, and stays a block gun.
  */
+const GUN_FILES: Partial<Record<WeaponId, string>> = { laser: '/models/lasergun.glb' };
 const gunLoader = new GLTFLoader();
-const laserFile = gunLoader.loadAsync('/models/lasergun.glb').then((g) => g, () => null);
+const ownFiles = (Object.entries(GUN_FILES) as [WeaponId, string][]).map(([w, url]) => gunLoader.loadAsync(url).then((g) => [w, g] as const, () => [w, null] as const));
 export const gunsReady: Promise<boolean> = gunLoader.loadAsync('/models/weapons.glb').then(
   async (gltf) => {
     gltf.scene.updateMatrixWorld(true);
-    for (const w of WEAPON_IDS) if (w !== 'laser') takeGun(gltf.scene, w);
-    const laser = await laserFile;
-    if (laser) {
-      laser.scene.updateMatrixWorld(true);
-      takeGun(laser.scene, 'laser');
+    const own = new Map(await Promise.all(ownFiles));
+    for (const w of WEAPON_IDS) {
+      const file = own.get(w);
+      if (file) {
+        file.scene.updateMatrixWorld(true);
+        takeGun(file.scene, w);
+      } else if (gltf.scene.getObjectByName(w)) takeGun(gltf.scene, w);
     }
     return true;
   },
