@@ -575,6 +575,14 @@
                     </div>
                     <p class="note gfx-now"><span class="gfx-value"></span> <span class="gfx-detail"></span></p>
                     <div class="setting"><label class="field" for="set-fov"><span data-i18n="set.fov">Field of view</span> <span class="set-value" data-for="set-fov"></span></label><input class="slider" id="set-fov" type="range" min="60" max="100" step="1" /></div>
+                    <!-- How much the view moves with your body on foot (src/viewMotion.ts, src/settings.ts motion). -->
+                    <p class="label" id="motion-label" data-i18n="set.motion">Camera movement</p>
+                    <div class="seg motion-seg" role="group" aria-labelledby="motion-label">
+                      <button class="seg-btn" type="button" data-motion="off"><b data-i18n="set.motionOff">Off</b></button>
+                      <button class="seg-btn" type="button" data-motion="subtle"><b data-i18n="set.motionSubtle">Subtle</b></button>
+                      <button class="seg-btn" type="button" data-motion="full"><b data-i18n="set.motionFull">Full</b></button>
+                    </div>
+                    <p class="note" data-i18n="set.motionNote">How much the view sways as you walk and run. Off keeps it still.</p>
                   </section>
                   <section class="set-group" aria-labelledby="sg-sound">
                     <h2 id="sg-sound" data-i18n="set.soundGroup">Sound</h2>

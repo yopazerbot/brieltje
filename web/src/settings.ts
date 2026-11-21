@@ -3,11 +3,12 @@
  * controller look speed, field of view, volume, music, inverted look, controller
  * vibration, the controller's aim assist against zombies (src/controls/aimAssist.ts),
  * the minimap and FPS counter (each with a key as its shortcut), and the weather (world/weather.ts) when playing alone: together the admin's choice
- * holds, and the buttons show it, greyed (lockMood).
+ * holds, and the buttons show it, greyed (lockMood). And how much the view moves on foot (src/viewMotion.ts).
  */
 
 import { num, onLang, t } from './i18n';
 import { type Choice, DEFAULT_CHOICE, isChoice } from '../shared/moods.mjs';
+import { defaultMotion, MOTION_LEVELS, type MotionLevel } from './viewMotion';
 
 export interface Settings {
   /** Mouse sensitivity multiplier */
@@ -31,16 +32,19 @@ export interface Settings {
   fps: boolean;
   /** The weather and time of day when playing alone (shared/moods.mjs): a mood, or 'auto' */
   mood: Choice;
+  /** How much the view moves with your body on foot (src/viewMotion.ts): Subtle, or Off where the device asks for less motion */
+  motion: MotionLevel;
 }
 
 const KEY = 'briel.settings';
-const DEFAULTS: Settings = { mouse: 1, stick: 1, fov: 72, volume: 0.8, music: 0.5, invert: false, vibration: true, aimAssist: true, minimap: true, fps: false, mood: DEFAULT_CHOICE };
+const DEFAULTS: Settings = { mouse: 1, stick: 1, fov: 72, volume: 0.8, music: 0.5, invert: false, vibration: true, aimAssist: true, minimap: true, fps: false, mood: DEFAULT_CHOICE, motion: defaultMotion() };
 const BOXES = [['set-invert', 'invert'], ['set-vibration', 'vibration'], ['set-aimassist', 'aimAssist'], ['set-minimap', 'minimap'], ['set-fps', 'fps']] as const;
 
 function load(): Settings {
   try {
     const s = { ...DEFAULTS, ...JSON.parse(localStorage.getItem(KEY) || '{}') } as Settings;
     if (!isChoice(s.mood)) s.mood = DEFAULT_CHOICE; // stored by a later version with a mood this one lacks
+    if (!MOTION_LEVELS.includes(s.motion)) s.motion = DEFAULTS.motion;
     return s;
   } catch {
     return { ...DEFAULTS };
@@ -55,6 +59,7 @@ export class SettingsPanel {
   /** "Next weather" pressed (alone, on Auto) */
   onSkip: () => void = () => {};
   private moodButtons = [...document.querySelectorAll<HTMLButtonElement>('#mood-solo [data-mood]')];
+  private motionButtons = [...document.querySelectorAll<HTMLButtonElement>('#page-settings [data-motion]')];
   /**
    * Playing together as the admin: the settings' picker sets the weather for everyone (src/main.ts sends it; the
    * server checks the sender). Null for everyone else, who see the admin's pick greyed.
@@ -109,9 +114,21 @@ export class SettingsPanel {
     });
     this.showMood();
     onLang(() => this.showMood()); // the note under the weather, in the new language
+    // Camera movement (src/viewMotion.ts): Off, Subtle or Full.
+    for (const b of this.motionButtons) {
+      b.addEventListener('click', () => {
+        const level = b.dataset.motion as MotionLevel;
+        if (!MOTION_LEVELS.includes(level)) return;
+        this.value.motion = level;
+        this.showMotion();
+        this.changed();
+      });
+    }
+    this.showMotion();
     $('set-reset').addEventListener('click', () => {
       Object.assign(this.value, DEFAULTS);
       this.showMood();
+      this.showMotion();
       for (const [id, key] of [['set-mouse', 'mouse'], ['set-stick', 'stick'], ['set-fov', 'fov'], ['set-volume', 'volume'], ['set-music', 'music']] as const) {
         $(id).value = String(this.value[key]);
         $(id).dispatchEvent(new Event('input'));
@@ -152,6 +169,13 @@ export class SettingsPanel {
     const next = document.getElementById('mood-next') as HTMLButtonElement | null;
     const mood = this.locked ?? this.value.mood;
     if (next) next.classList.toggle('hidden', mood !== 'auto' || (!!this.locked && !this.onAdminSkip));
+  }
+
+  private showMotion(): void {
+    for (const b of this.motionButtons) {
+      b.classList.toggle('selected', b.dataset.motion === this.value.motion);
+      b.setAttribute('aria-pressed', String(b.dataset.motion === this.value.motion));
+    }
   }
 
   /** A setting's shortcut (N for the minimap, F for the FPS counter): on or off, as its tick box. */

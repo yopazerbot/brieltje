@@ -203,6 +203,7 @@ import HUTS_DATA from '../shared/tree_huts.json';
 import { cafePrisms, makeCafe } from '../shared/sparrenhof.mjs';
 import { carName, doorName, isGuard, lang, onLang, placeName, plural, portalName, serverText, setLang, t, whoName } from './i18n';
 import { seat, tellHost } from './seat';
+import { motionStrength } from './viewMotion';
 import { gather, pace, playBegins, StartWarm } from './startWarm';
 import { onWatch, watch } from './watch';
 import { WatchView } from './ui/watchView';
@@ -4214,7 +4215,11 @@ renderer.setAnimationLoop((now: number) => {
     weapon.update(dt, inCar ? 0 : Math.min(1, Math.hypot(frame.moveX, frame.moveY)), frame.aimHeld && !inCar, {
       yaw: player.yaw, pitch: player.pitch, side: dead ? 0 : frame.moveX, sprint: frame.sprint && !player.crouching,
       air: player.flying || player.feet > player.ground.y + 0.05, steady: frame.steadyHeld,
+      stride: inCar || onHorse || player.flying || player.chute !== null ? null : player.stride, // the bob on the stride's clock
     });
+    // The view moving with your body on foot (viewMotion.ts; the setting Camera movement): only the drawing, below.
+    player.motion.strength = motionStrength(settings.value.motion, menu.mode === 'touch');
+    player.motion.step(dt, !dead && !inCar && !onHorse && !watching && !seat && !watch && !dropView.outside, weapon.enabled ? weapon.aimAmount : 0, weapon.scoped);
     player.pitch -= weapon.takeRecover(); // the recoil's climb comes back down after the burst
     player.carry = weapon.carrySpeed; // a heavy gun slows your walk, aiming more
     // The torch: from dusk on, with a gun in your hands and on your feet.
@@ -4537,7 +4542,7 @@ renderer.setAnimationLoop((now: number) => {
       ...flagRacks.marks(flagTeam()).map((r) => ({ x: r.x, z: r.z, color: r.color, away: r.away, name: t(paintball.on ? 'fbz.mapPaint' : 'fbz.map'), kind: 'rack' as const })), // your team's bazooka
     ];
     bigMap.tick(mapYou(), marks);
-  } else if (!menu.onStartScreen) composer.render(dt); // the menu's Map tab covers most of the screen: the world isn't drawn behind it
+  } else if (!menu.onStartScreen) player.motion.draw(camera, weapon.root, () => composer.render(dt)); // the menu's Map tab covers most of the screen: the world isn't drawn behind it
   // Nor behind the start screen: its slideshow covers the canvas, and drawing there compiled the shaders one by one
   // on the page's thread while the world loaded (5.8 s of it). They compile in the background instead (compileWorld).
   // Only the warm-up's frames are drawn there, once everything is in and compiled (src/startWarm.ts).

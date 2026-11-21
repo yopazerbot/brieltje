@@ -11,6 +11,7 @@ import { t } from './i18n';
 import { drawn } from './world/rayShown';
 import { gunSurface, handFlash, noNearCut, setGunWear } from './world/gunSurface';
 import { WIND_PUSH, windAt } from './world/wind';
+import { strideSide, strideUp } from './viewMotion';
 
 /**
  * "Action" mode: first-person hands holding a pistol, rifle, shotgun or
@@ -1763,7 +1764,7 @@ export class Weapon {
    * `look`: where the player looks, sideways step input (-1..1, right positive), sprinting
    * and being in the air; this drives how the gun moves with the body.
    */
-  update(dt: number, moving: number, aiming: boolean, look?: { yaw: number; pitch: number; side: number; sprint: boolean; air: boolean; steady?: boolean }): void {
+  update(dt: number, moving: number, aiming: boolean, look?: { yaw: number; pitch: number; side: number; sprint: boolean; air: boolean; steady?: boolean; stride?: number | null }): void {
     if (!this.enabled) return;
     const spec = this.spec;
     this.clock += dt;
@@ -1795,7 +1796,9 @@ export class Weapon {
     } else this.raise = Math.min(1, this.raise + dt * 4.5);
     const m = this.models[this.shown];
     m.flash.visible = this.flashTime > 0 && this.shown === this.current;
-    this.sway += dt * (1.5 + moving * 4);
+    // On foot the bob keeps to the stride (player.ts stride: a footstep at each whole number), else to its own clock.
+    if (look?.stride != null) this.sway = Math.PI * look.stride;
+    else this.sway += dt * (1.5 + moving * 4);
     this.sinceShot += dt;
     // Raising the sights takes as long as the gun is heavy: the pistol is up at once, the sniper rifle last.
     this.aim += ((aiming && this.reloading <= 0 ? 1 : 0) - this.aim) * (1 - Math.exp(-dt * AIM_SPEED[this.current]));
@@ -1865,11 +1868,12 @@ export class Weapon {
     const pos = m.hip.clone();
     if (document.body.classList.contains('touch')) pos.add(TOUCH_HIP);
     pos.lerp(m.ads, this.aim);
-    // Walking: a figure of eight, the gun dropping a little on each step and swinging across with
-    // the stride, rolling with it; bigger running, much smaller aimed.
+    // Walking: a figure of eight, the gun swinging across with the stride and rolling with it, up and down with each
+    // step; bigger running, much smaller aimed. Against the eye's own movement (viewMotion.ts strideUp, strideSide):
+    // as the eye drops on a heel strike the gun lags and rises on screen, as it sways right the gun lags left.
     const bob = (1 - this.aim * 0.8) * Math.min(1, moving) * (1 + this.sprint * 0.8);
-    const across = Math.sin(this.sway);
-    const step = Math.abs(Math.cos(this.sway));
+    const across = -strideSide(this.sway / Math.PI);
+    const step = -0.6 * strideUp(this.sway / Math.PI - 0.06);
     const breathe = Math.sin(this.clock * 1.6) * (1 - this.aim * 0.7);
     const raised = 1 - (1 - this.raise) * (1 - this.raise); // eased: quick at first, settling in
     pos.x += across * 0.0045 * bob + this.lag.x * 0.0022 * loose - this.sprint * 0.012;

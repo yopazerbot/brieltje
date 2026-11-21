@@ -4,6 +4,7 @@ import type { Ground, World } from './world/collision';
 import { DROP, dropStep } from '../shared/parachute.mjs';
 import { FLOAT, wetGround, type Wet } from './world/water';
 import type { PlayTower, Ride } from './world/playground';
+import { ViewMotion } from './viewMotion';
 
 const EYE = 1.65;          // m, eye height above the floor
 export const HEIGHT = 1.8;        // m, body height for head clearance
@@ -127,8 +128,13 @@ export class Player {
   private vz = 0;
   private vy = 0;
   eyeY: number;
-  private bob = 0;
-  private stepDist = 0;
+  /**
+   * The stride's clock, in steps: a heel strikes (and a footstep sounds) at each whole number. The view's movement
+   * (viewMotion.ts) and the gun's bob (weapon.ts) both keep to it.
+   */
+  stride = 0;
+  /** The view moving with your body on foot (viewMotion.ts): only the drawing, main.ts draws with it. */
+  readonly motion = new ViewMotion();
   private holdTime = 0;
   private lastJumpPress = -1;
   private clock = 0;
@@ -298,15 +304,23 @@ export class Player {
     // Camera: smooth the height so stairs feel like steps, not jolts.
     const moving = Math.hypot(this.vx, this.vz);
     const onFoot = !this.flying && this.feet <= this.ground.y + 0.01;
-    this.bob += onFoot ? moving * dt * 5.5 : 0;
-    // A footstep every stride: about 0.85 m walking, 1.2 m running.
-    this.stepDist += onFoot && moving > 0.3 ? moving * dt : 0;
-    if (this.stepDist > 0.65 + 0.15 * moving) {
-      this.stepDist = 0;
-      this.onStep(moving);
+    // A footstep every stride: about 0.85 m walking, 1.2 m running. The stride's clock goes on with each.
+    if (onFoot && moving > 0.3) {
+      const was = Math.floor(this.stride);
+      this.stride += (moving * dt) / (0.65 + 0.15 * moving);
+      if (Math.floor(this.stride) > was) this.onStep(moving);
     }
-    // Afloat: no stride in the view, a slow rise and fall on the water instead.
-    const target = this.feet + EYE - this.crouchT * 0.5 + Math.sin(this.bob) * 0.025 * Math.min(1, moving / 1.4) * (1 - swim) + Math.sin(this.clock * 1.9) * 0.03 * swim;
+    // The view's movement on foot (viewMotion.ts): not swimming, flying or in a drop. Only the drawing moves.
+    if (!swim && !this.flying && this.chute === null) {
+      const sin = Math.sin(this.yaw);
+      const cos = Math.cos(this.yaw);
+      this.motion.feed({
+        phase: this.stride, speed: moving / this.turbo, ahead: (-sin * this.vx - cos * this.vz) / this.turbo, right: (cos * this.vx - sin * this.vz) / this.turbo,
+        grounded: onFoot, sprint: input.sprint && !this.crouching,
+      });
+    }
+    // Afloat: a slow rise and fall on the water. (The stride's movement is drawn, not here: viewMotion.ts.)
+    const target = this.feet + EYE - this.crouchT * 0.5 + Math.sin(this.clock * 1.9) * 0.03 * swim;
     const follow = !onFoot || target < this.eyeY - 0.4 ? 1 : 1 - Math.exp(-dt * 16);
     this.eyeY += (target - this.eyeY) * follow;
 
@@ -316,12 +330,15 @@ export class Player {
       const look = this.canopy === null ? -0.6 : this.air < 12 ? -0.18 : -0.32;
       this.pitch += (look - this.pitch) * (1 - Math.exp(-dt * 1.5));
     }
-    // Touching down: the knees give and straighten again, deeper and slower the harder you came down.
+    // Touching down: the knees give and straighten again, deeper and slower the harder you came down. With the
+    // camera's movement off (viewMotion.ts) a smaller dip, still telling you that you landed, and no stumbling view.
+    const still = this.motion.strength <= 0;
     let knees = 0;
     if (this.dip >= 0) {
       this.dip += dt / this.dipTime;
       knees = this.dip < 1 ? (swim ? Math.min(0.15, this.dipDepth) : this.dipDepth) * Math.sin(Math.PI * this.dip) * (1 - this.dip * 0.4) : 0; // into deep water: a shallow dip, eyes above it
       if (this.dip >= 1) this.dip = -1;
+      if (still) knees *= 0.4;
     }
     // A hard landing: the view pitches down and tips to one side, and comes back (only the view).
     let nod = 0;
@@ -331,7 +348,7 @@ export class Player {
       const t = this.stumbleT / STUMBLE;
       if (t >= 1) this.stumble = 0;
       else {
-        const e = Math.sin(Math.PI * Math.min(1, t * 2.2)) * (1 - t) ** 0.5;
+        const e = still ? 0 : Math.sin(Math.PI * Math.min(1, t * 2.2)) * (1 - t) ** 0.5; // (its slowing down, above, stays)
         nod = -0.14 * this.stumble * e;
         tip = 0.09 * this.stumble * this.stumbleSide * e;
       }
@@ -492,6 +509,7 @@ export class Player {
         // Wading: the water holds you back, lower the deeper it is. Afloat there is nothing to jump off.
         this.vy = Math.sqrt(2 * GRAVITY * JUMP_HEIGHT * (this.water ? Math.max(0.3, 1 - this.water.depth / FLOAT) : 1));
         this.jumpFrom = this.ground.drawn ? { x: this.x, z: this.z } : null;
+        this.motion.jumped(); // the knees give a little as you go (only the drawing)
       }
       this.lastJumpPress = this.clock;
     }

@@ -12,6 +12,7 @@ import * as THREE from 'three';
 import { DROP, dropStep, jumpStart } from '../../shared/parachute.mjs';
 import { barrierHeights, HOMES, homeAt, inEndGarden } from '../../shared/homes.mjs';
 import { makeTerrain } from '../../shared/terrain.mjs';
+import { ViewMotion } from '../viewMotion.ts';
 
 /** A module's code without its imports and exports, run with `deps` in scope; returns the names asked for. */
 function load(file, deps, names) {
@@ -26,7 +27,7 @@ function load(file, deps, names) {
 const terrain = makeTerrain(JSON.parse(readFileSync(new URL('../../shared/terrain.json', import.meta.url), 'utf8')));
 const { RoofField, climb } = load('./roofField.ts', {}, ['RoofField', 'climb']);
 const { World } = load('./collision.ts', { terrain, RoofField, climb }, ['World']);
-const { Player, HEIGHT, STEP_UP } = load('../player.ts', { THREE, DROP, dropStep, FLOAT: 1.35, wetGround: () => null }, ['Player', 'HEIGHT', 'STEP_UP']);
+const { Player, HEIGHT, STEP_UP } = load('../player.ts', { THREE, DROP, dropStep, FLOAT: 1.35, wetGround: () => null, ViewMotion }, ['Player', 'HEIGHT', 'STEP_UP']);
 
 const NONE = { moveX: 0, moveY: 0, lookX: 0, lookY: 0, mouseX: 0, mouseY: 0, sprint: false, jumpPressed: false, jumpHeld: false, downHeld: false };
 const DT = 1 / 60;
