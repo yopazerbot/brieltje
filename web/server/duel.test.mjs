@@ -5,7 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Game } from './game.mjs';
 import { MAX_ROOMS, Rooms } from './rooms.mjs';
-import { DUEL_PLAYERS, GATHER_MS, RESULT_MS, dice, duelDice, markOf, minuteMs, passes } from './duel.mjs';
+import { duelPlayers, GATHER_MS, RESULT_MS, dice, duelDice, markOf, minuteMs, passes } from './duel.mjs';
 import { Horde, waveSize, ZOMBIE } from '../shared/zombies.mjs';
 import { Loot } from '../shared/loot.mjs';
 import { homeAt } from '../shared/homes.mjs';
@@ -412,13 +412,39 @@ test("players' rooms are unaffected: not counted, still capped, and duel rooms a
     assert.equal(env.rooms.create({ username: 'u5', role: 'player' }, 'church').code, 'roomsFull');
     assert.equal(env.rooms.list().rooms.length, MAX_ROOMS);
     assert.ok(!JSON.stringify(env.rooms.list({ role: 'admin' })).includes(blue.id));
-    assert.equal(blue.game.room.max, DUEL_PLAYERS);
-    for (let i = 0; i < DUEL_PLAYERS - 1; i++) red.game.players.set(`x${i}`, {});
-    assert.equal(red.game.full('admin'), true, 'twenty at most');
-    for (let i = 0; i < DUEL_PLAYERS - 1; i++) red.game.players.delete(`x${i}`);
+    const most = duelPlayers(env.main);
+    assert.equal(most, 32, "the host's limit, 32 on a fresh server");
+    assert.equal(blue.game.room.max, most);
+    for (let i = 0; i < most - 1; i++) red.game.players.set(`x${i}`, {});
+    assert.equal(red.game.full('admin'), true, 'the limit at most, the admin included');
+    for (let i = 0; i < most - 1; i++) red.game.players.delete(`x${i}`);
     assert.ok(env.rooms.roster().some((p) => p.name === 'ann' && p.room === 'duel blue · sparrenhof'));
   } finally {
     env.stop();
+  }
+});
+
+test("a duel room takes as many as the host's limit: 30 a team with a limit of 60, more than the limit refused", () => {
+  const env = setup();
+  try {
+    env.main.rules.maxPlayers = 60;
+    const names = (k) => Array.from({ length: 30 }, (_, i) => `${k}${i}`);
+    const { blue, red } = env.begin(names('b'), names('r'));
+    assert.equal(blue.game.room.max, 60);
+    assert.equal(blue.game.players.size, 30);
+    assert.equal(red.game.players.size, 30);
+    assert.equal(blue.game.rules.maxPlayers, 60, "the room's own limit as its pages are told it");
+  } finally {
+    env.stop();
+  }
+  const env2 = setup();
+  try {
+    env2.main.rules.maxPlayers = 2;
+    env2.teams(['a1', 'a2', 'a3'], ['z1']);
+    for (const n of ['a1', 'a2', 'a3', 'z1']) env2.join(env2.main, n, n === 'a1' ? 'admin' : 'player');
+    assert.equal(env2.rooms.duel.start({ duel: 'warmup', minutes: 10 }, 'admin').code, 'duelTooMany', 'a team bigger than the limit: no duel');
+  } finally {
+    env2.stop();
   }
 });
 

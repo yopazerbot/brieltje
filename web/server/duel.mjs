@@ -5,7 +5,7 @@
 //
 // - The host's two evening teams, blue and red, each get a host room (server/rooms.mjs hostRoom) at Sparrenhof: a game
 //   of its own as a players' room is, but not in the list, not joinable by its id, not counted in the four players'
-//   rooms, up to DUEL_PLAYERS. A page never names its duel room: whoever is on a team is put in their team's room by
+//   rooms, up to the host's limit each (duelPlayers). A page never names its duel room: whoever is on a team is put in their team's room by
 //   the server, on any connection (route), and pulled out of the open world or a players' room (pull). Anything else a
 //   page asks for is refused as before (a room id not in the list: told it is gone).
 // - Fair: one seed for both rooms (duelDice): wave n's k-th zombie is the same zombie in both (its kind, runner or not,
@@ -34,7 +34,12 @@ import { arenaOf } from '../shared/arenas.mjs';
 import { homeAt } from '../shared/homes.mjs';
 import { LOOKS } from './modes.mjs';
 
-export const DUEL_PLAYERS = 20; // in each host room
+/**
+ * The most in each host room: the host's limit for the open world (game.mjs rules.maxPlayers), as it is when the duel
+ * starts. Each room takes one team, half the hall when the teams are even; a team may be bigger than half, never bigger
+ * than everyone allowed in.
+ */
+export const duelPlayers = (main) => main.rules.maxPlayers;
 export const DUEL_KINDS = ['warmup', 'final'];
 export const SIDES = ['blue', 'red']; // the host's first two evening teams (server/host.mjs EVENING_TEAMS)
 export const PLACE = 'sparrenhof';
@@ -138,7 +143,8 @@ export class Duel {
     const count = [0, 0];
     for (const g of this.hub.games()) for (const n of g.players.keys()) if (h.teams[n] === 0 || h.teams[n] === 1) count[h.teams[n]]++;
     if (!count[0] || !count[1]) return { error: 'Both teams need someone playing', code: 'duelEmpty' };
-    if (count[0] > DUEL_PLAYERS || count[1] > DUEL_PLAYERS) return { error: `At most ${DUEL_PLAYERS} in a team for the Zombies duel`, code: 'duelTooMany', args: { n: DUEL_PLAYERS } };
+    const most = duelPlayers(this.hub.main);
+    if (count[0] > most || count[1] > most) return { error: `At most ${most} in a team for the Zombies duel`, code: 'duelTooMany', args: { n: most } };
     return null;
   }
 
@@ -156,7 +162,7 @@ export class Duel {
     for (const [n, i] of Object.entries(this.host.teams)) if (i === 0 || i === 1) members.set(n, SIDES[i]);
     const sides = {};
     for (const t of SIDES) {
-      const { id, game } = this.hub.hostRoom(t, arena, DUEL_PLAYERS);
+      const { id, game } = this.hub.hostRoom(t, arena, duelPlayers(this.hub.main));
       game.room.look = LOOKS.includes(e.look) ? e.look : null; // to the duel's end: out, and in its result (game.mjs shownRules)
       sides[t] = { team: t, id, game, z: null, runs: 0, best: { wave: 0, beaten: 0 }, out: null, outAt: 0, players: new Set() };
     }

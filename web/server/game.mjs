@@ -83,9 +83,12 @@ import { makeKeet } from '../shared/keet.mjs';
 /** /parachute (manualDrop): once every CHUTE_MS, and not within HURT_CALM_MS of being hit. */
 const CHUTE_MS = 60_000;
 const HURT_CALM_MS = 10_000;
-// The most the admin can allow at once (every player's moves go to every other one). 32 for a LAN night (Yoshi, 11 Nov 2026:
-// about 30 people; tools/dev/crowd.mjs measures what a full house costs the server).
-const MAX_PLAYERS = 32;
+// How many may play at once on a fresh server, until the admin sets another number (the host page, the in-game menu). No
+// ceiling in the code (Yoshi, 21 Nov 2026: "Don't put any hard cap on the amount of participants. It should be defined in
+// admin dashboard"): only the admin sets it, a join past it is refused (full), and what is kept per player stays per
+// player. Every player's moves go to every other one, so the server's work grows with the square of it
+// (tools/dev/crowd.mjs measures it; the host page says how far it was tested).
+const DEFAULT_PLAYERS = 32;
 /** The most watch views at once, the open world and the duel's rooms together (src/watch.ts: the admin's watch page shows up to four, a second screen four more). */
 const MAX_WATCHERS = 8;
 const KEYFRAME = 20; // ticks: everything goes to every page at least this often (once a second), moved or not
@@ -314,7 +317,7 @@ const LAYOUT_RESTORE = String(defaultLayout?.restore ?? 0);
  * House rules the admin sets in the settings, with their defaults. `paintball` (child-friendly for
  * everyone) only changes what the pages show: Action as Paintball, with the same hits and scores.
  */
-const RULES = { flying: true, spawn: false, names: true, maxPlayers: MAX_PLAYERS, guests: true, portals: true, travel: true, paintball: false, parachute: true, heli: true };
+const RULES = { flying: true, spawn: false, names: true, maxPlayers: DEFAULT_PLAYERS, guests: true, portals: true, travel: true, paintball: false, parachute: true, heli: true };
 /**
  * Spawning with /name (Yoshi, 2 Nov 2026: everyone may, unless the admin has it off, as it is at first):
  * how far from where the server has you a thing may appear (m), and how many each player may have out
@@ -324,8 +327,8 @@ const SPAWN_REACH = 8;
 const SPAWN_EACH = 20;
 const SPAWN_CARS = 2;
 const SPAWN_CHARACTERS = 2;
-/** A valid value for a rule: on/off, or a number of players from 2 to MAX_PLAYERS. */
-const ruleOk = (k, v) => (k === 'maxPlayers' ? Number.isInteger(v) && v >= 2 && v <= MAX_PLAYERS : typeof v === 'boolean');
+/** A valid value for a rule: on/off, or a whole number of players from 2 up (no ceiling: a number JavaScript holds exactly). */
+const ruleOk = (k, v) => (k === 'maxPlayers' ? Number.isSafeInteger(v) && v >= 2 : typeof v === 'boolean');
 /** Weapons only the admin carries (the bazooka), on top of the pistol everyone starts with. */
 const ADMIN_WEAPONS = Object.keys(WEAPONS).filter((w) => WEAPONS[w].admin);
 /**
@@ -648,12 +651,12 @@ export class Game {
   }
 
   /**
-   * No room for one more: as many as the admin allows play. The admin always gets in (up to
-   * MAX_PLAYERS), since raising the limit or kicking someone is only done from inside the game.
+   * No room for one more: as many as the admin allows play. The admin always gets in, past the limit (a place for each
+   * session with the admin's password, one connection each), to raise it or to kick someone from inside the game.
    */
   full(role = 'guest') {
     if (this.room) return this.players.size >= this.room.max; // a room holds its few, the admin included
-    return this.players.size - (this.flagGuards?.size ?? 0) >= (role === 'admin' ? MAX_PLAYERS : this.rules.maxPlayers); // guards (server/flagGuards.mjs) take no place
+    return role !== 'admin' && this.players.size - (this.flagGuards?.size ?? 0) >= this.rules.maxPlayers; // guards (server/flagGuards.mjs) take no place
   }
 
   join(ws, session, req, proto = 1) {
@@ -1958,7 +1961,7 @@ export class Game {
     // saved rules carry every rule, so a 4 saved before then is most likely the old default: raised
     // once. A limit the admin sets from now on stays.
     if ((await this.auth.store.getMeta('rules_limit16')) !== '1') {
-      if (this.rules.maxPlayers === 4) this.rules.maxPlayers = MAX_PLAYERS;
+      if (this.rules.maxPlayers === 4) this.rules.maxPlayers = DEFAULT_PLAYERS;
       await this.auth.store.setMeta('rules', JSON.stringify(this.rules));
       await this.auth.store.setMeta('rules_limit16', '1');
     }
@@ -2523,7 +2526,7 @@ export class Game {
     if (i < 0) return;
     const g = p.thrown.splice(i, 1)[0];
     const at = blastPoint(g, where(m), GRENADE); // never further than the throw could reach
-    const cover = new Set(Array.isArray(m.cover) ? m.cover.filter((n) => typeof n === 'string').slice(0, MAX_PLAYERS) : []);
+    const cover = new Set(Array.isArray(m.cover) ? m.cover.slice(0, this.players.size).filter((n) => typeof n === 'string') : []); // never more names than are in
     this.blast(name, at, 'grenade', cover, g.act);
   }
 
@@ -2880,9 +2883,12 @@ export class Game {
     });
   }
 
-  /** The most the admin can allow at once (the host page's limit slider). */
+  /**
+   * The highest number the host's limit field takes (server/host.mjs): no ceiling of the game's, only the highest whole
+   * number JavaScript holds exactly. Nothing is reserved for the limit: it is only compared with who is in.
+   */
   get most() {
-    return MAX_PLAYERS;
+    return Number.MAX_SAFE_INTEGER;
   }
 
   /** The host's evening rules here (server/host.mjs: freeze, mute, chat off): the open world's host, in a room too. */

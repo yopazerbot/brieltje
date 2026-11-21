@@ -316,7 +316,7 @@ export class SpiritLauncher {
     const shot = live.find((s) => inReach(s, at, now - s.at));
     if (!shot) return 'far';
     p.thrown.splice(p.thrown.indexOf(shot), 1);
-    const cover = new Set(Array.isArray(m.cover) ? m.cover.filter((n) => typeof n === 'string').slice(0, 64) : []);
+    const cover = new Set(Array.isArray(m.cover) ? m.cover.slice(0, g.players.size).filter((n) => typeof n === 'string') : []); // never more names than are in
     g.blast(name, at, 'grenade', cover, shot.act);
     return 'ok';
   }

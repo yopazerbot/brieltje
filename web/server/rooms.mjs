@@ -15,7 +15,7 @@
 //   a game in the house starts and at the host's Stop (closeRooms: their players back in the open world), and none opens
 //   meanwhile. The Zombies duel keeps its own rule: it takes the teams' players at its start, the rooms otherwise as ever.
 // - Host rooms (hostRoom): the Zombies duel's two (server/duel.mjs), opened by the host only. Not in the list, not
-//   joinable by their id, not counted in MAX_ROOMS, up to DUEL_PLAYERS each; the server alone puts a page in one (upgrade).
+//   joinable by their id, not counted in MAX_ROOMS, up to the host's limit each (duel.mjs duelPlayers); the server alone puts a page in one (upgrade).
 
 import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
