@@ -248,7 +248,7 @@ function gloveMaps(m: THREE.MeshStandardMaterial): void {
  * is taken from that file. If its file does not come it is taken from weapons.glb when it is in there; the laser rifle
  * is not, and stays a block gun.
  */
-const GUN_FILES: Partial<Record<WeaponId, string>> = { laser: '/models/lasergun.glb', bazooka: '/models/gun-bazooka.glb' };
+const GUN_FILES: Partial<Record<WeaponId, string>> = { laser: '/models/lasergun.glb', bazooka: '/models/gun-bazooka.glb', launcher: '/models/gun-launcher.glb' };
 const gunLoader = new GLTFLoader();
 const ownFiles = (Object.entries(GUN_FILES) as [WeaponId, string][]).map(([w, url]) => gunLoader.loadAsync(url).then((g) => [w, g] as const, () => [w, null] as const));
 export const gunsReady: Promise<boolean> = gunLoader.loadAsync('/models/weapons.glb').then(
