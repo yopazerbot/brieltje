@@ -213,7 +213,7 @@ const midway = (a, b) => ({ x: a.x + (b.x - a.x) * 0.45, z: a.z + (b.z - a.z) * 
 async function partOne() {
   // ---- 1. From the host's programme, with the evening's two teams: Next, its countdown, then the game.
   ok('the host deals two teams', (await act({ op: 'teams', count: 2 }))?.ok === true);
-  ok('the host plans the teams game', (await act({ op: 'programme', list: [{ kind: 'teams', minutes: 8, goal: 15 }, { kind: 'teams', minutes: 1, goal: 50 }] }))?.ok === true);
+  ok('the host puts two teams games in the programme', (await act({ op: 'programme', list: [{ kind: 'teams', minutes: 8, goal: 15 }, { kind: 'teams', minutes: 1, goal: 50 }] }))?.ok === true);
   await act({ op: 'rewind', index: 0 });
   ok('Next starts its countdown', (await act({ op: 'next' }))?.ok === true && (await view()).countdown?.kind === 'teams');
   const s1 = await started();
