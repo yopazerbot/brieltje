@@ -598,8 +598,13 @@ export class Breakage implements Breaker {
           if (g.getAttribute(name)) continue;
           const a = attr as THREE.BufferAttribute;
           const n = g.attributes.position.count;
-          const array = new (a.array.constructor as new (n: number) => THREE.TypedArray)(n * a.itemSize);
-          for (let i = 0; i < n; i++) for (let c = 0; c < a.itemSize; c++) array[i * a.itemSize + c] = a.array[like.vertex * a.itemSize + c];
+          // The folded vertex's values; on a phone the tiles drop these arrays once drawn (world/tiles.ts), and keep the
+          // first vertex's values for this (`sample`).
+          const sample = (like.mesh.userData.sample as Record<string, THREE.TypedArray> | undefined)?.[name];
+          const from: THREE.TypedArray | null = a.array ? a.array.slice(like.vertex * a.itemSize, (like.vertex + 1) * a.itemSize) : (sample ?? null);
+          if (!from) continue;
+          const array = new (from.constructor as new (n: number) => THREE.TypedArray)(n * a.itemSize);
+          for (let i = 0; i < n; i++) array.set(from, i * a.itemSize);
           g.setAttribute(name, new THREE.BufferAttribute(array, a.itemSize, a.normalized));
         }
         for (const name of Object.keys(g.attributes)) if (!src.getAttribute(name)) g.deleteAttribute(name);

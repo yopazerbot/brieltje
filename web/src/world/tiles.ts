@@ -43,9 +43,14 @@ function dropArrays(g: THREE.BufferGeometry): void {
   g.setIndex(null);
   for (const name of Object.keys(g.attributes)) g.deleteAttribute(name);
 }
-function freeAfterUpload(geometry: THREE.BufferGeometry): void {
+/**
+ * `sample`: each freed attribute's values at the first vertex, kept (a few numbers a mesh): a broken hedge's or fence's
+ * new mesh takes them for the attributes it lacks (world/breakage.ts), as the block's own vertices had them.
+ */
+function freeAfterUpload(geometry: THREE.BufferGeometry, sample?: Record<string, THREE.TypedArray>): void {
   for (const [name, a] of Object.entries(geometry.attributes)) {
     if (KEEP_ON_CPU.has(name) || !(a instanceof THREE.BufferAttribute) || a instanceof THREE.InstancedBufferAttribute || a.usage !== THREE.StaticDrawUsage) continue;
+    if (sample) sample[name] = a.array.slice(0, a.itemSize);
     a.onUpload(dropArray);
   }
 }
@@ -270,7 +275,7 @@ export class Tiles {
       if (list.length > 1) for (const g of list) if (uses.get(g) === 1 && !this.drawn.has(g)) dropArrays(g);
       this.drawn.add(geometry);
       const mesh = new THREE.Mesh(geometry, piece.material);
-      if (FREE_AFTER_UPLOAD) freeAfterUpload(geometry);
+      if (FREE_AFTER_UPLOAD) freeAfterUpload(geometry, (mesh.userData.sample = {}));
       style(mesh, piece);
       mesh.visible = false; // until the set is ranged (below): a frame between the steps draws none of it whole
       const run: Run = { mesh, offsets, small: piece.small };
