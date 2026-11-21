@@ -709,6 +709,7 @@ body.touch #map-btn .ico { left: 6px; bottom: 6px; width: 26px; height: 26px; }
 #bigmap .lg-gnome { clip-path: polygon(50% 0, 100% 100%, 0 100%); background: #d6453d; }
 #bigmap .bm-legend i.lg-edge { width: 16px; height: 2px; background: repeating-linear-gradient(90deg, rgba(70, 58, 44, 0.8) 0 4px, transparent 4px 7px); }
 #bigmap button {
+#bigmap .lg-base { border-radius: 2px; border: 2px solid #fbf6ea; box-sizing: border-box; } /* a team game's bases (ui/bigmap.ts setBases), in their colours */
   font: inherit; color: var(--ink); background: rgba(12, 14, 18, 0.85); border: 1px solid rgba(255, 255, 255, 0.25); border-radius: 6px; cursor: pointer;
 }
 #bigmap button:hover { border-color: var(--accent); }

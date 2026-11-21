@@ -2940,6 +2940,7 @@ function followGame(view: ModeView): void {
   // Steal the flag (world/flags.ts, ui/flagHud.ts): its flags, its parked bikes, its longer wait when down, its heading.
   const flag = games.view.kind === 'flag' ? games.view.flag ?? null : null;
   flagWorld.set(flag);
+  bigMap.setBases(games.flagOn ? flag : null, games.team === 'blue' || games.team === 'red' ? games.team : null); // the big map framed to both bases
   flagRacks.set(games.flagOn ? flag : null);
   assaultCamp.set(games.flagOn ? flag?.field ?? null : null, games.assault);
   if (!games.flagOn) weapon.rocketsLeft = null; // the rack's launcher is the game's only (the admin's own counts none)

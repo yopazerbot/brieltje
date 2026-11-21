@@ -8,7 +8,8 @@ import { dist, onLang, t, type PlainKey } from '../i18n';
 import { moveKeys, typing } from '../keys';
 import { key, type Control } from '../shortcuts';
 import { RACE_EDGE, RACE_LINE, stallMark, type RaceWay } from './minimap';
-import { flagMark } from './flagHud';
+import { flagMark, type FlagGameView, type FlagTeam } from './flagHud';
+import { FLAG_COLORS, baseOf, fieldOf } from '../../shared/flagFields.mjs';
 import { rackMark } from '../world/flagRack';
 
 /**
@@ -121,6 +122,9 @@ export class BigMap {
   /** The legend's line for the garden gnomes found (world/goals.ts), hidden while empty */
   private goals = document.createElement('span');
   private goalsText = document.createTextNode('');
+  /** A team game's two bases (setBases): the legend's two lines, hidden outside one */
+  private baseItems: HTMLElement[] = [];
+  private bases: { mine: [number, number]; theirs: [number, number] } | null = null;
   private paths = new Map<Layer, Path2D>();
   private trees = new Path2D();
   private hull = new Path2D();
@@ -190,6 +194,17 @@ export class BigMap {
     this.goals.style.display = 'none'; // the legend's spans are flex: `hidden` alone would not hide it
     this.goals.append(gnome, this.goalsText);
     legend.append(this.goals);
+    for (const [key, which] of [['map.yourBase', 'mine'], ['map.theirBase', 'theirs']] as const) {
+      const item = document.createElement('span');
+      const i = document.createElement('i');
+      i.className = `lg-base lg-base-${which}`;
+      const text = document.createTextNode('');
+      item.append(i, text);
+      item.style.display = 'none';
+      legend.append(item);
+      named.push([text, key, 'text']);
+      this.baseItems.push(item);
+    }
     const name = () => {
       for (const [el, key, what] of named) {
         if (what === 'text') el.textContent = t(key);
@@ -273,15 +288,49 @@ export class BigMap {
     });
   }
 
+  /**
+   * A team game's bases (Steal the flag, Attack and defend: `flag` its view, `mine` your team), or null outside one (or
+   * watching, on no team): the map opens framed to both stands, and the legend says which is whose, in their colours.
+   */
+  setBases(flag: FlagGameView | null, mine: FlagTeam | null): void {
+    const theirs: FlagTeam | null = mine === 'blue' ? 'red' : mine === 'red' ? 'blue' : null;
+    if (!flag || !mine || !theirs) this.bases = null;
+    else {
+      const field = fieldOf(flag.field);
+      const at = (team: FlagTeam): [number, number] => {
+        const [x, z] = baseOf(field, team, !!flag.swapped).stand;
+        return [x, z];
+      };
+      this.bases = { mine: at(mine), theirs: at(theirs) };
+    }
+    this.baseItems.forEach((item, k) => {
+      item.style.display = this.bases ? '' : 'none';
+      if (mine && theirs) (item.firstChild as HTMLElement).style.background = FLAG_COLORS[k === 0 ? mine : theirs];
+    });
+  }
+
   show(you: { x: number; z: number; yaw: number }, control: Control): void {
     this.open = true;
     this.control = control;
     this.you = { ...you };
     this.root.classList.remove('hidden');
     this.resize();
-    // Always round where you are (Yoshi), close enough to see the streets; the fit button shows it all.
-    this.centre(you.x, you.z, Math.max(this.fit * 2.5, 1.2));
+    // Always round where you are (Yoshi), close enough to see the streets; the fit button shows it all. In a team game
+    // both bases and you, so the way between them shows at once.
+    if (this.bases) this.frame([this.bases.mine, this.bases.theirs, [you.x, you.z]]);
+    else this.centre(you.x, you.z, Math.max(this.fit * 2.5, 1.2));
     this.showHelp();
+  }
+
+  /** The view round world points `at` (x, z), with room for their marks and the legend at the top. */
+  private frame(at: [number, number][]): void {
+    const us = at.map(([x, z]) => toU(x, z));
+    const vs = at.map(([x, z]) => toV(x, z));
+    const [u0, u1, v0, v1] = [Math.min(...us), Math.max(...us), Math.min(...vs), Math.max(...vs)];
+    this.cu = (u0 + u1) / 2;
+    this.cv = (v0 + v1) / 2;
+    this.s = Math.max(this.fit * 0.7, Math.min(4, (this.w - 120) / (u1 - u0 + 1), (this.h - 160) / (v1 - v0 + 1)));
+    this.dirty = true;
   }
 
   /** The line at the bottom: how to move it and set a waypoint, the way you play (keys from src/shortcuts.ts). */
