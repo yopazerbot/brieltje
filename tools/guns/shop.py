@@ -97,18 +97,21 @@ def pin(x, y, z, s, r=0.0022, mat=None):
 def loft(name, sections, mat, sides=28, power=2.6):
     """A smooth body through cross-sections along y, closed at both ends: each (y, zbot, ztop, half width, top) a
     rounded section (a superellipse of `power`) from zbot to ztop, `half width` across its middle and below it, and
-    narrowing above it to `top` times that at the top (a stock's comb is narrower than its belly). A wooden stock."""
+    narrowing above it to `top` times that at the top (a stock's comb is narrower than its belly). A sixth value, when
+    there, is that section's own power (squarer where a stock meets a receiver). A wooden stock."""
     bm = bmesh.new()
     rings = []
-    for y, zb, zt, hw, top in sections:
+    for sec in sections:
+        y, zb, zt, hw, top = sec[:5]
+        pw = sec[5] if len(sec) > 5 else power
         zc, hz = (zb + zt) / 2, (zt - zb) / 2
         ring = []
         for k in range(sides):
             a = 2 * math.pi * k / sides
             c, s = math.cos(a), math.sin(a)
-            zz = math.copysign(abs(s) ** (2 / power), s)
+            zz = math.copysign(abs(s) ** (2 / pw), s)
             w = hw * (1 + (top - 1) * max(0.0, zz))
-            ring.append(bm.verts.new((w * math.copysign(abs(c) ** (2 / power), c), y, zc + hz * zz)))
+            ring.append(bm.verts.new((w * math.copysign(abs(c) ** (2 / pw), c), y, zc + hz * zz)))
         rings.append(ring)
     for a, b in zip(rings, rings[1:]):
         for k in range(sides):
@@ -133,11 +136,12 @@ def inside(pt, poly):
     return ins
 
 
-def texture(name, target, outline, side, mat, pitch=0.0028, height=0.0005, diamond=1.0, turn=0.0, fill=0.92):
+def texture(name, target, outline, side, mat, pitch=0.0028, height=0.0005, diamond=1.0, turn=0.0, fill=0.92, tile=False):
     """Raised texture laid on the side of `target` (side -1 the left, +1 the right): little four-sided points in a
     grid inside `outline` ((y, z) points), each found on the surface by a ray from the side and stood on it along its
     normal. A square grid (diamond 1) is a grip's stippling; drawn out along y (diamond over 1) and turned 45 degrees
-    it is a wooden wrist's checkering, the points' ridges the lines left between the cut grooves."""
+    it is a wooden wrist's checkering, the points' ridges the lines left between the cut grooves (`tile`: the rows
+    staggered half a point, so the diamonds meet edge to edge as cut checkering does)."""
     from mathutils.bvhtree import BVHTree
     bpy.context.view_layer.update()
     me = target.data
@@ -150,10 +154,11 @@ def texture(name, target, outline, side, mat, pitch=0.0028, height=0.0005, diamo
     span = max(max(ys) - min(ys), max(zs) - min(zs)) * 1.5
     c0 = Vector((0, (max(ys) + min(ys)) / 2, (max(zs) + min(zs)) / 2))
     bm = bmesh.new()
-    nu, nv = int(span / pu) + 1, int(span / pv) + 1
+    cu = pu / 2 if tile else pu  # how far apart the columns are
+    nu, nv = int(span / cu) + 1, int(span / pv) + 1
     for i in range(-nu, nu + 1):
         for j in range(-nv, nv + 1):
-            c = c0 + du * (i * pu) + dv * (j * pv + (pv / 2 if (i % 2 and diamond == 1.0) else 0))
+            c = c0 + du * (i * cu) + dv * (j * pv + (pv / 2 if i % 2 else 0))
             if not inside((c.y, c.z), outline):
                 continue
             hit = tree.ray_cast(Vector((side * 0.2, c.y, c.z)), Vector((-side, 0, 0)), 0.4)
@@ -173,6 +178,79 @@ def texture(name, target, outline, side, mat, pitch=0.0028, height=0.0005, diamo
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     o = mesh_obj(name, bm, [mat])
     o.data.set_sharp_from_angle(angle=math.radians(1))
+    return o
+
+
+def grooves(name, target, outline, side, mat, pitch=0.0026, width=0.0006, turns=(30.0, -30.0), step=0.004, lift=0.00006, border=0.0008):
+    """Fine lines laid on the side of `target` (side -1 the left, +1 the right) inside `outline` ((y, z) points): two
+    families of parallel lines `pitch` apart, at the angles `turns` (degrees from the barrel's line), each a strip
+    `width` wide that follows the surface (found by rays from the side) a hair above it, and a line round the
+    outline. In a dark finish on wood they are a wrist's checkering: the cut grooves read as a darker diamond grid. They
+    stand out by almost nothing, so no edge of them shows past the part's outline from any side."""
+    from mathutils.bvhtree import BVHTree
+    bpy.context.view_layer.update()
+    me = target.data
+    tree = BVHTree.FromPolygons([target.matrix_world @ v.co for v in me.vertices], [list(p.vertices) for p in me.polygons])
+    ys = [p[0] for p in outline]
+    zs = [p[1] for p in outline]
+    c0 = Vector((0, (max(ys) + min(ys)) / 2, (max(zs) + min(zs)) / 2))
+    span = max(max(ys) - min(ys), max(zs) - min(zs)) * 0.8
+    bm = bmesh.new()
+
+    def hit(y, z):
+        h = tree.ray_cast(Vector((side * 0.2, y, z)), Vector((-side, 0, 0)), 0.4)
+        return h if h[0] is not None and h[1].x * side > 0.2 else None
+
+    def strip(points):
+        """A strip along consecutive surface points [(p, n, d)], d the line's way."""
+        prev = None
+        for p, n, d in points:
+            e = n.cross(d).normalized() * (width / 2)
+            a, b = bm.verts.new(p + n * lift - e), bm.verts.new(p + n * lift + e)
+            if prev:
+                f = bm.faces.new((prev[0], prev[1], b, a))
+                f.normal_update()
+                if f.normal.dot(n) < 0:  # each strip faces out of the surface
+                    f.normal_flip()
+            prev = (a, b)
+
+    for deg in turns:
+        d = Vector((0, math.cos(math.radians(deg)), math.sin(math.radians(deg))))
+        e = Vector((0, -d.z, d.y))
+        k = -int(span / pitch) - 1
+        while k * pitch <= span:
+            run = []
+            t = -span
+            while t <= span:
+                q = c0 + e * (k * pitch) + d * t
+                h = hit(q.y, q.z) if inside((q.y, q.z), outline) else None
+                if h:
+                    run.append((h[0], h[1], d))
+                elif run:
+                    if len(run) > 1:
+                        strip(run)
+                    run = []
+                t += step
+            if len(run) > 1:
+                strip(run)
+            k += 1
+    # The border: the outline itself, inset a little.
+    pts = []
+    n_out = len(outline)
+    for i in range(n_out):
+        (y0, z0), (y1, z1) = outline[i % n_out], outline[(i + 1) % n_out]
+        seg = math.hypot(y1 - y0, z1 - z0)
+        for j in range(max(1, int(seg / step))):
+            f = j / max(1, int(seg / step))
+            q = c0 + (Vector((0, y0 + (y1 - y0) * f, z0 + (z1 - z0) * f)) - c0) * 0.97
+            h = hit(q.y, q.z)
+            if h:
+                pts.append((h[0], h[1], Vector((0, y1 - y0, z1 - z0)).normalized()))
+    width = border  # the strips read it when they are made
+    strip(pts + pts[:1])
+    o = mesh_obj(name, bm, [mat])
+    for p in o.data.polygons:
+        p.use_smooth = True
     return o
 
 

@@ -58,6 +58,8 @@ const LOOKS: Record<string, Look> = {
   LaserGlass: { finish: ['#0a1c26', 0, 0.03], wear: '#0a1c26', metal: 0, rough: 0.03, grain: 0.05, amount: 0 },
   // The pistol's slide (gun-pistol.glb): black nitrided steel with a soft gloss, worn to bright steel on its edges.
   PistolSlide: { finish: ['#2b2e33', 0.85, 0.26], wear: '#8e9298', metal: 1, rough: 0.22, grain: 0.25, amount: 0.65 },
+  // The pump shotgun's receiver, barrel and magazine tube (gun-shotgun.glb): glossy blue-black bluing, worn to steel on the edges.
+  ShotgunBlued: { finish: ['#272b32', 0.95, 0.28], wear: '#8e949c', metal: 1, rough: 0.22, grain: 0.25, amount: 0.6 },
   // Your hands and arms: the sleeve's cloth (a fine weave, faded where it rubs), the glove's leather and its trim.
   Sleeve: { wear: '#ffffff', metal: 0, rough: 0.95, grain: 0.75, scale: [70, 70, 70], amount: 0.5, fade: true },
   Glove: { wear: '#ffffff', metal: 0, rough: 0.7, grain: 0.25, scale: [46, 46, 46], amount: 0.2, fade: true }, // its pieces are painted (tools/gloves.py): a little grain over them
