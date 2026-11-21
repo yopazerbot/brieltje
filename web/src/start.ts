@@ -15,6 +15,7 @@ import { seat, tellHost } from './seat';
 import { tellWatchPage, watch } from './watch';
 import { Input } from './controls/input';
 import { loadMode, saveMode } from './graphics';
+import { watchForStaleCode } from './freshCode';
 import { applyStatic, onLang, setLang, t, type Lang } from './i18n';
 import { typing } from './keys';
 import { api, errorText, type KeptRun, type Me } from './net/client';
@@ -628,6 +629,7 @@ requestAnimationFrame(padLoop);
 // on the click, before any joining: full screen on a touch screen, and the sound (browsers start
 // audio only from a click, tap or key). Capturing the mouse waits for the world; if the browser no
 // longer counts that as part of the click, "Click to look around" asks for one.
+watchForStaleCode(); // a lazy part that does not arrive after a new version went live: the page loads again, once (src/freshCode.ts)
 menu.onStartGesture = (mode) => {
   if (mode === 'touch') fillScreen();
   void sound.context()?.resume();

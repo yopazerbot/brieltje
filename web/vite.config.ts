@@ -59,7 +59,14 @@ function brandCss(): Plugin {
 export default defineConfig({
   plugins: [brotli(), brandCss()],
   // The game, and the split screen (/splitscreen: up to four copies of it on one page, src/splitscreen/).
-  build: { rolldownOptions: { input: { index: resolve(import.meta.dirname, 'index.html'), splitscreen: resolve(import.meta.dirname, 'splitscreen/index.html') } } },
+  // The lazy parts' names are `name.hash.js` (they were `name-hash.js` until 21 Nov 2026): on that day browsers kept the
+  // app's page for hours under some of the old names (server/paths.mjs namesFile), and a new name is never in a cache.
+  build: {
+    rolldownOptions: {
+      input: { index: resolve(import.meta.dirname, 'index.html'), splitscreen: resolve(import.meta.dirname, 'splitscreen/index.html') },
+      output: { chunkFileNames: 'assets/[name].[hash].js' },
+    },
+  },
   server: {
     port: 5173,
     // Multiplayer and login go to the Node server (npm start) on port 8080.
