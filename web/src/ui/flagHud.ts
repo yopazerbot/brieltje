@@ -2,6 +2,7 @@ import { t } from '../i18n';
 import { sound } from '../sound';
 import { FLAG_COLORS, fieldOf } from '../../shared/flagFields.mjs';
 import type { AssaultView } from '../world/assaultCamp';
+import { playFlagSound } from './flagSounds';
 
 /**
  * Steal the flag on screen (server/flags.mjs decides, src/world/flags.ts draws the flags): the game's bar (the clock, both
@@ -169,22 +170,20 @@ export class FlagHud {
     }
   }
 
-  /** An event from the server: its line for a few seconds and its sound. `mine`: your team, for which sound. */
-  event(e: FlagEvent, me: string, mine: FlagTeam | null): void {
+  /**
+   * An event from the server: its line for a few seconds and its sound. `mine`: your team. On a team the line is told
+   * from your own side ("Your team has their flag!", "They took your flag!"), who did it after it; watching (no team,
+   * the hall screen) the colours' lines as before. `assault`: Attack and defend (the attackers bring it to their camp).
+   */
+  event(e: FlagEvent, me: string, mine: FlagTeam | null, assault = false): void {
     if (!TEAMS.includes(e.team)) return;
     if (e.ev === 'swapped') return this.swapped();
-    const flag = t(`flag.of.${e.team}`);
-    const you = e.name === me;
-    const text = e.ev === 'taken' ? (you ? t('flag.takenYou', { flag }) : t('flag.taken', { name: e.name, flag }))
-      : e.ev === 'dropped' ? t('flag.dropped', { name: e.name, flag })
-      : e.ev === 'returned' ? (e.name ? t('flag.returned', { name: e.name, flag }) : t(`flag.homeAgain.${e.team}`))
-      : e.ev === 'safe' ? t(e.why === 'home' ? 'flag.safeHome' : 'flag.safeZone', { name: e.name, flag })
-      : t('flag.captured', { name: e.name, flag, team: t(`eteam.${other(e.team)}`) });
+    const text = mine ? sideLine(e, me, mine, assault) : colourLine(e, me);
     this.line.textContent = text;
     this.line.style.setProperty('--team', FLAG_COLORS[e.ev === 'captured' ? other(e.team) : e.team]);
     this.lineUntil = performance.now() + LINE_MS;
     this.line.classList.add('show');
-    // Good news for your team rings bright, bad news low; nobody's team (watching): the bright one.
+    // Good news for your team: a fanfare; bad news: a two-tone alarm (ui/flagSounds.ts). Watching: the fanfare.
     const good = !mine || (e.ev === 'taken' || e.ev === 'captured' ? e.team !== mine : e.team === mine);
     this.play(e.ev, good);
   }
@@ -247,28 +246,53 @@ export class FlagHud {
     }
   }
 
-  /** The event's sound, in code: a rising call when taken, a falling one when dropped, a chime home, a fanfare for a capture. */
+  /** The event's sound, in code (ui/flagSounds.ts): its own notes in the good or the bad family. */
   private play(ev: FlagEvent['ev'], good: boolean): void {
     const ctx = sound.context();
     const out = sound.out();
-    if (!ctx || !out) return;
-    const t0 = ctx.currentTime;
-    const base = good ? 523.25 : 392; // C5 or G4
-    const notes: [number, number, number][] = ev === 'taken' ? [[base, 0, 0.12], [base * 1.5, 0.12, 0.2]]
-      : ev === 'dropped' ? [[base * 1.2, 0, 0.12], [base * 0.8, 0.12, 0.22]]
-      : ev === 'returned' || ev === 'safe' ? [[base, 0, 0.1], [base * 1.25, 0.09, 0.1], [base * 1.5, 0.18, 0.25]]
-      : [[base, 0, 0.12], [base * 1.25, 0.12, 0.12], [base * 1.5, 0.24, 0.12], [base * 2, 0.36, 0.45]];
-    for (const [f, at, len] of notes) {
-      const o = ctx.createOscillator();
-      o.type = ev === 'captured' ? 'square' : 'triangle';
-      o.frequency.setValueAtTime(f, t0 + at);
-      const g = ctx.createGain();
-      g.gain.setValueAtTime(0.0001, t0 + at);
-      g.gain.exponentialRampToValueAtTime(ev === 'captured' ? 0.12 : 0.2, t0 + at + 0.015);
-      g.gain.exponentialRampToValueAtTime(0.0001, t0 + at + len);
-      o.connect(g).connect(out);
-      o.start(t0 + at);
-      o.stop(t0 + at + len + 0.03);
-    }
+    if (!ctx || !out || ev === 'swapped') return;
+    playFlagSound(ctx, out, ctx.currentTime, ev, good);
   }
+}
+
+/** With " · name" after it when someone did it (names as text only: the line goes in with textContent). */
+const by = (line: string, name: string) => (name ? `${line} · ${name}` : line);
+
+/**
+ * An event's line from your own side (`mine`): the flag is yours or theirs, and you, your team or they did it.
+ * In Attack and defend only the defenders' flag moves, so "their flag" is the attackers' goal and "your flag" the
+ * defenders' charge.
+ */
+export function sideLine(e: FlagEvent, me: string, mine: FlagTeam, assault = false): string {
+  const ours = e.team === mine; // the flag is your team's
+  const you = !!e.name && e.name === me;
+  switch (e.ev) {
+    case 'taken':
+      if (ours) return by(t('flag.them.taken'), e.name);
+      return you ? t(assault ? 'flag.us.takenYouCamp' : 'flag.us.takenYou') : by(t('flag.us.taken'), e.name);
+    case 'dropped':
+      if (ours) return by(t('flag.them.dropped'), e.name);
+      return you ? t('flag.us.droppedYou') : by(t('flag.us.dropped'), e.name);
+    case 'returned':
+      if (!ours) return by(t('flag.them.returned'), e.name);
+      return you ? t('flag.us.returnedYou') : by(t('flag.us.returned'), e.name);
+    case 'safe':
+      return e.why === 'home' ? t(ours ? 'flag.them.safe' : 'flag.us.safe', { name: e.name }) : colourLine(e, me);
+    case 'captured':
+      if (ours) return by(t('flag.them.captured'), e.name);
+      return you ? t('flag.us.capturedYou') : by(t('flag.us.captured'), e.name);
+    default:
+      return colourLine(e, me);
+  }
+}
+
+/** An event's line by the flags' colours (watching: the hall screen), as before. */
+function colourLine(e: FlagEvent, me: string): string {
+  const flag = t(`flag.of.${e.team}`);
+  const you = e.name === me;
+  return e.ev === 'taken' ? (you ? t('flag.takenYou', { flag }) : t('flag.taken', { name: e.name, flag }))
+    : e.ev === 'dropped' ? t('flag.dropped', { name: e.name, flag })
+    : e.ev === 'returned' ? (e.name ? t('flag.returned', { name: e.name, flag }) : t(`flag.homeAgain.${e.team}`))
+    : e.ev === 'safe' ? t(e.why === 'home' ? 'flag.safeHome' : 'flag.safeZone', { name: e.name, flag })
+    : t('flag.captured', { name: e.name, flag, team: t(`eteam.${other(e.team)}`) });
 }
