@@ -86,6 +86,7 @@ export class ResultsPanel {
     const on = shown && (view.kind === 'flag' || view.kind === 'teams') && view.phase === 'done' && !!r && Array.isArray(r.awards) && !!team;
     this.view = on ? view : null;
     this.me = me;
+    document.body.classList.toggle('results-on', on); // the page's other parts make room (results.css)
     if (!on) {
       this.box.hidden = true;
       this.key = '';

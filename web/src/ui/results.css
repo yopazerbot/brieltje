@@ -45,5 +45,8 @@ body.touch .res-list { grid-template-columns: 1fr 1fr; gap: 2px 8px; }
 body.touch .res-list li { grid-template-columns: minmax(0, auto) minmax(0, 1fr); }
 body.touch .res-foot { margin-top: 3px; font-size: 11px; }
 @media (min-height: 600px) { body.touch .res-panel { left: 280px; right: 260px; } }
+/* While the panel shows (body.results-on, results.ts): the team's "Come here" button steps aside (nobody walks
+   anywhere during the moment). */
+body.results-on .team-ping { display: none; }
 body.watching .res-panel { display: none; }
 @media (prefers-reduced-motion: reduce) { .res-panel { animation: none; } }
