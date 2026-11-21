@@ -4,5 +4,9 @@ rem lan/compose.yaml, lan/Caddyfile): asks for tonight's admin password, players
 rem Enter stops it. Options: -Address <ip>, -Domain <name>, -NewToken, -Staging, -Http [-Port 8090],
 rem -Monitor [-MonitorPort 3030] (the server's dashboards on this computer only: lan/monitor/README.md).
 rem Without Docker: cd web, then npm run lan.
+rem Started from a PowerShell 7 window, Windows PowerShell inherits that one's module path and cannot load its own
+rem security commands (start.ps1 then stops at ConvertTo-SecureString): its own path is used when the variable is empty.
+setlocal
+set "PSModulePath="
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0lan\start.ps1" %*
 pause
