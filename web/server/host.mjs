@@ -475,7 +475,7 @@ export class Host {
     timer.unref?.();
     const pull = setTimeout(() => this.countdown?.timer === timer && this.gather(by, !!duel), COUNTDOWN_MS - GATHER_MS);
     pull.unref?.();
-    this.countdown = { kind: e.kind, until, timer, pull };
+    this.countdown = { kind: e.kind, until, timer, pull, place: e.kind === 'flag' ? e.place : undefined, defend: e.kind === 'assault' ? e.defend : undefined };
     this.everywhere(this.countdownMsg(Date.now())); // the open world and every room: the same small line (Yoshi: no card over the game)
     return { ok: true };
   }
@@ -483,7 +483,8 @@ export class Host {
   /** The countdown's line, its time left from `now` (a page that comes in during it gets the rest: tellCountdown). */
   countdownMsg(now) {
     const k = this.countdown.kind;
-    return { t: 'announce', code: 'nextGame', args: { kind: k }, text: `Next: ${KINDS[k] ?? (k === 'assault' ? ASSAULT_TITLE : 'Zombies duel')}`, ms: Math.max(0, this.countdown.until - now), count: true };
+    // `place` (Steal the flag's field) and `defend` (Attack and defend's first defenders): each page's task line on the card
+    return { t: 'announce', code: 'nextGame', args: { kind: k, ...(this.countdown.place ? { place: this.countdown.place } : {}), ...(this.countdown.defend ? { defend: this.countdown.defend } : {}) }, text: `Next: ${KINDS[k] ?? (k === 'assault' ? ASSAULT_TITLE : 'Zombies duel')}`, ms: Math.max(0, this.countdown.until - now), count: true };
   }
 
   /**

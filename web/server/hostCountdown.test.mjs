@@ -152,3 +152,20 @@ test('Stop and the timer racing: whichever comes first wins, and the state is wh
   assert.equal(r.filter((x) => x.ok).length, 10);
   assert.equal(r.filter((x) => x.code === 'tooFast').length, 2);
 });
+
+test('the countdown says Steal the flag\'s field and Attack and defend\'s defenders (each page\'s task line); other games neither', (t) => {
+  const s = setup(t);
+  s.act({ op: 'programme', list: [{ kind: 'tag', minutes: 5 }, { kind: 'flag', place: 'village', minutes: 5 }, { kind: 'assault', defend: 'red' }, { kind: 'flag', place: '<b>x</b>' }] });
+  const args = () => s.counting().at(-1).args;
+  s.act({ op: 'next' });
+  assert.deepEqual(args(), { kind: 'tag' });
+  s.wait(11_000);
+  s.act({ op: 'next' });
+  assert.deepEqual(args(), { kind: 'flag', place: 'village' });
+  s.act({ op: 'stop' });
+  s.act({ op: 'next' });
+  assert.deepEqual(args(), { kind: 'assault', defend: 'red' });
+  s.act({ op: 'stop' });
+  s.act({ op: 'next' });
+  assert.deepEqual(args(), { kind: 'flag', place: 'compact' }, 'only a known field, never what the host typed');
+});
