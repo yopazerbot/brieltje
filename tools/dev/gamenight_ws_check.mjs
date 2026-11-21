@@ -138,7 +138,7 @@ const N = Math.max(8, Number(o.players));
 
 await act({ op: 'reset' });
 await act({ op: 'lock', on: false });
-await act({ op: 'limit', max: 32 });
+await act({ op: 'limit', max: Math.max(32, N + 4) }); // the host's number (no ceiling: server/game.mjs); the guests, a late joiner and two in a room
 await act({ op: 'programme', list: [{ kind: 'flag', place: 'compact', minutes: 6, look: 'paint' }, { kind: 'assault', minutes: 2, look: 'paint' }, { kind: 'flag', place: 'village', minutes: 3, look: 'real' }] });
 await act({ op: 'rewind', index: 0 }); // from its first game (an earlier run left the programme done)
 const admin = await connect('admin', adminCookie);
