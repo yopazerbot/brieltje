@@ -3199,7 +3199,7 @@ net.onMessage = (m: ServerMsg) => {
       if (muzzle && m.w !== 'laser') effects.muzzleSmoke(muzzle);
       if (m.tx !== undefined && m.ty !== undefined && m.tz !== undefined) {
         const to = new THREE.Vector3(m.tx, m.ty, m.tz);
-        if (m.w === 'laser') effects.laser(muzzle ?? from, to); // their beam (the server passes its end on only once it allows it: a later step)
+        if (m.w === 'laser') effects.laser(muzzle ?? from, to); // their beam (its end as the server passed it on: held to the beam's reach, server/laserGate.mjs laserEnd)
         else effects.tracer(muzzle ?? from, to); // their tracer
         // Passing close by your head (and from more than a few metres off): you hear it and flinch.
         const line = new THREE.Line3(from, to);

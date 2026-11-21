@@ -37,6 +37,7 @@ import { LOOT, Loot } from '../shared/loot.mjs';
 import { arenaOf } from '../shared/arenas.mjs';
 import { ASSAULT, ROUND_FIELDS, WAIT_OF } from '../shared/assaultFields.mjs';
 import { FIELDS, FLAG_TEAMS } from '../shared/flagFields.mjs';
+import { laserReset } from './laserGate.mjs';
 
 const WEAPONS = JSON.parse(readFileSync(new URL('../shared/weapons.json', import.meta.url), 'utf8'));
 /** The admin's own weapons (game.mjs ADMIN_WEAPONS): out of their hands while the game is played, back after it. */
@@ -318,6 +319,7 @@ export class AssaultSupply {
   give(name, p, team, kind, now) {
     if (kind === 'ammo') {
       p.nades.fill(0); // every grenade back (game.mjs throwNade's own count)
+      laserReset(p); // the laser rifle cool with a full cell, as the page's refill has it (server/laserGate.mjs)
       return null;
     }
     if (kind === 'med') {

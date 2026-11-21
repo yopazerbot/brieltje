@@ -48,6 +48,7 @@ import { buildVillagers, villagerHittable, VILLAGER_DOWN_S, VILLAGER_HIT_MAX, VI
 import { boxesOverlap, boxPoints, clearOfPortals, indoorBlocks, makeIndoors, makeSolids } from '../shared/parking.mjs';
 import { bikeFields, bruteEntry, carFields, heliFields, horseFields, playerFields, PROTO, TICK_MS } from '../shared/wire.mjs';
 import { startingWeapons } from '../shared/loadout.mjs';
+import { LASER_MESSAGES, laserEnd, laserPull } from './laserGate.mjs';
 import { houseAreas, MAX_ADMIN_WAVE } from '../shared/zombies.mjs';
 import { NavCache } from './navCache.mjs';
 import { zombieTrunks } from '../shared/trees.mjs';
@@ -994,6 +995,8 @@ export class Game {
     if (HELI_REFUSED.has(m.t) && this.helis.of(name)) return;
     // In a car's seat or on a bike's saddle: nothing taken, collected, tagged, hurt or opened from it (server/carSeats.mjs).
     if (SEAT_REFUSED.has(m.t) && this.carSeats.seated(name)) return;
+    // The laser rifle's pace (server/laserGate.mjs): a laser shot or hit its gun couldn't have fired goes no further.
+    if (LASER_MESSAGES.has(m.t) && !this.laserPace(name, player, m, now)) return;
 
     if (m.t === 'state') {
       const prev = player.state;
@@ -1197,11 +1200,13 @@ export class Game {
       player.nextShot = now + WEAPONS[w].delay * 700;
       // `tx, ty, tz`: where a tracer goes (the rifle's every third shot, the sniper rifle's each), only for the
       // others' picture. Three numbers held to the map, and to this gun's reach from where the server has the
-      // shooter: a page can't draw a streak across the village. Only the two guns that have tracers.
+      // shooter: a page can't draw a streak across the village. Only the two guns that have tracers, and the laser rifle's
+      // beam: its end held to the beam's reach from the shooter's eyes as the server has them (server/laserGate.mjs laserEnd).
       const s = player.state;
-      const tracer = (w === 'rifle' || w === 'sniper') && [m.tx, m.ty, m.tz].every((v) => typeof v === 'number' && Number.isFinite(v))
+      const tracer = (w === 'rifle' || w === 'sniper' || w === 'laser') && [m.tx, m.ty, m.tz].every((v) => typeof v === 'number' && Number.isFinite(v))
         ? { tx: num(m.tx, AREA.x0, AREA.x1), ty: num(m.ty, -20, 200), tz: num(m.tz, AREA.z0, AREA.z1) } : null;
-      const shown = tracer && Math.hypot(tracer.tx - s.x, tracer.ty - s.y, tracer.tz - s.z) <= TRACER_REACH ? tracer : null;
+      const shown = tracer && w === 'laser' ? laserEnd(tracer, s, WEAPONS.laser.beam.range)
+        : tracer && Math.hypot(tracer.tx - s.x, tracer.ty - s.y, tracer.tz - s.z) <= TRACER_REACH ? tracer : null;
       // Where the shot comes from: the page's own point, unless that is more than 3 m from where the server has
       // the shooter (as for a thrown grenade). The others start the tracer and measure a near miss from it, so a
       // changed page could else draw streaks from anywhere and make players far from it flinch.
@@ -2394,6 +2399,18 @@ export class Game {
     shooter.nextHit = now + spec.delay * 700; // 70% of the fire delay, for network jitter
     shooter.protectedUntil = 0; // shooting ends your own spawn protection
     this.damage(name, shooter, targetName, target, body * spec.body + head * spec.head, head > 0, w, now);
+  }
+
+  /**
+   * Whether message `m` of `name` (`p`) is no laser rifle's, or one its gun could have fired at its pace, heat, vent and
+   * cell (server/laserGate.mjs): a 'shot' and the hits (on a player, a zombie, the Brook Spirit, a vehicle, a strongman)
+   * of whoever carries it. A page claiming it without carrying it is refused by each message's own checks.
+   */
+  laserPace(name, p, m, now) {
+    const w = m.t === 'clownhit' ? p.state?.w : m.w; // a strongman's hit counts for the gun the server has them hold
+    if (w !== 'laser' || !p.weapons?.has('laser')) return true;
+    const big = this.modes.zombies?.loot.kits.get(name)?.ammo.includes('laser'); // the Zombies game's bigger ammo pack
+    return laserPull(p, m.t === 'shot' ? 'shot' : 'hit', now, WEAPONS.laser, Math.round(WEAPONS.laser.mag * (big ? LOOT.bigMag : 1)));
   }
 
   /** The Zombies game is over: everyone has every gun again (they came down to the pistol as it began), and is told. */
