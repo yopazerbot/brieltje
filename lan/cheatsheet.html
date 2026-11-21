@@ -165,6 +165,7 @@
   <tr><td><code>-NewToken</code></td><td>Asks for the Cloudflare token again.</td></tr>
   <tr><td><code>-Domain spel.brieltje.be</code></td><td>Another name under brieltje.be. It gets its own certificate.</td></tr>
   <tr><td><code>-Staging</code></td><td>Let's Encrypt's test service. Browsers don't trust it. Only for trying out.</td></tr>
+  <tr><td><code>-Monitor</code></td><td>Also starts the server's dashboard. See step 7.</td></tr>
 </table>
 
 <h2><span class="n">6</span> Where things are</h2>
@@ -176,6 +177,29 @@
   <tr><td>More detail</td><td><code>docs/DETAILS.md</code>, "A LAN night".</td></tr>
 </table>
 <p class="note">Keep the token to yourself. If it ever leaks, roll it in Cloudflare. Then start <code>lan.cmd -NewToken</code>.</p>
+
+<h2><span class="n">7</span> The server's dashboard <span class="when">optional</span></h2>
+<div class="grid">
+  <div class="box">
+    <h3>Start</h3>
+    <ol>
+      <li>Start <code>.\lan.cmd -Monitor</code> in a terminal in the game's folder.</li>
+      <li>On the laptop, open <code>http://localhost:3030</code>. It works on this laptop only.</li>
+      <li>Log in as <b>admin</b> with tonight's admin password.</li>
+      <li>On a second monitor, add <code>?kiosk</code> to the address: <code>localhost:3030/d/brieltje-game-night?kiosk</code>.</li>
+    </ol>
+    <p class="note">Blue bands on the charts are the games played. <b>After the night</b> shows the whole evening.</p>
+  </div>
+  <div class="box">
+    <h3>The tile at the top left</h3>
+    <table>
+      <tr><td style="color:#2f7d32">Green: All good</td><td>Nothing to do.</td></tr>
+      <tr><td style="color:#c46a00">Orange: Busy</td><td>The server works hard. Players don't feel it yet. Nothing to do yet.</td></tr>
+      <tr><td style="color:#c62828">Red: Slow</td><td>For more than a few seconds: close the big screen's extra watch views first. Who is lagging is on the host page.</td></tr>
+      <tr><td style="color:#c62828">Red: No answer</td><td>Look at the lan.cmd window. Docker restarts the game after a crash.</td></tr>
+    </table>
+  </div>
+</div>
 </div>
 
 <footer><span>Brieltje &middot; LAN night</span><span>lan.cmd &middot; lan/start.ps1</span></footer>
