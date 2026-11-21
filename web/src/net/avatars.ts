@@ -8,7 +8,8 @@ import { gunsReady } from '../weapon';
 import { muzzleFlash } from '../world/effects';
 import { hitBoxMaterial } from '../world/hitBox';
 import { figureShadowMesh } from '../world/figureShadows';
-import { buildSwat, hasSwat, SEAT_HIP, swatReady, type Body, type Outfit as SwatOutfit } from './swat';
+import { buildSwat, hasSwat, SEAT_HIP, swatReady, type Body, type Outfit as SwatOutfit, type TeamLook } from './swat';
+import { FLAG_COLORS } from '../../shared/flagFields.mjs';
 import type { RiderFeel } from '../world/horses';
 import { onLang, playerName, t } from '../i18n';
 
@@ -91,6 +92,35 @@ const SWAT_OUTFITS: SwatOutfit[] = [
   { main: '#8a7a5a', dark: '#4a4232' },
   { main: '#3a3d42', dark: '#121212' },
 ];
+/**
+ * A team game's looks (Steal the flag, Attack and defend, the teams game), by the team's colour the server gives its
+ * players: a muted suit in the team's hue (slate blue, maroon brown), the two equally dark (neither side darker to hide
+ * in), the team's colour on the helmet, both upper arms and the plate carrier, front and back, so it shows from every
+ * side and in every pose, and a band of a second colour round the helmet and each arm. Far off, where a figure is a few
+ * pixels, its whole colour leans to its team. Beside the colour a second cue, for colour-blind players and where a
+ * colour turns grey: blue is the darker team with light bands (they catch light at night, as the cat's eyes on a helmet
+ * band do), red the lighter one with dark bands. The teams game's bungalow side without the host's teams is orange.
+ */
+const TEAM_SUIT: SwatOutfit = { main: '#4a4d51', dark: '#222427' }; // a team colour without a look of its own: grey
+const TEAM_LOOKS: Record<string, TeamLook> = {
+  [FLAG_COLORS.blue]: { suit: { main: '#3c4859', dark: '#1e2430' }, mark: '#2f7fd0', vest: '#24507f', band: '#e6ecf2', bandGlows: true },
+  [FLAG_COLORS.red]: { suit: { main: '#5e4341', dark: '#2e2020' }, mark: '#f2574d', vest: '#b9443b', band: '#2a1c1c', bandGlows: false },
+  '#ff9f43': { suit: { main: '#5e4a38', dark: '#2a231c' }, mark: '#ff9f43', vest: '#c8742c', band: '#2a2018', bandGlows: false }, // server/modes.mjs TEAM_COLORS.bungalow
+};
+const teamLooks = new Map<string, TeamLook>();
+/** A team's look by its colour; a colour without one of its own: that colour, a darker vest, bands of the other lightness. */
+function teamLook(color: string): TeamLook {
+  const own = TEAM_LOOKS[color];
+  if (own) return own;
+  let look = teamLooks.get(color);
+  if (!look) {
+    const c = new THREE.Color(color);
+    const light = c.getHSL({ h: 0, s: 0, l: 0 }).l > 0.5;
+    look = { suit: TEAM_SUIT, mark: color, vest: '#' + c.clone().multiplyScalar(0.6).getHexString(), band: light ? '#2a2420' : '#e6ecf2', bandGlows: !light };
+    teamLooks.set(color, look);
+  }
+  return look;
+}
 const GUN = '#1d1e21';
 /** Which outfit a player wears: by their colour, or (a colour of no outfit's) by their name. */
 const outfitOf = (name: string, color: string): number => {
@@ -420,6 +450,8 @@ export class Avatars {
   /** A player watched through their own eyes (src/ui/watchView.ts): their figure isn't drawn, as yours isn't. */
   hidden: string | null = null;
   private avatars = new Map<string, Avatar>();
+  /** The team game's players and their teams (setTeams) */
+  private teams: Record<string, string> = {};
   private pose = [0, 0, 0, 0, 0];
   private shadows = shadowPatches(16);
   private m = new THREE.Matrix4();
@@ -474,15 +506,26 @@ export class Avatars {
     a.marks = [ring, label];
   }
 
-  /** A player's figure in their colour and outfit, as everyone draws it. */
+  /** A player's figure in their colour and outfit, as everyone draws it; in a team game in their team's look (TEAM_LOOKS). */
   figure(name: string, color: string): Body {
     const k = outfitOf(name, color);
-    return hasSwat() ? buildSwat(name, color, SWAT_OUTFITS[k], hitMaterial, headBox, bodyBox) : buildFigure(name, color, OUTFITS[k]);
+    const team = this.teams[name] ? teamLook(color) : null;
+    return hasSwat() ? buildSwat(name, color, team?.suit ?? SWAT_OUTFITS[k], hitMaterial, headBox, bodyBox, team) : buildFigure(name, color, OUTFITS[k]);
   }
 
   /** The suit's colour of a player's figure: your sleeves in first person (weapon.ts). */
   suit(name: string, color: string): string {
-    return SWAT_OUTFITS[outfitOf(name, color)].main;
+    return this.teams[name] ? teamLook(color).suit.main : SWAT_OUTFITS[outfitOf(name, color)].main;
+  }
+
+  /**
+   * Who plays on a team in the team game being played (its view's `teams`; none outside one): their figures in their
+   * team's look, everyone else's in their own. A figure whose side of that changed is made again.
+   */
+  setTeams(teams: Record<string, string> | undefined): void {
+    const before = this.teams;
+    this.teams = teams ?? {};
+    for (const [name, a] of [...this.avatars]) if (!before[name] !== !this.teams[name]) this.rebuild(name, a, a.color);
   }
 
   add(name: string, color: string): void {

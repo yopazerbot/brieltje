@@ -15,7 +15,7 @@ import type { RiderFeel } from '../world/horses';
  *
  * One mesh, one draw: the model's nine parts are merged into one skinned mesh
  * when it loads. Each part's colour comes from a small picture per player (the
- * palette: suit, gear, skin, visor, helmet), so a figure costs one draw and one
+ * palette: suit, gear, skin, visor, helmet, and a team game's marks), so a figure costs one draw and one
  * shadow draw, and every figure shares one shader. Its bounds are set by hand
  * (an animated body isn't where its rest pose is), so figures out of view and
  * out of the sun's shadow area cost nothing.
@@ -140,11 +140,37 @@ const TWIST = 1.05; // rad the upper body turns before the legs step round (stan
 const MAX_TWIST = 1.4;
 /** Long guns are drawn a little smaller in the figures' hands: the model's arms are short. */
 const GUN_SCALE: Record<WeaponId, number> = { pistol: 1, rifle: 0.85, shotgun: 0.85, sniper: 0.82, bazooka: 0.85, launcher: 0.85, laser: 0.85 };
-/** The palette's columns: what each part of the model is painted with. */
-const SLOT = { main: 0, dark: 1, skin: 2, visor: 3, helmet: 4 } as const;
-const SLOTS = 8;
+/**
+ * The palette's columns: what each part of the model is painted with. The upper arms, the bands round them, the plate
+ * carrier and the band round the helmet have columns of their own for a team game's marks (TeamLook); outside one they
+ * are painted as the suit, the gear and the helmet around them.
+ */
+const SLOT = { main: 0, dark: 1, skin: 2, visor: 3, helmet: 4, sleeve: 5, armBand: 6, vest: 7, helmetBand: 8 } as const;
+const SLOTS = 16;
 const SKIN = '#7e5e48';
 const VISOR = '#151515';
+/**
+ * Where the team's marks are on the model as it stands in its rest pose (m; arms out sideways along x, facing +z): a
+ * band round the middle of each upper arm (|x|), the plate carrier above the belt (y), and round the helmet a band
+ * above the visor's middle (y from it), on its sides and back only (z: the front is the visor's).
+ */
+const MARKS = { armBand: [0.2, 0.245], vestFrom: 1.1, helmetBand: [0.025, 0.07], helmetBandBack: 0.12 } as const;
+
+/**
+ * A team's look in a team game (net/avatars.ts): its suit for everyone on it instead of their own outfit, its colour on
+ * the helmet, both upper arms and the plate carrier, and a band of a second colour round the helmet and each arm.
+ */
+export interface TeamLook {
+  suit: Outfit;
+  /** The helmet and the upper arms */
+  mark: string;
+  /** The plate carrier, front and back */
+  vest: string;
+  /** The bands round the helmet and the arms */
+  band: string;
+  /** The bands catch light at night (reflective, as the cat's eyes on a helmet band); else only the colours do */
+  bandGlows: boolean;
+}
 
 interface Template {
   scene: THREE.Group;
@@ -158,12 +184,12 @@ interface Template {
 }
 let template: Template | null = null;
 
-/** A copy of an attribute as a plain array (the loader's may be interleaved), in `Kind`. */
-function plain(a: THREE.BufferAttribute | THREE.InterleavedBufferAttribute, Kind: Float32ArrayConstructor | Uint16ArrayConstructor): THREE.BufferAttribute {
+/** A copy of an attribute as a plain array (the loader's may be interleaved), in `Kind`: the vertices `from` lists, in its order. */
+function plain(a: THREE.BufferAttribute | THREE.InterleavedBufferAttribute, Kind: Float32ArrayConstructor | Uint16ArrayConstructor, from: number[]): THREE.BufferAttribute {
   const s = a.itemSize;
-  const out = new Kind(a.count * s);
+  const out = new Kind(from.length * s);
   const get = [a.getX, a.getY, a.getZ, a.getW];
-  for (let i = 0; i < a.count; i++) for (let c = 0; c < s; c++) out[i * s + c] = get[c].call(a, i);
+  for (let i = 0; i < from.length; i++) for (let c = 0; c < s; c++) out[i * s + c] = get[c].call(a, from[i]);
   return new THREE.BufferAttribute(out, s);
 }
 
@@ -173,7 +199,7 @@ const near = (a: THREE.Matrix4, b: THREE.Matrix4) => a.elements.every((v, i) => 
  * The model's parts (legs, feet, body, head; each one to three materials) as one skinned mesh.
  * Each part keeps its colour through its texture coordinates, which point at a column of the
  * palette; the helmet (the gear's part of the head above the middle of the visor) gets a column
- * of its own, for the player's colour. Returns false (the parts stay) if they don't share one
+ * of its own, for the player's colour, and so do the places of a team game's marks (MARKS). Returns false (the parts stay) if they don't share one
  * skeleton and bind pose.
  */
 function mergeParts(scene: THREE.Group): boolean {
@@ -202,33 +228,68 @@ function mergeParts(scene: THREE.Group): boolean {
     visorY = (box.min.y + box.max.y) / 2;
   }
   const geos: THREE.BufferGeometry[] = [];
+  const mid = new THREE.Vector3();
   for (const p of parts) {
     const name = (p.material as THREE.Material).name;
-    const slot = name === 'Swat' ? SLOT.main : name === 'Skin' ? SLOT.skin : name === 'Visor' ? SLOT.visor : SLOT.dark;
+    const base = name === 'Swat' ? SLOT.main : name === 'Skin' ? SLOT.skin : name === 'Visor' ? SLOT.visor : SLOT.dark;
     const head = /head/i.test(p.name) || /head/i.test(p.parent?.name ?? '');
-    let src = p.geometry;
-    // The head's gear is split by triangle into helmet and mask: its triangles get their own corners.
-    const split = head && slot === SLOT.dark && !Number.isNaN(visorY);
-    if (split && src.index) src = src.toNonIndexed();
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', plain(src.attributes.position, Float32Array));
-    g.setAttribute('normal', plain(src.attributes.normal, Float32Array));
-    g.setAttribute('skinIndex', plain(src.attributes.skinIndex, Uint16Array));
-    g.setAttribute('skinWeight', plain(src.attributes.skinWeight, Float32Array));
-    const n = g.attributes.position.count;
-    const uv = new Float32Array(n * 2);
-    const column = (s: number) => (s + 0.5) / SLOTS;
-    for (let i = 0; i < n; i++) uv.set([column(slot), 0.5], i * 2);
-    if (split) {
-      const pos = g.attributes.position;
-      for (let i = 0; i < n; i += 3) {
-        let y = 0;
-        for (let k = 0; k < 3; k++) y += v.fromBufferAttribute(pos, i + k).applyMatrix4(p.matrixWorld).y / 3;
-        if (y > visorY) for (let k = 0; k < 3; k++) uv[(i + k) * 2] = column(SLOT.helmet);
+    const src = p.geometry;
+    const pos = src.attributes.position;
+    const si = src.attributes.skinIndex;
+    const sw = src.attributes.skinWeight;
+    const corner = (t: number) => (src.index ? src.index.getX(t) : t);
+    const corners = src.index ? src.index.count : pos.count;
+    /** The bone that moves a vertex most. */
+    const boneOf = (i: number) => {
+      let best = 0;
+      for (let k = 1; k < 4; k++) if (sw.getComponent(i, k) > sw.getComponent(i, best)) best = k;
+      return p.skeleton.bones[si.getComponent(i, best)]?.name ?? '';
+    };
+    // Each triangle's column, from where it is in the rest pose and the bone that moves it (two of its corners agree,
+    // or the middle one's): the head's gear above the visor's middle is the helmet, and the team's marks (MARKS).
+    const slotOf = (t: number): number => {
+      mid.set(0, 0, 0);
+      for (let k = 0; k < 3; k++) mid.add(v.fromBufferAttribute(pos, corner(t + k)).applyMatrix4(p.matrixWorld));
+      mid.divideScalar(3);
+      const [b0, b1, b2] = [0, 1, 2].map((k) => boneOf(corner(t + k)));
+      const bone = b0 === b1 || b0 === b2 ? b0 : b1;
+      const x = Math.abs(mid.x);
+      if (base === SLOT.main && /^(UpperArm|Shoulder)/.test(bone)) return x > MARKS.armBand[0] && x < MARKS.armBand[1] ? SLOT.armBand : SLOT.sleeve;
+      if (base === SLOT.dark && head && !Number.isNaN(visorY) && mid.y > visorY) {
+        const up = mid.y - visorY;
+        return up > MARKS.helmetBand[0] && up < MARKS.helmetBand[1] && mid.z < MARKS.helmetBandBack ? SLOT.helmetBand : SLOT.helmet;
+      }
+      if (base === SLOT.dark && !head && /^(Chest|Torso|Abdomen|Shoulder)/.test(bone) && mid.y > MARKS.vestFrom) return SLOT.vest;
+      return base;
+    };
+    // A vertex shared by triangles of two columns is copied, one for each: every triangle is one colour.
+    const kept = new Map<number, number>();
+    const from: number[] = [];
+    const cols: number[] = [];
+    const index: number[] = [];
+    for (let t = 0; t < corners; t += 3) {
+      const s = slotOf(t);
+      for (let k = 0; k < 3; k++) {
+        const i = corner(t + k);
+        let j = kept.get(i * SLOTS + s);
+        if (j === undefined) {
+          j = from.length;
+          kept.set(i * SLOTS + s, j);
+          from.push(i);
+          cols.push(s);
+        }
+        index.push(j);
       }
     }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', plain(pos, Float32Array, from));
+    g.setAttribute('normal', plain(src.attributes.normal, Float32Array, from));
+    g.setAttribute('skinIndex', plain(si, Uint16Array, from));
+    g.setAttribute('skinWeight', plain(sw, Float32Array, from));
+    const uv = new Float32Array(from.length * 2);
+    for (let i = 0; i < from.length; i++) uv.set([(cols[i] + 0.5) / SLOTS, 0.5], i * 2);
     g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
-    g.setIndex(src.index ? Array.from(src.index.array) : Array.from({ length: n }, (_, i) => i));
+    g.setIndex(index);
     geos.push(g);
   }
   const geometry = mergeGeometries(geos);
@@ -283,13 +344,23 @@ function holder(bone: THREE.Object3D, model: THREE.Object3D): THREE.Group {
   return h;
 }
 
-/** A player's palette: one pixel per part (see SLOT), sRGB, read without filtering. */
-function palette(outfit: Outfit, color: string): THREE.DataTexture {
+/**
+ * A player's palette: one pixel per part (see SLOT), sRGB, read without filtering. In a team game the team's suit and
+ * marks; else their own outfit, the helmet in their colour, the marks' places painted as what is round them.
+ */
+function palette(outfit: Outfit, color: string, team: TeamLook | null = null): THREE.DataTexture {
+  return paletteOf(team
+    ? [team.suit.main, team.suit.dark, SKIN, VISOR, team.mark, team.mark, team.band, team.vest, team.band]
+    : [outfit.main, outfit.dark, SKIN, VISOR, color, outfit.main, outfit.main, outfit.dark, color]);
+}
+
+/** One pixel per column, sRGB (`k` scales the colours: a glow's strength), the rest black. */
+function paletteOf(cols: (string | null)[], k: number[] = []): THREE.DataTexture {
   const data = new Uint8Array(SLOTS * 4);
-  const cols = [outfit.main, outfit.dark, SKIN, VISOR, color];
   const c = new THREE.Color();
   cols.forEach((hex, i) => {
-    c.setStyle(hex, THREE.NoColorSpace); // the hex's own (sRGB) numbers: the texture is decoded as sRGB
+    if (!hex) return;
+    c.setStyle(hex, THREE.NoColorSpace).multiplyScalar(k[i] ?? 1); // the hex's own (sRGB) numbers: the texture is decoded as sRGB
     data.set([Math.round(c.r * 255), Math.round(c.g * 255), Math.round(c.b * 255), 255], i * 4);
   });
   const tex = new THREE.DataTexture(data, SLOTS, 1, THREE.RGBAFormat, THREE.UnsignedByteType);
@@ -298,6 +369,33 @@ function palette(outfit: Outfit, color: string): THREE.DataTexture {
   tex.generateMipmaps = false;
   tex.needsUpdate = true;
   return tex;
+}
+
+/**
+ * The marks at night: what of a figure shows its own light (the emissive map; the same columns as the palette), one
+ * shared by everyone of a team, none outside a team game. Every figure has one (so all share one shader) and the same
+ * strength (GLOW, set by the night: setTeamGlow): by day next to nothing, at night as a reflective band in a street
+ * lamp's light, never a lamp.
+ */
+const NO_GLOW = paletteOf([]);
+const glows = new Map<TeamLook, THREE.DataTexture>();
+const glowOf = (team: TeamLook | null): THREE.DataTexture => {
+  if (!team) return NO_GLOW;
+  let tex = glows.get(team);
+  if (!tex) {
+    const band = team.bandGlows ? team.band : null;
+    tex = paletteOf([null, null, null, null, team.mark, team.mark, band, team.vest, band], [0, 0, 0, 0, 1, 1, 1, 0.4, 1]);
+    glows.set(team, tex);
+  }
+  return tex;
+};
+const GLOW = new THREE.Color(0, 0, 0);
+const GLOW_DAY = 0.04;
+const GLOW_NIGHT = 0.36;
+
+/** How dark it is (0 day .. 1 night, main.ts mood.night): how much the team's marks show their own light. */
+export function setTeamGlow(night: number): void {
+  GLOW.setScalar(GLOW_DAY + GLOW_NIGHT * Math.min(1, Math.max(0, night)));
 }
 
 const _a = new THREE.Vector3();
@@ -374,7 +472,7 @@ const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 const LOCO = ['Walk', 'Walk_Back', 'Run', 'Run_Shoot', 'Run_Back', 'Run_Left', 'Run_Right'] as const;
 type Loco = (typeof LOCO)[number];
 
-export function buildSwat(name: string, color: string, outfit: Outfit, hitMaterial: THREE.Material, headBox: THREE.BufferGeometry, bodyBox: THREE.BufferGeometry): Body {
+export function buildSwat(name: string, color: string, outfit: Outfit, hitMaterial: THREE.Material, headBox: THREE.BufferGeometry, bodyBox: THREE.BufferGeometry, team: TeamLook | null = null): Body {
   const t = template!;
   const model = SkeletonUtils.clone(t.scene) as THREE.Group;
   model.scale.setScalar(t.scale);
@@ -392,7 +490,9 @@ export function buildSwat(name: string, color: string, outfit: Outfit, hitMateri
     o.castShadow = true;
     if (t.merged && o.name === 'SwatFigure') {
       figure = o as THREE.SkinnedMesh;
-      o.material = new THREE.MeshStandardMaterial({ map: palette(outfit, color), roughness: 0.85, metalness: 0.4 });
+      const m = new THREE.MeshStandardMaterial({ map: palette(outfit, color, team), emissiveMap: glowOf(team), roughness: 0.85, metalness: 0.4 });
+      m.emissive = GLOW; // shared by every figure: the night's strength (setTeamGlow)
+      o.material = m;
       return;
     }
     o.frustumCulled = false; // animated: the bind-pose bounds are not where the body is

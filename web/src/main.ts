@@ -71,6 +71,7 @@ import { StallChip } from './ui/stall';
 import { MarketStall } from './world/stall';
 import { Avatars } from './net/avatars';
 import type { Body } from './net/swat';
+import { setTeamGlow } from './net/swat';
 import { Parachutes } from './world/parachutes';
 import { DropView } from './world/dropView';
 import { CarPeople } from './world/carPeople';
@@ -2939,6 +2940,7 @@ function followGame(view: ModeView): void {
   rooms.setPlaying(view.kind === 'zombies' && view.phase !== 'done');
   zombieWaveControl.update(view, net.connected && me?.role === 'admin');
   for (const name of online.keys()) avatars.setRole(name, games.roleOf(name));
+  avatars.setTeams(view.kind === 'teams' || view.kind === 'flag' ? view.teams : undefined); // in a team game in its team's look (net/avatars.ts)
   const teams = games.view.kind === 'teams' && games.view.phase === 'playing';
   combat.setTeams(teams ? { goal: games.view.goal ?? 25, score: { house: games.view.score?.house ?? 0, bungalow: games.view.score?.bungalow ?? 0 }, names: { house: games.sideLabel('house'), bungalow: games.sideLabel('bungalow') } } : null);
   // Steal the flag (world/flags.ts, ui/flagHud.ts): its flags, its parked bikes, its longer wait when down, its heading.
@@ -4373,6 +4375,7 @@ renderer.setAnimationLoop((now: number) => {
   weather.update(dt, camera.position, inside); // the rain round the eye (stopping at roofs), the wind, the street lamps
   keetLife.update(dt, camera.position, mood.night, !phone && quality !== 'low'); // the café's light and sounds (world/keet.ts)
   setWindowNight(mood.night); // lights in about half of the village's rooms at night (world/windows.ts)
+  setTeamGlow(mood.night); // a team game's marks on the figures catch light at night (net/swat.ts)
   uplights.update(mood.night); // home 4's trees lit from below at night (world/uplights.ts)
   churchLights.update(mood.night); // the church floodlit, with the street lamps (world/churchLights.ts)
   player.lookScale = camera.fov / weapon.baseFov; // slower turning while zoomed in (not faster for the car's wider view)
