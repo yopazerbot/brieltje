@@ -614,7 +614,7 @@ const AIM: Record<WeaponId, [number, number, number]> = {
   shotgun: [-0.04, 0.11, 1.3],
   sniper: [-0.1, 0, 1],
   bazooka: [-0.1, 0, 1],
-  launcher: [-0.1, 0, 1],
+  launcher: [-0.035, 0.06, 1.1],
   laser: [-0.1, 0, 1],
 };
 

@@ -52,6 +52,10 @@ PREVIEW = argv[1] if len(argv) > 1 else ""
 K.reset()
 K.M.update(K.materials())
 M = K.M
+# The walnut in the pump shotgun's brown (tools/guns/shotgun.py), not heavykit's lighter one, which read orange.
+_wood = M["Wood"].node_tree.nodes["Principled BSDF"]
+_wood.inputs["Base Color"].default_value = (*K.srgb("#43281a"), 1)
+_wood.inputs["Roughness"].default_value = 0.45
 from heavykit import (Matrix, Vector, block, box, chamfers, dark, knurl, lathe, prism, ring, screw, shell, sweep,  # noqa: E402
                       yprism, zprism)
 
@@ -205,14 +209,14 @@ yc, zc, ry, rz, t = 0.03, -0.004, 0.026, 0.028, 0.0034
 outer = [(yc + (ry + t / 2) * math.cos(math.radians(a)), zc + (rz + t / 2) * math.sin(math.radians(a))) for a in range(10, -165, -10)]
 inner = [(yc + (ry - t / 2) * math.cos(math.radians(a)), zc + (rz - t / 2) * math.sin(math.radians(a))) for a in range(-160, 11, 10)]
 body.append(prism("guard", outer + inner, 0.0042, M["Steel"], 0.0009, 2))
-# The stock: walnut through cross-sections, a slim wrist behind the grip, a comb rising under the cheek, wider towards
-# the butt; a ribbed rubber pad with two screws; a sling swivel under it.
+# The stock: walnut through cross-sections, a slim wrist behind the grip, a comb rising under the cheek to its nose and
+# falling away from there to the heel, wider towards the butt; a ribbed rubber pad with two screws; a sling swivel under it.
 stock = [(-0.064, 0.04, 0.042, 0.0145), (-0.085, 0.033, 0.043, 0.014), (-0.11, 0.018, 0.04, 0.0135), (-0.14, 0.015, 0.047, 0.0148),
-         (-0.17, 0.0125, 0.0565, 0.0165), (-0.21, 0.009, 0.0625, 0.018), (-0.25, 0.0045, 0.0672, 0.0193), (-0.285, 0.0005, 0.0695, 0.0203),
-         (-0.297, -0.0015, 0.0697, 0.0205), (-0.2995, -0.0015, 0.0690, 0.0202)]
+         (-0.17, 0.011, 0.055, 0.0165), (-0.21, 0.00525, 0.05875, 0.018), (-0.25, -0.00085, 0.06185, 0.0193), (-0.285, -0.0055, 0.0635, 0.0203),
+         (-0.297, -0.00685, 0.06435, 0.0205), (-0.2995, -0.00675, 0.06375, 0.0202)]
 body.append(loft("stock", stock, M["Wood"], 32, 2.4))
-body.append(loft("pad", [(-0.2985, -0.0015, 0.0705, 0.0212), (-0.315, -0.0015, 0.0705, 0.0212), (-0.3172, -0.0015, 0.0692, 0.0205),
-                         (-0.3185, -0.0015, 0.0672, 0.0192)], M["Grip"], 28, 2.4))
+body.append(loft("pad", [(-0.2985, -0.0075, 0.0645, 0.0212), (-0.315, -0.0075, 0.0645, 0.0212), (-0.3172, -0.0075, 0.0632, 0.0205),
+                         (-0.3185, -0.0075, 0.0612, 0.0192)], M["Grip"], 28, 2.4))
 for k in range(8):
     z = -0.054 + k * 0.0148
     body.append(block("prib", -0.0165, 0.0165, -0.3205, -0.3175, z, z + 0.0045, M["Grip"], 0.0006, 1))
