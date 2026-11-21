@@ -12,20 +12,52 @@
 // player's own call to the host's controls is refused.
 //
 // --stall: instead of the evening, how long the server is held in each game's countdown, at its start and stop (and
-// Attack and defend's round change and end, played through with rounds of a minute), from the hall screen's ticks: the longest gap
-// between two, less the tick's own 50 ms. Run it with --players 30 for a game night's hall; --only assault,zombies
-// for some of the games.
+// Attack and defend's round change, end and the switch to free play once its result has shown, played through with
+// rounds of a minute), from the hall screen's ticks: the longest gap between two, less the tick's own 50 ms. Run it
+// with --players 30 for a game night's hall; --only assault,zombies for some of the games. --routes: also each game
+// started without the host's countdown (the admin's in-game menu: Zombies at four places and Attack and defend; a
+// players' room's Zombies, started by a guest in it; last the Zombies duel, which moves everyone into its rooms).
+// --boot (started with the server, before it listens): the longest the health check waited in the server's first
+// seconds, while it makes the Zombies places' grids (server/navCache.mjs), then the rest as asked. --holds <file>: the
+// server was started with tools/dev/holdWatch.mjs writing that file: each part's longest hold as the server measured
+// it too (exact; the hall screen's ticks see nothing under the computer's timer step, on Windows often 15 ms).
 //
-//   ADMIN_PASSWORD=... node tools/dev/gamenight_ws_check.mjs --api http://localhost:8620 [--players 12] [--stall [--only kinds]]
+//   ADMIN_PASSWORD=... node tools/dev/gamenight_ws_check.mjs --api http://localhost:8620 [--players 12] [--stall [--only kinds] [--routes] [--holds file]] [--boot]
 import WebSocket from '../../web/node_modules/ws/wrapper.mjs';
 import { localOnly, options } from './cdp.mjs';
 import { FIELDS } from '../../web/shared/flagFields.mjs';
 
-const o = options({ api: 'http://localhost:8620', players: '12', stall: false, only: '' });
+const o = options({ api: 'http://localhost:8620', players: '12', stall: false, only: '', routes: false, boot: false, holds: '' });
 localOnly(o.api); // it logs in as the admin and starts games: a throwaway server on this computer only
 const password = process.env.ADMIN_PASSWORD;
 if (!password) throw new Error('ADMIN_PASSWORD is not set');
 const host = new URL(o.api).host;
+let boot = null; // --boot: the server's first 3 s, and the health check's slowest answer in them
+if (o.boot) {
+  // The server's first seconds: the health check asked again the moment it answers, for 3 s from its first answer.
+  const ask = async () => {
+    try {
+      return (await fetch(o.api + '/healthz')).ok;
+    } catch {
+      return false;
+    }
+  };
+  const from = Date.now();
+  while (!(await ask())) {
+    if (Date.now() - from > 60_000) throw new Error('the server did not answer in a minute');
+    await new Promise((r) => setTimeout(r, 5));
+  }
+  const t0 = performance.now();
+  let worst = 0;
+  let n = 0;
+  while (performance.now() - t0 < 3000) {
+    const a = performance.now();
+    if (await ask()) n++;
+    worst = Math.max(worst, performance.now() - a);
+  }
+  console.log(`     the server's start: the health check answered ${n} times in its first 3 s, the slowest in ${worst.toFixed(1)} ms`);
+  boot = { from: t0, to: performance.now(), slowest: worst };
+}
 let failed = 0;
 const ok = (name, pass, extra = '') => {
   console.log(`${pass ? 'ok  ' : 'FAIL'} ${name} ${extra}`);
@@ -152,7 +184,26 @@ if (o.stall) {
     return Math.round(worst);
   };
   const rows = [];
+  const windows = new WeakMap(); // row -> { part: [from, to] } (performance.now()), for --holds
+  /** Row `row`'s part `key`: the hold between `from` and `to`, and its window. */
+  const part = (row, key, from, to) => {
+    row[key] = held(from, to);
+    if (!windows.has(row)) windows.set(row, {});
+    windows.get(row)[key] = [from, to];
+  };
+  if (boot) {
+    const row = { game: 'server start (health check)', start: Math.round(boot.slowest) };
+    windows.set(row, { start: [boot.from, boot.to] });
+    rows.push(row);
+  }
   const lines = () => hall.of('system').map((m) => m.code);
+  // The floor: free play with nothing happening, 6 s (the ticks' own wobble, the computer's timer: on Windows often
+  // 15 ms a step, so a gap of 62 ms instead of 50 shows as a hold of 12 without anything held).
+  const q0 = performance.now();
+  await sleep(6000);
+  const quiet = { game: 'nothing (free play)' };
+  part(quiet, 'start', q0, performance.now());
+  rows.push(quiet);
   const games = [
     { kind: 'assault', minutes: 1, is: (m) => !!m.flag?.assault },
     { kind: 'flag', place: 'compact', is: (m) => m.kind === 'flag' && m.flag?.field === 'compact' },
@@ -171,7 +222,9 @@ if (o.stall) {
     console.log(`     ${label}: started at ${new Date().toISOString().slice(11, 23)}`); // to match a server's own log
     ok(`${label}: the host starts it`, (await act({ op: 'start', ...entry }))?.ok === true);
     await started(is);
-    const row = { game: label, countdown: held(t0, t0 + 9000), start: held(t0 + 9000, performance.now()) };
+    const row = { game: label };
+    part(row, 'countdown', t0, t0 + 9000);
+    part(row, 'start', t0 + 9000, performance.now());
     if (e.kind === 'assault') {
       // Played through: round 1's clock, the break, round 2's clock, the end (its result, then free play).
       const at = (code) => new Promise((res) => {
@@ -183,20 +236,114 @@ if (o.stall) {
       const r2 = await at('assaultRound2');
       const end = await Promise.race(['assaultTime', 'assaultOnly', 'assaultFar', 'assaultTags', 'assaultDraw'].map(at));
       await sleep(2000);
-      Object.assign(row, { break: held(brk - 1500, brk + 1500), round2: held(r2 - 1500, r2 + 1500), end: held(end - 1500, end + 1500) });
+      part(row, 'break', brk - 1500, brk + 1500);
+      part(row, 'round2', r2 - 1500, r2 + 1500);
+      part(row, 'end', end - 1500, end + 1500);
       ok('Attack and defend played through: its break, its second round and its end', lines().includes('assaultRound2'));
+      // Its result shown (10 s), free play: everyone back in their own colours.
+      const f0 = Date.now();
+      while (Date.now() - f0 < 20_000 && lastMode(hall)?.kind !== 'free') await sleep(50);
+      const free = performance.now();
+      await sleep(1500);
+      part(row, 'free', free - 1500, free + 1500);
+      ok('free play once its result has shown', lastMode(hall)?.kind === 'free');
     } else await sleep(3000); // a little played
     const s0 = performance.now();
     await act({ op: 'stop' });
     await sleep(2000);
-    row.stop = held(s0, performance.now());
+    part(row, 'stop', s0, performance.now());
     rows.push(row);
     console.log(`     ${label}: held ${JSON.stringify(row)} ms`);
+  }
+  if (o.routes) {
+    // Started without the host's countdown: from the admin's in-game menu (game.mjs 'mode'), then stopped from it.
+    const menu = [
+      { kind: 'zombies', place: 'house' }, { kind: 'zombies', place: 'church' }, { kind: 'zombies', place: 'sparrenhof' },
+      { kind: 'zombies', place: 'molenhoek' }, { kind: 'flag', place: 'assault' },
+    ];
+    for (const m of menu) {
+      const label = `menu ${m.place === 'assault' ? 'assault' : `${m.kind} ${m.place}`}`;
+      const t0 = performance.now();
+      admin.send({ t: 'mode', ...m });
+      const f0 = Date.now();
+      while (Date.now() - f0 < 10_000 && lastMode(hall)?.kind !== m.kind) await sleep(50);
+      await sleep(2500);
+      ok(`${label}: on`, lastMode(hall)?.kind === m.kind);
+      const row = { game: label };
+      part(row, 'start', t0, performance.now());
+      const s0 = performance.now();
+      admin.send({ t: 'mode', kind: 'free' });
+      await sleep(2000);
+      part(row, 'stop', s0, performance.now());
+      rows.push(row);
+      console.log(`     ${label}: held ${JSON.stringify(row)} ms`);
+    }
+    // A players' room (server/rooms.mjs): the admin opens one at the church, a guest in it starts Zombies there.
+    const opened = await call('POST', '/api/rooms', { place: 'church' }, adminCookie);
+    const id = opened.data?.room?.id;
+    ok('a players\' room is open', !!id, JSON.stringify(opened.data));
+    if (id) {
+      await call('POST', '/api/lockouts', {}, adminCookie);
+      const { r } = await call('POST', '/api/join', { name: `gnroom${run}`, age: true });
+      const log = [];
+      const ws = new WebSocket(`ws://${host}/ws?v=2&room=${encodeURIComponent(id)}`, { headers: { Cookie: cookieOf(r), Origin: o.api } });
+      ws.on('message', (d) => {
+        const m = JSON.parse(String(d));
+        if (m.t === 'ping') return ws.send(JSON.stringify({ t: 'pong', n: m.n }));
+        if (m.t !== 's') log.push(m);
+      });
+      await new Promise((res) => (ws.on('open', res), ws.on('error', res)));
+      await sleep(1500);
+      const t0 = performance.now();
+      ws.send(JSON.stringify({ t: 'mode', kind: 'zombies' }));
+      const f0 = Date.now();
+      while (Date.now() - f0 < 10_000 && log.filter((m) => m.t === 'mode').at(-1)?.mode?.kind !== 'zombies') await sleep(50);
+      await sleep(2500);
+      ok('the room\'s Zombies is on', log.filter((m) => m.t === 'mode').at(-1)?.mode?.kind === 'zombies');
+      const row = { game: 'room zombies church' };
+      part(row, 'start', t0, performance.now());
+      rows.push(row);
+      console.log(`     room zombies church: held ${JSON.stringify(rows.at(-1))} ms`);
+      ws.close();
+      await sleep(1000);
+    }
+    // The Zombies duel (server/duel.mjs), the host's warm-up: both rooms' games at the Sparrenhof at once. Last: it moves
+    // every page into its room (these simple pages do not follow), and the host's Stop ends it.
+    const t0 = performance.now();
+    ok('the host starts the Zombies duel', (await act({ op: 'start', kind: 'duel', duel: 'warmup', minutes: 1 }))?.ok === true);
+    await sleep(13_000);
+    const row = { game: 'duel warmup' };
+    part(row, 'countdown', t0, t0 + 9000);
+    part(row, 'start', t0 + 9000, performance.now());
+    const s0 = performance.now();
+    await act({ op: 'stop' });
+    await sleep(2000);
+    part(row, 'stop', s0, performance.now());
+    rows.push(row);
+    console.log(`     duel warmup: held ${JSON.stringify(row)} ms (lines ${JSON.stringify(lines().slice(-3))})`);
   }
   console.log(`     the longest hold in a countdown, at a start, a round change, an end or a stop, ${N + 1} players and the hall screen (ms):`);
   console.table(rows);
   const worst = Math.max(...rows.flatMap((r) => Object.values(r).filter((v) => typeof v === 'number')));
   ok('no countdown, start, round change, end or stop holds the server over 50 ms', worst <= 50, `${worst} ms`);
+  if (o.holds) {
+    // Measured inside the server (tools/dev/holdWatch.mjs): the longest callback it ran in each part's window.
+    await sleep(1500); // its last second written
+    const { readFileSync } = await import('node:fs');
+    const holds = readFileSync(o.holds, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
+    const epoch = (t) => performance.timeOrigin + t;
+    const inServer = rows.map((r) => {
+      const out = { game: r.game };
+      for (const [key, [from, to]] of Object.entries(windows.get(r) ?? {})) {
+        out[key] = Math.max(0, ...holds.filter((h) => h.t >= epoch(from) && h.t - h.ms <= epoch(to)).map((h) => h.ms));
+      }
+      return out;
+    });
+    console.log('     the same, measured inside the server: its longest callback in each part (ms):');
+    console.table(inServer);
+    const most = Math.max(...inServer.flatMap((r) => Object.values(r).filter((v) => typeof v === 'number')));
+    console.log(`     the longest in all: ${most} ms`);
+  }
   for (const p of [admin, hall, ...players]) p.ws.close();
   await act({ op: 'reset' });
   console.log(failed ? `${failed} failed` : 'all passed');
