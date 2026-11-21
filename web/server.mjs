@@ -43,6 +43,7 @@ import { Interest } from './server/interest.mjs';
 import { Stats } from './server/stats.mjs';
 import { monitor } from './server/monitor.mjs';
 import { metrics, startMetrics } from './server/metrics.mjs';
+import { links } from './server/linkQuality.mjs';
 import { decodePath } from './server/paths.mjs';
 
 const DIST = resolve(import.meta.dirname, 'dist');
@@ -126,7 +127,7 @@ monitor.people = () => {
   };
 };
 // The server's own numbers for Prometheus, on a listener of its own, only when METRICS_PORT is set (server/metrics.mjs).
-metrics.attach({ rooms });
+metrics.attach({ rooms, links });
 startMetrics();
 const accounts = new Accounts(auth, (name, exceptKey) => rooms.online(name, exceptKey));
 rooms.guestRuns = accounts.guestRuns; // a guest's last good Zombies run, kept a while for an account made from that session (server/keepRun.mjs)

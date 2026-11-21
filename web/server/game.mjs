@@ -76,6 +76,7 @@ import { TeamStarts } from './teamStarts.mjs';
 import { truckSpec } from '../shared/assaultFields.mjs';
 import { monitor } from './monitor.mjs';
 import { metrics } from './metrics.mjs';
+import { links } from './linkQuality.mjs';
 import { words } from './words.mjs';
 import { makeKeet } from '../shared/keet.mjs';
 
@@ -711,6 +712,7 @@ export class Game {
     player.movedAt = now;
     player.budget = player.vbudget = 0.5;
     this.players.set(name, player);
+    links.add(ws, name); // its round trip, by WebSocket pings (server/linkQuality.mjs)
     this.roles.set(name, session.role);
     this.hub?.joined(name, this, session); // one place at a time: a connection in the open world or another room ends
     this.auth.log('mp_join', req, { username: name, ...(this.room ? { detail: `room ${this.room.id}` } : {}) });
@@ -3221,6 +3223,11 @@ export class Game {
   pingOf(name) {
     const r = this.players.get(name)?.rttAvg;
     return typeof r === 'number' ? Math.round(r) : null;
+  }
+
+  /** A player's connection this evening for the host (server/linkQuality.mjs link): round trip, jitter, missed pings, reconnects. */
+  link(name) {
+    return links.link(name);
   }
 
   /** Add to someone's totals for the leaderboard (kept in the database): accounts and the admin (Yoshi, 7 and 8 Nov 2026). */

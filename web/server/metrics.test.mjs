@@ -9,6 +9,7 @@ import { Agent, request } from 'node:http';
 import { createServer } from 'node:net';
 import { Game } from './game.mjs';
 import { Rooms } from './rooms.mjs';
+import { LinkQuality } from './linkQuality.mjs';
 import { CLOSES, CONTENT_TYPE, GC_KINDS, KINDS, MESSAGE_TYPES, Metrics, metricsServer, PHASES, PLACES, startMetrics, STATUS, VEHICLES } from './metrics.mjs';
 
 const BUCKETS = ['0.001', '0.002', '0.005', '0.01', '0.02', '0.03', '0.04', '0.05', '0.075', '0.1', '0.25', '+Inf'];
@@ -126,8 +127,9 @@ test('the text is well formed, every sample finite, every label from its list, n
     Object.values(main.cars)[0].driver = HOSTILE[0];
     const r = rooms.create({ username: 'anna', role: 'player' }, 'church').room;
     made[0].players.set(HOSTILE[1], { ws: { readyState: 0, OPEN: 1, close() {} }, role: 'guest' });
+    const links = new LinkQuality({ timer: false });
     const m = new Metrics();
-    m.attach({ rooms });
+    m.attach({ rooms, links });
     m.start();
     for (const t of ['state', 'state', 'chat', ...HOSTILE, '__proto__', 'constructor', 'toString', 42, null]) m.message(t);
     m.drop();
