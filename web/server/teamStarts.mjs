@@ -160,10 +160,10 @@ export class TeamStarts {
    * The places round (x, y, z), ring by ring (`ring`: 0 the middle, 1 the first ring, ...), with the checks of `spread`.
    * `o` (Steal the flag's bases, base): `edge` a Bounds for the map (its depth kept to `inset` m), `keep` circles
    * { x, z, r, solid } no place is in (a solid one, a tent, also blocks the way from the middle), `ok(x, z)` a test of
-   * its own, `most` places at most.
+   * its own, `most` places at most, `cars` false to leave the cars standing now to the caller (places kept for longer).
    */
-  rings(x, y, z, { edge = this.map, inset = 0, keep = [], ok = null, most = MOST } = {}) {
-    const cars = Object.values(this.game.cars ?? {});
+  rings(x, y, z, { edge = this.map, inset = 0, keep = [], ok = null, most = MOST, cars: withCars = true } = {}) {
+    const cars = withCars ? Object.values(this.game.cars ?? {}) : [];
     const solid = keep.filter((c) => c.solid);
     const out = [];
     for (const [i, [r, n]] of RINGS.entries()) {
@@ -189,10 +189,11 @@ export class TeamStarts {
    * its start places `centres` ([x, z, y]) as `spread` spreads round one start: the start places themselves first, then
    * the first ring round each, then the next, none within BASE_GAP m of another, at most BASE_MOST. `o`: as `rings`
    * (edge, inset, keep, ok), and `toward` ({ x, z }), the way out of the base each place faces (faceOut). Each place
-   * { x, y, z, ring, face }.
+   * { x, y, z, ring, face }. From the ground alone (the cars left out): the caller keeps them, and checks the cars when it
+   * picks one.
    */
   base(centres, { toward, ...o } = {}) {
-    const all = centres.flatMap(([x, z], c) => this.rings(x, this.game.standAt(x, z).y, z, { ...o, most: Infinity }).map((q, k) => ({ ...q, c, k })));
+    const all = centres.flatMap(([x, z], c) => this.rings(x, this.game.standAt(x, z).y, z, { ...o, most: Infinity, cars: false }).map((q, k) => ({ ...q, c, k })));
     all.sort((a, b) => a.ring - b.ring || a.c - b.c || a.k - b.k);
     const out = [];
     for (const q of all) {

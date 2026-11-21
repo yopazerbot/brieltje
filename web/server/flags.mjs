@@ -105,6 +105,8 @@ const FORE = 2;
  */
 const REACH = 10;
 const REACH_MIN = 18;
+/** Each Game's bases' start places, by field and side (FlagGame places): the ground never changes while it runs. */
+const PLACES = new WeakMap();
 
 const other = (team) => (team === 'blue' ? 'red' : 'blue');
 /**
@@ -216,14 +218,20 @@ export class FlagGame {
    * inside the field (EDGE_IN m from its edge), clear of what stands at the base (keepOf), never nearer the other base
    * than the base's own start places are (FORE m of slack: the rings grow back and to the sides, not towards the
    * opponents), no further from the stand than its furthest own start place and REACH m (REACH_MIN m at least), BASE_GAP
-   * m apart, each facing the way out of the base (wayOut). Worked out once a game for each base,
-   * from the server's own map.
+   * m apart, each facing the way out of the base (wayOut). Worked out from the server's own map once for each base while
+   * the server runs (PLACES: the ground never changes; a car standing there now is checked as a place is picked).
    */
   places(team) {
     const side = this.swapped ? other(team) : team;
     const key = `${this.field.id}:${side}`;
     let set = this.placeSets.get(key);
     if (set) return set;
+    if (!PLACES.has(this.game)) PLACES.set(this.game, new Map());
+    set = PLACES.get(this.game).get(key);
+    if (set) {
+      this.placeSets.set(key, set);
+      return set;
+    }
     const base = this.field.bases[side];
     const ts = this.game.teamStarts;
     if (ts) {
@@ -239,6 +247,7 @@ export class FlagGame {
     }
     // Never none (a game without the starts' checks, in a test): the base's own start places, facing the stand.
     if (!set?.length) set = base.spawns.map(([x, z, y]) => ({ x, y, z, ring: 0, face: [base.stand[0], base.stand[1]] }));
+    PLACES.get(this.game).set(key, set);
     this.placeSets.set(key, set);
     return set;
   }
@@ -263,7 +272,10 @@ export class FlagGame {
     const foes = live.filter(({ n }) => this.teams[n] === other(team)).map(({ s }) => s);
     const downs = this.downs.filter((d) => d.team === team && now - d.at < DOWN_MS);
     const room = (q) => Math.min(Infinity, ...live.map(({ s }) => Math.hypot(s.x - q.x, s.z - q.z)));
-    const free = places.filter((q) => room(q) >= FREE_R);
+    // A car standing on a place now (one somebody parked there): not that place.
+    const [bx, bz] = this.baseOf(team).stand;
+    const cars = Object.values(this.game.cars ?? {}).filter((c) => Math.hypot(c.x - bx, c.z - bz) < 60);
+    const free = places.filter((q) => room(q) >= FREE_R && cars.every((c) => Math.hypot(c.x - q.x, c.z - q.z) >= CLEAR.car));
     if (!free.length) {
       const q = places.reduce((a, b) => (room(b) > room(a) ? b : a));
       return { spawn: 0, x: q.x, y: q.y, z: q.z, face: q.face };

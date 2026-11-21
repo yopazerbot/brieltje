@@ -198,6 +198,18 @@ test('Attack and defend\'s spawn truck: an attacker comes back on a free spot by
   assert.ok(Math.hypot(p.x - cx, p.z - cz) < 20, 'in the camp');
 });
 
+test('a car somebody parked on a base\'s places: nobody starts in it', () => {
+  const s = crowd(2, 'compact');
+  const { game, f } = s;
+  const [b0] = s.of('blue');
+  const [q] = f.places('blue');
+  game.cars.parked = { id: 'parked', kind: 'modelY', x: q.x, y: q.y, z: q.z, yaw: 0, s: 0, driver: null, passenger: null };
+  for (let i = 0; i < 200; i++) {
+    const p = f.baseSpot(b0);
+    assert.ok(Math.hypot(p.x - q.x, p.z - q.z) >= 3.3, 'not in the parked car');
+  }
+});
+
 test('more players at a base than it has places: the place with the most room, never a stack while one is free', () => {
   const s = crowd(4, 'compact');
   const { game, f } = s;
