@@ -99,6 +99,17 @@ export class Host {
     this.starts = { ...DEFAULT_STARTS }; // the teams game's starts tonight: blue's and red's, each a place's id or a spot's
     this.marks = []; // the host's own spots tonight (mark): { id, x, y, z, near, team }
     this.markN = 0;
+    this.hosted = false; // the host started a game from the host page tonight (startIn; `reset` begins a new evening)
+  }
+
+  /**
+   * A hosted evening (calm): the programme has a game still to come, or the host started a game from the host page since
+   * the server started (or the evening's reset). Free play between the host's games is then calm: no "first to 10 kills"
+   * round starts after a team game and none ends (game.mjs freshRound, damage), until the host starts the next game. On
+   * an ordinary day (no programme, no game from the host page) nothing changes.
+   */
+  calm() {
+    return this.hosted || this.nextIndex < this.programme.length;
   }
 
   // ------------------------------------------------------------------ the game asks
@@ -509,6 +520,7 @@ export class Host {
         this.scores = table();
         this.teamPoints = [0, 0, 0, 0];
         this.history = [];
+        this.hosted = false; // a new evening: calm again once the host starts a game (or while the programme has one to come)
         this.game.goals?.resetTonight();
         return { ok: true };
       case 'guards': // Steal the flag's guards, a test tool: { team, count, skill }, each checked there (server/flagGuards.mjs set)
@@ -582,6 +594,7 @@ export class Host {
     const pull = setTimeout(() => this.countdown?.timer === timer && this.gather(by, !!duel), COUNTDOWN_MS - GATHER_MS);
     pull.unref?.();
     // `open`: the teams game from starts the host chose, "Team against team" in the countdown's line.
+    this.hosted = true; // a hosted evening: calm free play between the games (calm)
     this.countdown = { kind: e.kind, until, timer, pull, place: e.kind === 'flag' ? e.place : undefined, defend: e.kind === 'assault' ? e.defend : undefined, open: e.kind === 'teams' && !(e.blue === DEFAULT_STARTS.blue && e.red === DEFAULT_STARTS.red) };
     this.everywhere(this.countdownMsg(Date.now())); // the open world and every room: the same small line (Yoshi: no card over the game)
     return { ok: true };

@@ -2765,7 +2765,7 @@ export class Game {
     if (real) this.stats(targetName, { deaths: 1 });
     this.broadcast({ t: 'scores', list: this.scoreList() });
     if (real) this.modes.scored(name, targetName);
-    if (shooter.score.kills >= KILL_LIMIT && !this.modes.teamGame) { // in the teams game and Steal the flag the teams' score counts
+    if (shooter.score.kills >= KILL_LIMIT && !this.modes.teamGame && !this.host?.calm?.()) { // in the teams game and Steal the flag the teams' score counts; a hosted evening's free play has no round (server/host.mjs calm)
       this.roundOver = { winner: name, until: now + ROUND_BREAK_MS };
       this.host?.roundWon(name);
       this.broadcast({ t: 'round', winner: name, ms: ROUND_BREAK_MS });
@@ -2968,6 +2968,7 @@ export class Game {
 
   /** A new fighting round, as after a won round (and after the teams game, see Modes). */
   freshRound() {
+    if (this.host?.calm?.() && !this.roundOver) return this.newRound(null); // a hosted evening: the scores back to zero, no new round told (server/host.mjs calm); a round won before it, its banner ended as before
     this.newRound(`New round: first to ${KILL_LIMIT} kills`, 'newRound', { n: KILL_LIMIT });
   }
 
@@ -2984,7 +2985,7 @@ export class Game {
       p.score = { kills: 0, deaths: 0, points: 0 };
       this.scores.set(name, p.score);
     }
-    this.broadcast({ t: 'newround', text, code, args });
+    if (text) this.broadcast({ t: 'newround', text, code, args }); // none (null) in a hosted evening's calm free play
     // Spread round the house's outside start places (gather), each on a spot of their own: the respawn's pick of the three
     // start places stacked thirty players after a team game on three spots, inside each other. In a room as before.
     const back = this.modes.peaceful ? [] : [...this.players].filter(([, p]) => p.state?.armed || !p.alive).map(([name]) => name);
