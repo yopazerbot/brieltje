@@ -1014,3 +1014,69 @@ test('the evening\'s scoreboard: a point for playing, three more for the winners
   s.tick();
   assert.equal(s.game.modes.state.kind, 'free');
 });
+
+test('where a team comes back: away from opponents (teammates don\'t count), never where a teammate was just tagged; nobody near, any spot', () => {
+  const s = four();
+  const f = s.flag();
+  const spawns = s.f.bases.blue.spawns;
+  const [b0, b1] = s.blue;
+  const [r0, r1] = s.red;
+  const at = (n, i) => s.put(n, spawns[i][0], spawns[i][1], spawns[i][2]);
+  const pick = () => {
+    const p = f.baseSpot(b0);
+    return spawns.findIndex(([x, z]) => x === p.x && z === p.z);
+  };
+  const picks = (n) => new Set(Array.from({ length: n }, pick));
+  // Nobody near: the opponents at their own base (as before: any spot, at random); a teammate on a spot changes nothing.
+  s.onStand(r0, 'red');
+  s.onStand(r1, 'red');
+  at(b1, 4);
+  const free = picks(300);
+  assert.ok(free.size >= 5, `any spot when nobody is near (${[...free]})`);
+  assert.ok(free.has(4), 'a teammate on a spot does not keep you off it');
+  // Opponents on the first two spots, the teammate on the last: never beside the opponents.
+  at(r0, 0);
+  at(r1, 1);
+  at(b1, 5);
+  for (let i = 0; i < 200; i++) {
+    const p = f.baseSpot(b0);
+    const foe = Math.min(...[r0, r1].map((n) => Math.hypot(s.game.players.get(n).state.x - p.x, s.game.players.get(n).state.z - p.z)));
+    assert.ok(foe > 5, `away from the opponents (${foe.toFixed(1)} m)`);
+  }
+  assert.ok(picks(300).has(5), 'the teammate\'s spot is still a choice');
+  // A teammate tagged on a spot just now: nobody of the team comes back there for a few seconds.
+  s.onStand(r0, 'red');
+  s.onStand(r1, 'red');
+  at(b1, 2);
+  f.tagged(r0, b1);
+  assert.ok(!picks(300).has(2), 'not where a teammate was just tagged');
+  s.at(9000);
+  assert.ok(picks(300).has(2), 'a few seconds later, that spot again');
+  // A tag of blue's at blue's base keeps no red player off red's own spots.
+  const red = f.baseSpot(r0);
+  assert.ok(s.f.bases.red.spawns.some(([x, z]) => x === red.x && z === red.z), 'red at its own base');
+});
+
+test('back after a tag at your base: the server picks the spot, away from the opponents there and not where you fell', () => {
+  for (let run = 0; run < 20; run++) {
+    const s = four();
+    const spawns = s.f.bases.blue.spawns;
+    const [b0] = s.blue;
+    const [r0, r1] = s.red;
+    const at = (n, i) => s.put(n, spawns[i][0], spawns[i][1], spawns[i][2]);
+    at(b0, 5);
+    at(r0, 0);
+    at(r1, 1);
+    s.tick();
+    const p = s.game.players.get(b0);
+    p.protectedUntil = 0;
+    s.game.damage(r0, s.game.players.get(r0), b0, p, 500, false, 'rifle', s.now());
+    assert.equal(p.alive, false);
+    s.at(BACK_MS);
+    s.game.tick();
+    assert.equal(p.alive, true, 'back');
+    const foe = Math.min(...[r0, r1].map((n) => Math.hypot(s.game.players.get(n).state.x - p.state.x, s.game.players.get(n).state.z - p.state.z)));
+    assert.ok(foe > 5, `away from the opponents (${foe.toFixed(1)} m)`);
+    assert.ok(Math.hypot(p.state.x - spawns[5][0], p.state.z - spawns[5][1]) > 1, 'not on the spot where they were tagged');
+  }
+});

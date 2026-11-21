@@ -69,6 +69,11 @@ export const SWAP_MS = 10_000;
 /** m across from a stand and m over the ground: a helicopter nearer and lower is sent back to its spot (keepStandsFree). */
 export const STAND_KEEP = 14;
 export const STAND_LOW = 8;
+/** m: an opponent further from a start place than this counts as none near it (baseSpot). */
+export const FOE_R = 40;
+/** ms and m: a start place within DOWN_R of where a teammate was tagged in the last DOWN_MS is the last choice. */
+export const DOWN_MS = 8000;
+export const DOWN_R = 3; // the spots stand 3.2 m or more apart (shared/flagFields.mjs)
 
 const other = (team) => (team === 'blue' ? 'red' : 'blue');
 /**
@@ -97,7 +102,9 @@ export class FlagGame {
     /** team -> its flag: at 'home', 'carried' (by a name) or on the 'ground' (since when) */
     this.flags = Object.fromEntries(FLAG_TEAMS.map((t) => [t, this.homeFlag(t)]));
     this.started = now;
-    this.vehicles = { cars: [], bikes: [], helis: [], off: [] };
+    /** Where players were tagged lately: { team (the victim's), x, z, at }, for baseSpot */
+    this.downs = [];
+    this.vehicles ={ cars: [], bikes: [], helis: [], off: [] };
     /** The sides swapped (the host's `swap`): blue plays from red's base and red from blue's. */
     this.swapped = false;
     this.swapAt = -Infinity;
@@ -136,17 +143,27 @@ export class FlagGame {
   }
 
   /**
-   * A start place at the player's base: one of its spots (the least crowded of a few picked at random), on the ground,
-   * facing the stand. For game.mjs respawn ({ spawn, x, y, z, face }), or null for a player on no team.
+   * A start place at the player's base: one of its spots, on the ground, facing the stand. For game.mjs respawn
+   * ({ spawn, x, y, z, face }), or null for a player on no team. The spots are ranked by the nearest opponent within
+   * FOE_R m (teammates don't count: coming back beside your own team is fine), a spot where a teammate was tagged in the
+   * last DOWN_MS last of all, and one of the best (up to three, within 3 m of the best) picked at random. Nobody near:
+   * any spot, at random, as before.
+   * The server's choice alone: no page asks for a spot.
    */
   baseSpot(name) {
     const team = this.teams[name];
     if (!team) return null;
     const base = this.baseOf(team);
-    const others = [...this.game.players].filter(([n, o]) => n !== name && o.alive && o.state).map(([, o]) => o.state);
-    const ranked = base.spawns.map(([x, z, y]) => ({ x, z, y, d: others.length ? Math.min(...others.map((o) => Math.hypot(o.x - x, o.z - z))) : Math.random() }))
-      .sort((a, b) => b.d - a.d);
-    const s = ranked[Math.floor(Math.random() * Math.min(3, ranked.length))];
+    const now = Date.now();
+    const foes = [...this.game.players].filter(([n, o]) => n !== name && o.alive && o.state && this.teams[n] === other(team)).map(([, o]) => o.state);
+    const downs = this.downs.filter((d) => d.team === team && now - d.at < DOWN_MS);
+    const ranked = base.spawns.map(([x, z, y]) => {
+      const foe = Math.min(FOE_R, ...foes.map((o) => Math.hypot(o.x - x, o.z - z)));
+      const hot = downs.some((d) => Math.hypot(d.x - x, d.z - z) < DOWN_R);
+      return { x, z, y, d: foe - (hot ? 1000 : 0) + Math.random() * 0.01 };
+    }).sort((a, b) => b.d - a.d);
+    const best = ranked.filter((q, i) => i < 3 && q.d >= ranked[0].d - 3); // the spots a few metres apart: only the clearly best
+    const s = best[Math.floor(Math.random() * best.length)];
     return { spawn: 0, x: s.x, y: s.y, z: s.z, face: [base.stand[0], base.stand[1]] };
   }
 
@@ -285,10 +302,17 @@ export class FlagGame {
     return { ev: 'dropped', team, name };
   }
 
-  /** A tag of `victim` by `killer` (game.mjs damage via Modes.scored): counts for the tie at the end. */
+  /**
+   * A tag of `victim` by `killer` (game.mjs damage via Modes.scored): counts for the tie at the end, and where it
+   * happened is kept for DOWN_MS so nobody of the victim's team comes back there meanwhile (baseSpot).
+   */
   tagged(killer, victim) {
     const team = this.teams[killer];
     if (team && team !== this.teams[victim]) this.tags[team]++;
+    const st = this.game.players.get(victim)?.state;
+    const now = Date.now();
+    this.downs = this.downs.filter((d) => now - d.at < DOWN_MS).slice(-63);
+    if (st && this.teams[victim]) this.downs.push({ team: this.teams[victim], x: st.x, z: st.z, at: now });
   }
 
   /** A player switches team or leaves: a flag they carry falls where they are. */
