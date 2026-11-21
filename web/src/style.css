@@ -474,13 +474,16 @@ body.touch #killfeed .kf:nth-last-child(n+3) { display: none; } /* the newest tw
 body.touch #toast { font-size: 26px; }
 body.touch #toast small { text-align: center; font-size: 11px; }
 /* The scoreboard (at the end of a round): small, under the round's banner, the other messages
-   make way; the best three and you. */
-body.touch #scoreboard { width: 100%; max-width: 400px; padding: 4px 10px; text-align: left; }
+   make way; everyone in compact rows, scrolled with a finger (a team of 15 at a game night). */
+body.touch #scoreboard {
+  width: 100%; max-width: 300px; padding: 4px 10px; text-align: left; align-self: flex-start; /* clear of the buttons on the right */
+  max-height: calc(100vh - 170px); overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; pointer-events: auto; /* above the health */
+}
 body.touch #scoreboard h2, body.touch #score-goal { display: none; }
-body.touch #score-table { font-size: 13px; }
+body.touch #score-table { font-size: 12px; line-height: 1.2; }
 body.touch #score-table th { padding: 1px 6px; font-size: 10px; }
-body.touch #score-table td { padding: 2px 6px; }
-body.touch #score-table tr:nth-child(n+5):not(.me) { display: none; }
+body.touch #score-table td { padding: 1px 6px; }
+body.touch #score-table .exploring { margin-left: 5px; font-size: 10px; }
 body.touch:has(#scoreboard:not(.hidden)) #hud-top > :is(#death, #killfeed, #toast) { display: none; }
 @media (max-height: 350px) {
   body.touch #score-table tr:first-child { display: none; }
