@@ -25,6 +25,18 @@ const RING_IN = 2.0; // m: the capture ring (a little inside server/flags.mjs CA
 const RING_OUT = 2.25;
 const COLUMN = 34; // m: the base's column
 const COLUMN_DROPPED = 14;
+/** m across from a column's axis: gone when nearer than NEAR (standing on the stand), whole from FAR on. */
+const NEAR = 1.5;
+const FAR = 6;
+const BASE_OPACITY = 0.35;
+const DROPPED_OPACITY = 0.5;
+const CORE_OPACITY = 0.5;
+/** A column's share of its opacity, seen from `eye` (null: whole): from far it marks the base; close to it, it would fill the view. */
+function nearFade(eye: THREE.Vector3 | null, x: number, z: number): number {
+  if (!eye) return 1;
+  const u = (Math.hypot(eye.x - x, eye.z - z) - NEAR) / (FAR - NEAR);
+  return u <= 0 ? 0 : u >= 1 ? 1 : u * u * (3 - 2 * u);
+}
 
 /** A soft upward fade for the columns: opaque at the foot, gone at the top. */
 function fadeTexture(): THREE.Texture {
@@ -78,12 +90,13 @@ const droppedColumnGeo = columnGeo(COLUMN_DROPPED, 0.22);
 // The columns' white core: a thin column inside each, as faint, that edges the colour from far off (sky or brick).
 const baseCoreGeo = columnGeo(COLUMN, 0.07);
 const droppedCoreGeo = columnGeo(COLUMN_DROPPED, 0.06);
-const coreMat = new THREE.MeshBasicMaterial({ color: '#ffffff', alphaMap: fade, transparent: true, opacity: 0.5, depthWrite: false });
+const coreMat = () => new THREE.MeshBasicMaterial({ color: '#ffffff', alphaMap: fade, transparent: true, opacity: CORE_OPACITY, depthWrite: false });
 /** Each team's stand materials, made once and shared by every field's stands (a field change makes no new ones). */
 const teamMats = (color: string) => ({
   band: new THREE.MeshStandardMaterial({ color, roughness: 0.6 }),
   ring: new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.8, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }),
-  column: new THREE.MeshBasicMaterial({ color, alphaMap: fade, transparent: true, opacity: 0.35, depthWrite: false, side: THREE.DoubleSide }),
+  column: new THREE.MeshBasicMaterial({ color, alphaMap: fade, transparent: true, opacity: BASE_OPACITY, depthWrite: false, side: THREE.DoubleSide }),
+  core: coreMat(), // each column's own: it fades with its column (nearFade)
 });
 const standMats: Record<FlagTeam, ReturnType<typeof teamMats>> = { blue: teamMats(FLAG_COLORS.blue), red: teamMats(FLAG_COLORS.red) };
 
@@ -102,8 +115,8 @@ class Flag {
     this.rest = (geo.attributes.position.array as Float32Array).slice();
     this.cloth = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: clothTexture(color), side: THREE.DoubleSide, roughness: 0.8 }));
     this.cloth.castShadow = true;
-    this.column = new THREE.Mesh(droppedColumnGeo, new THREE.MeshBasicMaterial({ color, alphaMap: fade, transparent: true, opacity: 0.5, depthWrite: false, side: THREE.DoubleSide }));
-    const core = new THREE.Mesh(droppedCoreGeo, coreMat);
+    this.column = new THREE.Mesh(droppedColumnGeo, new THREE.MeshBasicMaterial({ color, alphaMap: fade, transparent: true, opacity: DROPPED_OPACITY, depthWrite: false, side: THREE.DoubleSide }));
+    const core = new THREE.Mesh(droppedCoreGeo, coreMat());
     this.column.add(core);
     this.column.visible = false;
     this.root.add(staff, knob, this.cloth);
@@ -179,9 +192,10 @@ export class FlagWorld {
         ring.position.y = 0.04;
         const column = new THREE.Mesh(baseColumnGeo, mats.column);
         column.position.y = PLINTH_H;
-        column.add(new THREE.Mesh(baseCoreGeo, coreMat));
+        column.add(new THREE.Mesh(baseCoreGeo, mats.core));
         stand.add(plinth, band, ring, column);
         stand.userData.ring = ring;
+        stand.userData.column = column;
         stand.traverse((o) => {
           o.userData.ignoreRay = true;
           (o as THREE.Mesh).raycast = () => {};
@@ -199,13 +213,23 @@ export class FlagWorld {
 
   /**
    * Every frame: each flag where the server has it, carried ones on their carrier as drawn now (`where`: a player's feet
-   * and heading, null when not drawn: then the flag isn't either), the cloths waving.
+   * and heading, null when not drawn: then the flag isn't either), the cloths waving. `eye`: the camera, for the columns to
+   * fade out near it (on the stand the base's column filled the screen with the team's colour).
    */
-  update(dt: number, where: (name: string) => { x: number; y: number; z: number; yaw: number } | null): void {
+  update(dt: number, where: (name: string) => { x: number; y: number; z: number; yaw: number } | null, eye: THREE.Vector3 | null = null): void {
     const v = this.view;
     if (!v) return;
     this.time += dt;
     const field = fieldOf(v.field);
+    for (const team of TEAMS) {
+      const stand = this.stands.get(team);
+      if (!stand) continue;
+      const k = nearFade(eye, stand.position.x, stand.position.z);
+      const mats = standMats[team];
+      mats.column.opacity = BASE_OPACITY * k;
+      mats.core.opacity = CORE_OPACITY * k;
+      (stand.userData.column as THREE.Mesh).visible = k > 0;
+    }
     for (const team of TEAMS) {
       const f = v.flags[team];
       const flag = this.flags.get(team)!;
@@ -225,6 +249,10 @@ export class FlagWorld {
         root.position.set(f.x ?? 0, f.y ?? 0, f.z ?? 0);
         root.rotation.set(0.35, 0.8, 0, 'YXZ'); // leaning where it fell
         flag.column.position.copy(root.position);
+        const k = nearFade(eye, root.position.x, root.position.z);
+        (flag.column.material as THREE.MeshBasicMaterial).opacity = DROPPED_OPACITY * k;
+        ((flag.column.children[0] as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = CORE_OPACITY * k;
+        flag.column.visible = k > 0;
         this.last.delete(team);
       } else {
         const at = f.by ? where(f.by) : null;

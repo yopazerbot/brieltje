@@ -4058,7 +4058,7 @@ renderer.setAnimationLoop((now: number) => {
     duelLine.update();
     // Steal the flag: the flags where the server has them, a carried one on its carrier as drawn now; its line and chips.
     games.flagHud?.tickGround(games.flagOn ? games.view.flag ?? null : null, dt);
-    flagWorld.update(dt, flagCarrier);
+    flagWorld.update(dt, flagCarrier, camera.position);
     flagRacks.update(dt);
     assaultCamp.update();
     games.flagHud?.update(games.flagOn ? games.view.flag ?? null : null, me?.username ?? '');
