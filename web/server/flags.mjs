@@ -607,9 +607,9 @@ export class FlagGame {
   }
 
   /**
-   * What every page gets (Modes.view `flag`): the field, each flag's state, the tags, sudden death, how far each team got
-   * the other flag (`way`, whole per cent). `stats` (each player's counts, statsList) with `withStats`: the game's end
-   * (its result showing) and the admin's board.
+   * What every page gets (Modes.view `flag`): the field, each flag's state, the tags, sudden death. With `withStats`
+   * (the game's end, its result showing, and the admin's board): how far each team got the other flag (`way`, whole
+   * per cent) and each player's counts (`stats`, statsList).
    */
   view(now = Date.now(), withStats = false) {
     const flags = {};
@@ -624,7 +624,10 @@ export class FlagGame {
     const v = this.vehicles;
     return {
       field: this.field.id, flags, tags: { ...this.tags }, sudden: this.sudden, swapped: this.swapped || undefined,
-      way: { blue: Math.floor(this.way.blue * 100), red: Math.floor(this.way.red * 100) }, stats: withStats ? this.statsList() : undefined,
+      // `way` (each team's best share of the way with the other flag) only with the counts: at the end and on the admin's
+      // board. While a game plays it would tell every page how far a carried flag has come along the line between the
+      // stands, and a carried flag's place is never sent (above).
+      way: withStats ? { blue: Math.floor(this.way.blue * 100), red: Math.floor(this.way.red * 100) } : undefined, stats: withStats ? this.statsList() : undefined,
       vehicles: v.bikes.length || v.off.length ? { bikes: [...v.bikes], off: [...v.off] } : undefined, racks: this.arms.over ? undefined : this.arms.view(now),
     };
   }

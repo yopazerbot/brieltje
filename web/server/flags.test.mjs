@@ -359,7 +359,8 @@ test('the tie-break: the team that got the other flag furthest (the share of the
   s.tick();
   s.put(b, rx + (bx - rx) * 0.8, rz + (bz - rz) * 0.8, ry);
   s.tick();
-  assert.equal(s.flag().view().way.blue, 80, 'the share of the way, whole per cent');
+  assert.equal(s.flag().view(Date.now(), true).way.blue, 80, 'the share of the way, whole per cent, with the counts');
+  assert.equal(s.flag().view().way, undefined, 'not in what every page gets while the game plays: it would tell how far a carried flag has come');
   s.game.damage(r, s.game.players.get(r), b, s.game.players.get(b), 500, false, 'rifle', s.now());
   s.tick();
   s.at(RETURN_MS);
