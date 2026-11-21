@@ -6,8 +6,9 @@ It writes the GLB (web/public/models/gun-pistol.glb in the repository); the game
 from weapons.glb (weapon.ts GUN_FILES), and weapons.glb keeps its old pistol as the fallback. With preview_dir it also
 renders small pictures there (tools/guns/shop.py previews).
 
-Our own design, no brand, maker or marking on it: a polymer-framed service pistol of the common 9 mm compact size,
-185 mm long, 128 mm high with its magazine, a 25 mm slide over a 24 mm frame, a 102 mm barrel, a 153 mm sight radius.
+Our own design, no brand, maker or marking on it: a polymer-framed 9 mm service pistol, 185 mm long (the common
+compact's length), a 24 mm slide over a 24 mm frame, a 9 mm bore in a 12 mm barrel; its grip, and so its height (154
+mm with the magazine), the old pistol's, which the hands are posed on.
 From the top: a matt black slide with rounded top edges, slanted grooves at its back and its front (the serrations),
 a front chamfered in plan and in profile, the ejection port on the right with the barrel's hood filling it and the
 extractor behind it, the barrel's crown and the recoil spring's guide rod in its nose, a plate over the striker at its
