@@ -28,9 +28,9 @@ import { SPRUCE_WOOD } from './cardTrees';
  */
 
 /** Seconds a new dusk picture takes to blend in. */
-const FADE_S = 2;
+export const FADE_S = 2;
 /** Milliseconds the pictures are kept after a dusk (on Auto the next is an hour or more away). */
-const KEEP_MS = 120_000;
+export const KEEP_MS = 120_000;
 /** Processor time the depth image's meshes may take a frame (ms). */
 const BUDGET_MS = 0.7;
 /** Triangles the depth image may take a frame (about half a millisecond of this PC's graphics chip at most). */
@@ -39,14 +39,14 @@ const TRI_BUDGET = 300_000;
 const TEXELS_PER_FRAME = 2048 * 96;
 
 /** A full-screen pass's quad and camera, for compiling its shader ahead (as world/warmShaders.ts compileQuad). */
-const CORNERS = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute([-1, 3, 0, -1, -1, 0, 3, -1, 0], 3));
-const FLAT_CAM = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+export const CORNERS = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute([-1, 3, 0, -1, -1, 0, 3, -1, 0], 3));
+export const FLAT_CAM = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 
 /** Flat ground covers: their own shadow is a kerb's, and at a low sun they would shade themselves (sunShadow.ts NOT_FAR). */
-const FLAT = /^(pave_|rd_|road|gravel|field_soil|paving|kerb)|^bike-Wheel/;
+export const FLAT = /^(pave_|rd_|road|gravel|field_soil|paving|kerb)|^bike-Wheel/;
 
 /** The depth from the sun, and in the colour whether the nearest thing there is a repeated shape (a crown, a trunk, a post). */
-const REPEATED = new THREE.ShaderMaterial({
+export const REPEATED = new THREE.ShaderMaterial({
   vertexShader: /* glsl */ `
 #include <common>
 #include <batching_pars_vertex>
@@ -73,26 +73,16 @@ void main() { gl_FragColor = vec4(vRepeated, 0.0, 0.0, 1.0); }`,
 });
 
 /**
- * The sun's dimming at dusk, times the contact band's share (the bake's second image). As the bake's (world/groundShade.ts
- * COMBINE): 25 taps on the ground round each spot, a tree's crown letting some of the sun through. A crown here is a
- * repeated shape (the bake's own test: high off the ground and above what stands solid there) at least 3.5 m up.
+ * How much of the sun a tree's crown lets through where it stops the sun at `occ` (0 for anything else): a crown here
+ * is a repeated shape (the bake's own test: high off the ground and above what stands solid there) at least 3.5 m up.
+ * Shared with the walls' dusk pictures (world/wallDusk.ts).
  */
-const SHADOW = /* glsl */ `
-uniform sampler2D sunDepth;
-uniform sampler2D sunRepeated;
-uniform sampler2D contact;
-uniform mat4 sunMatrix;
-uniform vec3 area;
+export const CROWN = /* glsl */ `
 uniform float ground;
-uniform float sunBias;
 uniform sampler2D terrainMap;
 uniform vec3 terrainArea;
 uniform vec2 terrainSize;
-uniform float sunTap;
-uniform vec3 sunDir;
-uniform float sunRange;
 const vec3 SPRUCE_WOOD = vec3(${SPRUCE_WOOD.map((v) => v.toFixed(1)).join(', ')});
-varying vec2 vUv;
 
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float noise(vec2 p) {
@@ -108,7 +98,38 @@ float crownLight(vec3 occ) {
   float spruce = 0.86 * smoothstep(SPRUCE_WOOD.z + 10.0, SPRUCE_WOOD.z - 40.0, distance(occ.xz, SPRUCE_WOOD.xy));
   float gap = noise(occ.xz / 3.1) * 0.6 + noise(occ.xz / 1.3 + 7.0) * 0.4;
   return clamp(mix(0.42, 0.1, spruce) * (0.45 + 1.1 * gap), 0.0, 1.0);
+}`;
+
+/** The relief's heights as a texture, made once and kept (it doesn't change, and making it costs a few milliseconds). */
+let relief: THREE.DataTexture | null = null;
+export function reliefTexture(): THREE.DataTexture {
+  return (relief ??= terrainTexture());
 }
+
+/** The crown's uniforms for a pass (CROWN), on the bake's ground height. */
+export function crownUniforms(u: Record<string, THREE.IUniform>, ground: number): void {
+  u.ground.value = ground;
+  u.terrainMap.value = reliefTexture();
+  u.terrainArea.value.set(terrain.x0, terrain.z0, terrain.step);
+  u.terrainSize.value.set(terrain.nx, terrain.nz);
+}
+
+/**
+ * The sun's dimming at dusk, times the contact band's share (the bake's second image). As the bake's (world/groundShade.ts
+ * COMBINE): 25 taps on the ground round each spot, a tree's crown letting some of the sun through (CROWN).
+ */
+const SHADOW = /* glsl */ `
+uniform sampler2D sunDepth;
+uniform sampler2D sunRepeated;
+uniform sampler2D contact;
+uniform mat4 sunMatrix;
+uniform vec3 area;
+uniform float sunBias;
+uniform float sunTap;
+uniform vec3 sunDir;
+uniform float sunRange;
+varying vec2 vUv;
+${CROWN}
 void main() {
   vec2 xz = area.xy + (vUv * 2.0 - 1.0) * area.z;
   float lit = 0.0;
@@ -168,16 +189,31 @@ interface Sheet {
   job: Job | null;
 }
 
+/**
+ * Who makes dusk pictures of their own from the same scene (the walls' and roofs', world/wallDusk.ts): called each frame
+ * after the ground's step, `free` when the ground took no step (one piece of work a frame, the ground's first).
+ */
+export interface DuskFollower {
+  /** `wanted` and `dir` as DuskShade.step; `low` the sun's height (0 noon to 1 dusk); `near` the area read now (its centre). */
+  step(wanted: boolean, dir: THREE.Vector3, low: number, free: boolean, sources: () => DuskSource[], near: THREE.Vector3 | null): void;
+}
+export const duskFollowers = new Set<DuskFollower>();
+
 export class DuskShade {
   private sheets = new Map<object, Sheet>();
   private pass: FullScreenQuad | null = null;
-  private relief: THREE.DataTexture | null = null;
   private last = performance.now();
+  /** The sun's height as last read (0 noon to 1 dusk: the weather's `sunLow`), for the followers */
+  private low = 0;
+  /** Whether a step of the ground's own work was taken this frame */
+  private worked = false;
   /** When a dusk was last coming or showing, and whether any picture is made or being made */
   private wantedAt = -Infinity;
   private held = false;
   /** Development: the longest step's processor time (ms) and the steps taken, for checking the budget. */
   readonly stats = { longest: 0, longestWhat: '', steps: 0, made: 0 };
+  /** Development: who follows it (their own stats) */
+  readonly followers = duskFollowers;
 
   /** A bake (keyed by its render target) whose dusk picture may be wanted. */
   add(key: object, src: DuskSource): void {
@@ -196,6 +232,7 @@ export class DuskShade {
 
   /** The dusk picture of a bake, and how much of it to show (0: none), for the ground's uniforms. */
   read(key: object | null, low: number): [THREE.Texture | null, number] {
+    this.low = low;
     const s = key ? this.sheets.get(key) : undefined;
     if (!s?.done || low <= 0) return [null, 0];
     return [s.done.texture, low * s.fade * s.fade * (3 - 2 * s.fade)];
@@ -206,6 +243,19 @@ export class DuskShade {
    * keys in `first` before the others (the area read and the whole map's).
    */
   step(wanted: boolean, dir: THREE.Vector3, first: (object | null)[]): boolean {
+    this.worked = false;
+    const dropped = this.groundStep(wanted, dir, first);
+    if (duskFollowers.size) {
+      const near = first[0] ? this.sheets.get(first[0])?.src.centre ?? null : null;
+      for (const f of duskFollowers) f.step(wanted && dir.lengthSq() >= 0.5, dir, this.low, !this.worked, this.sources, near);
+    }
+    return dropped;
+  }
+
+  /** What each bake was made of (for the followers). */
+  private sources = (): DuskSource[] => [...this.sheets.values()].map((s) => s.src);
+
+  private groundStep(wanted: boolean, dir: THREE.Vector3, first: (object | null)[]): boolean {
     const now = performance.now();
     const dt = Math.min(0.1, (now - this.last) / 1000);
     this.last = now;
@@ -238,6 +288,7 @@ export class DuskShade {
       what = working.job!.phase;
       this.work(working, working.job!);
     }
+    this.worked = true;
     const ms = performance.now() - t0;
     this.stats.steps++;
     if (ms > this.stats.longest) {
@@ -427,7 +478,6 @@ export class DuskShade {
   /** A band of rows of the dusk picture; the last one makes its smaller copies, and the picture is in. */
   private shadowStep(s: Sheet, job: Job): void {
     const { renderer, ground, centre, half, size, contact } = s.src;
-    this.relief ??= terrainTexture(); // kept: the relief doesn't change, and making it costs a few milliseconds
     const u = this.shadowPass().uniforms;
     const cam = job.cam;
     u.sunDepth.value = job.depth.depthTexture;
@@ -435,11 +485,8 @@ export class DuskShade {
     u.contact.value = contact;
     u.sunMatrix.value.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
     u.area.value.set(centre.x, centre.z, half);
-    u.ground.value = ground;
+    crownUniforms(u, ground);
     u.sunBias.value = job.bias / (cam.far - cam.near);
-    u.terrainMap.value = this.relief;
-    u.terrainArea.value.set(terrain.x0, terrain.z0, terrain.step);
-    u.terrainSize.value.set(terrain.nx, terrain.nz);
     u.sunTap.value = job.tap;
     u.sunDir.value.copy(s.dir);
     u.sunRange.value = cam.far - cam.near;
