@@ -30,6 +30,10 @@
 //   swap is checked there (admin only, this game played, SWAP_MS), and a capture counts for the carrier's team as it is
 //   at that tick, only with that team's own flag home;
 // - protected touches: taking or returning a flag ends spawn protection, so nobody carries one protected.
+// - spawn forgery and spawn camping: where a player starts and comes back is the server's choice alone (baseSpot), from
+//   the positions it holds; no message asks for a place. A free place only (nobody within FREE_R m), away from the
+//   opponents there, never where a teammate was just tagged; every place outside the locked homes and their gardens
+//   (server/teamStarts.mjs base). Tests: server/basePlaces.test.mjs.
 // Nothing here is stored or logged.
 
 import { readFileSync } from 'node:fs';
@@ -45,27 +49,6 @@ const BOUNDS = loadBounds(JSON.parse(readFileSync(new URL('../shared/bounds.json
 const BIKES = JSON.parse(readFileSync(new URL('../shared/bike.json', import.meta.url), 'utf8')).bikes;
 /** Each field's edge, worked out once (game.mjs fence while the game is played). */
 const EDGES = Object.fromEntries(Object.values(FIELDS).map((f) => [f.id, fieldEdge(f, BOUNDS)]));
-/**
- * A base's start places for a big team (baseSpot): its own six first, then a ring of six places 1.5 m round each, then
- * twelve 2.9 m round each: about a hundred, 1.5 m apart, each on open ground at the base's height (game.mjs standAt)
- * inside the field. `free`: m from anyone for a place to count as free. Worked out once a base (the ground never changes).
- */
-const SPREAD = { rings: [[0, 1], [1.5, 6], [2.9, 12]], free: 1.2 };
-const ROUND = new WeakMap();
-function placesRound(base, game, edge) {
-  if (!ROUND.has(base)) {
-    // No further from the stand than its own furthest start place: the base, not beyond it.
-    const fromStand = (x, z) => Math.hypot(x - base.stand[0], z - base.stand[1]);
-    const reach = Math.max(...base.spawns.map(([x, z]) => fromStand(x, z)));
-    ROUND.set(base, SPREAD.rings.map(([r, n]) => base.spawns.flatMap(([x, z, y]) => Array.from({ length: n }, (_, k) => {
-      if (!r) return { x, z, y };
-      const q = { x: Math.round((x + r * Math.cos((k / n) * 2 * Math.PI)) * 100) / 100, z: Math.round((z + r * Math.sin((k / n) * 2 * Math.PI)) * 100) / 100 };
-      const ground = game.standAt?.(q.x, q.z);
-      return ground?.ok && Math.abs(ground.y - y) < 0.6 && edge.inside(q.x, q.z) && fromStand(q.x, q.z) <= reach ? { ...q, y: Math.round(ground.y * 100) / 100 } : null;
-    }).filter(Boolean))));
-  }
-  return ROUND.get(base);
-}
 /** ms: the default clock. */
 export const FLAG_MS = 12 * 60_000;
 /** ms of sudden death after a level clock. */
@@ -95,6 +78,33 @@ export const FOE_R = 40;
 /** ms and m: a start place within DOWN_R of where a teammate was tagged in the last DOWN_MS is the last choice. */
 export const DOWN_MS = 8000;
 export const DOWN_R = 3; // the spots stand 3.2 m or more apart (shared/flagFields.mjs)
+/** m: a place with anyone standing within this of it is taken (baseSpot): nobody starts inside another. */
+export const FREE_R = 1.2;
+/**
+ * m and the angle's cosine: someone this near straight ahead of a place or behind it (all of a base's places face its
+ * way out) would fill a player's first view, or stand in theirs; such a place counts as LINE_COST m nearer the opponents
+ * (baseSpot: past the best three, while others are free).
+ */
+const LINE_M = 3.2;
+const LINE_COS = Math.cos((40 * Math.PI) / 180); // 30 degrees each way of the view, and the places' ways differ a little
+const LINE_COST = 4;
+/**
+ * m kept clear round what stands at a base (places): the stand (its touch and capture ring), the bazooka rack (its
+ * take), a helicopter's spot (its rotor), a parked car (the truck), a bike, a crate, a camp's lamp, tent and supply truck.
+ */
+const CLEAR = Object.freeze({ stand: 3, rack: 2.8, heli: 8, car: 3.4, truck: 5, bike: 1.2, crate: 1.5, lamp: 1.2, tent: 4.6, supply: 4.2 });
+/**
+ * m from the base's edge (a field's band) to a place, and how much nearer the other base than the base's own start places
+ * a place may be (places).
+ */
+const EDGE_IN = 1.5;
+const FORE = 2;
+/**
+ * m a place may be further from its stand than the base's furthest own start place (the base, not beyond it), and m
+ * from the stand every base may reach (a camp's own start places stand 6.5 m from its flag: room for a team of 30).
+ */
+const REACH = 10;
+const REACH_MIN = 18;
 
 const other = (team) => (team === 'blue' ? 'red' : 'blue');
 /**
@@ -104,6 +114,33 @@ const other = (team) => (team === 'blue' ? 'red' : 'blue');
  */
 const safeAt = (x, y, z) => (homeAt(x, z, y) ? 'home' : null);
 const round = (v) => Math.round(v * 100) / 100;
+
+/**
+ * What stands at `field`'s bases, as circles no start place is in (places): both stands and racks, the helicopters'
+ * spots, the parked cars and bikes; Attack and defend's crates, and its camp's lamps, tents and supply truck (solid: no
+ * place behind them either, the page's walls).
+ */
+function keepOf(field) {
+  const k = [];
+  const add = (x, z, r, solid = false) => k.push({ x, z, r, solid });
+  for (const t of FLAG_TEAMS) {
+    const b = field.bases[t];
+    add(b.stand[0], b.stand[1], CLEAR.stand);
+    if (b.rack) add(b.rack[0], b.rack[1], CLEAR.rack);
+    const h = field.heli?.[t];
+    if (h) add(h.x, h.z, CLEAR.heli);
+    for (const c of field.vehicles?.[t].cars ?? []) add(c.x, c.z, c.kind.startsWith('truck') ? CLEAR.truck : CLEAR.car);
+    for (const c of field.vehicles?.[t].bikes ?? []) add(c.x, c.z, CLEAR.bike);
+  }
+  const a = field.assault;
+  if (a) {
+    for (const c of [...a.crates, ...a.camp.crates]) add(c.at[0], c.at[1], CLEAR.crate);
+    for (const [x, z] of a.camp.lamps) add(x, z, CLEAR.lamp);
+    for (const [x, z] of a.camp.tents) add(x, z, CLEAR.tent, true);
+    add(a.camp.supply[0], a.camp.supply[1], CLEAR.supply, true);
+  }
+  return k;
+}
 
 export class FlagGame {
   /**
@@ -125,6 +162,8 @@ export class FlagGame {
     this.started = now;
     /** Where players were tagged lately: { team (the victim's), x, z, at }, for baseSpot */
     this.downs = [];
+    /** Each base's start places, by field and side, worked out at its first use (places) */
+    this.placeSets = new Map();
     this.vehicles ={ cars: [], bikes: [], helis: [], off: [] };
     /** The sides swapped (the host's `swap`): blue plays from red's base and red from blue's. */
     this.swapped = false;
@@ -163,37 +202,88 @@ export class FlagGame {
     return null;
   }
 
+  /** Where the places of the base on `side` (the field's blue or red) face: their own stand, the field beyond it. */
+  wayOut(side) {
+    const [x, z] = this.field.bases[side].stand;
+    return { x, z };
+  }
+
   /**
-   * A start place at the player's base: one of its spots, on the ground, facing the stand. For game.mjs respawn
-   * ({ spawn, x, y, z, face }), or null for a player on no team. The spots are ranked by the nearest opponent within
-   * FOE_R m (teammates don't count: coming back beside your own team is fine), a spot where a teammate was tagged in the
-   * last DOWN_MS last of all, and one of the best (up to three, within 3 m of the best) picked at random. Nobody near:
-   * any spot, at random, as before. Someone already on the spot picked: the nearest free place round it (a big team).
+   * The start places of the base `team` plays from: one for every player of a team and more (a team of 30 has room), so
+   * nobody starts inside another. Round the base's own start places (shared/flagFields.mjs spawns) as the team deathmatch
+   * spreads round its start (server/teamStarts.mjs base): the start places first, then rings round them, each place on
+   * free ground reached without crossing a wall, out of the water, the homes (1.5 m from their walls) and their gardens,
+   * inside the field (EDGE_IN m from its edge), clear of what stands at the base (keepOf), never nearer the other base
+   * than the base's own start places are (FORE m of slack: the rings grow back and to the sides, not towards the
+   * opponents), no further from the stand than its furthest own start place and REACH m (REACH_MIN m at least), BASE_GAP
+   * m apart, each facing the way out of the base (wayOut). Worked out once a game for each base,
+   * from the server's own map.
+   */
+  places(team) {
+    const side = this.swapped ? other(team) : team;
+    const key = `${this.field.id}:${side}`;
+    let set = this.placeSets.get(key);
+    if (set) return set;
+    const base = this.field.bases[side];
+    const ts = this.game.teamStarts;
+    if (ts) {
+      const [sx, sz] = base.stand;
+      const [ox, oz] = this.field.bases[other(side)].stand;
+      const d = Math.hypot(ox - sx, oz - sz) || 1;
+      const ux = (ox - sx) / d, uz = (oz - sz) / d; // from this stand towards the other base
+      const fore = (x, z) => (x - sx) * ux + (z - sz) * uz;
+      const max = Math.max(...base.spawns.map(([x, z]) => fore(x, z))) + FORE;
+      const reach = Math.max(REACH_MIN, ...base.spawns.map(([x, z]) => Math.hypot(x - sx, z - sz) + REACH));
+      const ok = (x, z) => fore(x, z) <= max && Math.hypot(x - sx, z - sz) <= reach;
+      set = ts.base(base.spawns, { edge: this.edge, inset: EDGE_IN, keep: keepOf(this.field), toward: this.wayOut(side), ok });
+    }
+    // Never none (a game without the starts' checks, in a test): the base's own start places, facing the stand.
+    if (!set?.length) set = base.spawns.map(([x, z, y]) => ({ x, y, z, ring: 0, face: [base.stand[0], base.stand[1]] }));
+    this.placeSets.set(key, set);
+    return set;
+  }
+
+  /**
+   * A start place at the player's base (places), on the ground, facing the way out. For game.mjs respawn
+   * ({ spawn, x, y, z, face }), or null for a player on no team. Only a free place: nobody standing within FREE_R m of it
+   * (a teammate, an opponent, a guard). The free places are ranked by the nearest opponent within FOE_R m (teammates
+   * don't count: coming back beside your own team is fine), a place where a teammate was tagged in the last DOWN_MS
+   * last of all, one with someone right ahead of it or behind it (LINE_M) a little lower, and nobody near, the inner
+   * places first (the base's own start places, then the first ring, ...); one of the best (up to three, within 3 m of
+   * the best) picked at random. Every place taken (more players at a base than it has places): the one with the most
+   * room round it.
    * The server's choice alone: no page asks for a spot.
    */
   baseSpot(name) {
     const team = this.teams[name];
     if (!team) return null;
-    const base = this.baseOf(team);
+    const places = this.places(team);
     const now = Date.now();
-    const alive = [...this.game.players].filter(([n, o]) => n !== name && o.alive && o.state);
-    const foes = alive.filter(([n]) => this.teams[n] === other(team)).map(([, o]) => o.state);
+    const live = [...this.game.players].filter(([n, o]) => n !== name && o.alive && o.state).map(([n, o]) => ({ n, s: o.state }));
+    const foes = live.filter(({ n }) => this.teams[n] === other(team)).map(({ s }) => s);
     const downs = this.downs.filter((d) => d.team === team && now - d.at < DOWN_MS);
-    const ranked = base.spawns.map(([x, z, y]) => {
-      const foe = Math.min(FOE_R, ...foes.map((o) => Math.hypot(o.x - x, o.z - z)));
-      const hot = downs.some((d) => Math.hypot(d.x - x, d.z - z) < DOWN_R);
-      return { x, z, y, d: foe - (hot ? 1000 : 0) + Math.random() * 0.01 };
+    const room = (q) => Math.min(Infinity, ...live.map(({ s }) => Math.hypot(s.x - q.x, s.z - q.z)));
+    const free = places.filter((q) => room(q) >= FREE_R);
+    if (!free.length) {
+      const q = places.reduce((a, b) => (room(b) > room(a) ? b : a));
+      return { spawn: 0, x: q.x, y: q.y, z: q.z, face: q.face };
+    }
+    const ranked = free.map((q) => {
+      const foe = Math.min(FOE_R, ...foes.map((o) => Math.hypot(o.x - q.x, o.z - q.z)));
+      const hot = downs.some((d) => Math.hypot(d.x - q.x, d.z - q.z) < DOWN_R);
+      // Someone right ahead or behind: the places of a base all face about one way.
+      const fl = Math.hypot(q.face[0] - q.x, q.face[1] - q.z) || 1;
+      const inLine = live.some(({ s }) => {
+        const dx = s.x - q.x, dz = s.z - q.z;
+        const d = Math.hypot(dx, dz);
+        return d < LINE_M && Math.abs((dx * (q.face[0] - q.x) + dz * (q.face[1] - q.z)) / (d * fl)) > LINE_COS;
+      });
+      const inner = q.ring * 0.5 * (foe / FOE_R); // nobody near: the inner places first; opponents near: their distance counts
+      return { q, d: foe - (hot ? 1000 : 0) - (inLine ? LINE_COST : 0) - inner + Math.random() * 0.01 };
     }).sort((a, b) => b.d - a.d);
-    const best = ranked.filter((q, i) => i < 3 && q.d >= ranked[0].d - 3); // the spots a few metres apart: only the clearly best
-    const spot = best[Math.floor(Math.random() * best.length)];
-    // Someone already stands on it (a teammate, a team of 30 at six spots): the nearest free place of the base's (its six
-    // and the rings round them, placesRound; the nearer metre first, then the side away from the opponents), never on top
-    // of anyone. None free: on it, as before.
-    const taken = (q) => alive.some(([, o]) => Math.hypot(o.state.x - q.x, o.state.z - q.z) < SPREAD.free);
-    const near = (q) => Math.round(Math.hypot(q.x - spot.x, q.z - spot.z));
-    const away = (q) => Math.min(FOE_R, ...foes.map((o) => Math.hypot(o.x - q.x, o.z - q.z)));
-    const s = !taken(spot) ? spot : placesRound(base, this.game, this.edge).flat().filter((q) => !taken(q)).sort((a, b) => near(a) - near(b) || away(b) - away(a))[0] ?? spot;
-    return { spawn: 0, x: s.x, y: s.y, z: s.z, face: [base.stand[0], base.stand[1]] };
+    const best = ranked.filter((r, i) => i < 3 && r.d >= ranked[0].d - 3); // only the clearly best
+    const { q } = best[Math.floor(Math.random() * best.length)];
+    return { spawn: 0, x: q.x, y: q.y, z: q.z, face: q.face };
   }
 
   /** Whether player `name` (`p`) may touch a flag now: alive, on foot or on a bike, not in a car, a helicopter or a drop. */

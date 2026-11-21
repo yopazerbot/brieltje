@@ -1015,7 +1015,7 @@ test('the evening\'s scoreboard: a point for playing, three more for the winners
   assert.equal(s.game.modes.state.kind, 'free');
 });
 
-test('where a team comes back: away from opponents (teammates don\'t count), never where a teammate was just tagged; nobody near, any spot', () => {
+test('where a team comes back: a free place, away from opponents (teammates don\'t count), never where a teammate was just tagged; nobody near, any of the base\'s own spots', () => {
   const s = four();
   const f = s.flag();
   const spawns = s.f.bases.blue.spawns;
@@ -1024,19 +1024,24 @@ test('where a team comes back: away from opponents (teammates don\'t count), nev
   const at = (n, i) => s.put(n, spawns[i][0], spawns[i][1], spawns[i][2]);
   const pick = () => {
     const p = f.baseSpot(b0);
-    // The spot picked: the one it is on, or beside when someone stands on it (server/flags.mjs placesRound: never on top).
-    const d = spawns.map(([x, z]) => Math.hypot(x - p.x, z - p.z));
-    return d.indexOf(Math.min(...d));
+    // The base's own spot it is on, or -1 (a place of the rings round them: server/flags.mjs places).
+    return spawns.findIndex(([x, z]) => x === p.x && z === p.z);
   };
   const picks = (n) => new Set(Array.from({ length: n }, pick));
-  // Nobody near: the opponents at their own base (as before: any spot, at random); a teammate on a spot changes nothing.
+  // Nobody near: the opponents at their own base; any of the base's own spots at random, but never the one a teammate
+  // stands on (nobody starts inside another).
   s.onStand(r0, 'red');
   s.onStand(r1, 'red');
   at(b1, 4);
   const free = picks(300);
-  assert.ok(free.size >= 5, `any spot when nobody is near (${[...free]})`);
-  assert.ok(free.has(4), 'a teammate on a spot does not keep you off it');
-  // Opponents on the first two spots, the teammate on the last: never beside the opponents.
+  assert.ok(free.size >= 4 && !free.has(-1), `any free spot of the base's own when nobody is near (${[...free]})`);
+  assert.ok(!free.has(4), 'a teammate on a spot: taken');
+  // A teammate a step beside a spot (to its side, not in its view): that spot is still free.
+  const [sx, sz] = s.stand('blue');
+  const d4 = Math.hypot(sx - spawns[4][0], sz - spawns[4][1]);
+  s.put(b1, spawns[4][0] + ((sz - spawns[4][1]) / d4) * 1.6, spawns[4][1] - ((sx - spawns[4][0]) / d4) * 1.6, spawns[4][2]);
+  assert.ok(picks(300).has(4), 'a teammate beside a spot does not keep you off it');
+  // Opponents on the first two spots, the teammate on the last: never beside the opponents, never on the teammate.
   at(r0, 0);
   at(r1, 1);
   at(b1, 5);
@@ -1044,13 +1049,19 @@ test('where a team comes back: away from opponents (teammates don\'t count), nev
     const p = f.baseSpot(b0);
     const foe = Math.min(...[r0, r1].map((n) => Math.hypot(s.game.players.get(n).state.x - p.x, s.game.players.get(n).state.z - p.z)));
     assert.ok(foe > 5, `away from the opponents (${foe.toFixed(1)} m)`);
+    assert.ok(Math.hypot(p.x - spawns[5][0], p.z - spawns[5][1]) >= 1.2, 'not on the teammate');
   }
-  assert.ok(picks(300).has(5), 'the teammate\'s spot is still a choice');
-  // A teammate tagged on a spot just now: nobody of the team comes back there for a few seconds.
+  // Teammates don't count: one beside the place furthest from the opponents leaves its neighbours a choice.
+  const far = f.places('blue').map((q) => ({ q, d: Math.min(...[r0, r1].map((n) => Math.hypot(s.game.players.get(n).state.x - q.x, s.game.players.get(n).state.z - q.z))) })).sort((a, b) => b.d - a.d)[0].q;
+  s.put(b1, far.x + 1.3, far.z, far.y);
+  const near = Array.from({ length: 300 }, () => f.baseSpot(b0)).some((p) => Math.hypot(p.x - (far.x + 1.3), p.z - far.z) < 4);
+  assert.ok(near, 'beside a teammate is still a choice');
+  // A teammate tagged on a spot just now (and gone from it): nobody of the team comes back there for a few seconds.
   s.onStand(r0, 'red');
   s.onStand(r1, 'red');
   at(b1, 2);
   f.tagged(r0, b1);
+  s.onStand(b1, 'blue');
   assert.ok(!picks(300).has(2), 'not where a teammate was just tagged');
   s.at(9000);
   assert.ok(picks(300).has(2), 'a few seconds later, that spot again');

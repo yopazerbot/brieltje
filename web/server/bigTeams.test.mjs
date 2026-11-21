@@ -3,8 +3,8 @@ import test from 'node:test';
 import { Game } from './game.mjs';
 
 // Teams of 30 (a LAN night of 60, the host's limit raised: server/game.mjs DEFAULT_PLAYERS): Steal the flag's and
-// Attack and defend's start places (server/flags.mjs baseSpot) put everyone at their own base, spread over rings round
-// the six places, never two in one spot.
+// Attack and defend's start places (server/flags.mjs places and baseSpot) put everyone at their own base, spread over
+// rings round the six places, never two in one spot (more: server/basePlaces.test.mjs).
 
 function setup() {
   let clock = 1_800_000_000_000;
@@ -32,8 +32,14 @@ function spread(s) {
   const at = [...s.game.players].filter(([n]) => teams[n]).map(([n, p]) => ({ n, team: teams[n], x: p.state.x, z: p.state.z }));
   let closest = Infinity;
   for (let i = 0; i < at.length; i++) for (let j = i + 1; j < at.length; j++) closest = Math.min(closest, Math.hypot(at[i].x - at[j].x, at[i].z - at[j].z));
-  const far = Math.max(...at.map((p) => Math.min(...f.baseOf(p.team).spawns.map(([x, z]) => Math.hypot(p.x - x, p.z - z)))));
-  return { at, closest, far, inside: at.every((p) => f.edge.inside(p.x, p.z)) };
+  // Each on a place of their own base's (server/flags.mjs places: checked ground, facing out), and how much further from
+  // the stand than the base's own furthest start place.
+  const placed = at.every((p) => f.places(p.team).some((q) => q.x === p.x && q.z === p.z));
+  const beyond = Math.max(...at.map((p) => {
+    const [sx, sz] = f.baseOf(p.team).stand;
+    return Math.hypot(p.x - sx, p.z - sz) - Math.max(...f.baseOf(p.team).spawns.map(([x, z]) => Math.hypot(x - sx, z - sz)));
+  }));
+  return { at, closest, placed, beyond, inside: at.every((p) => f.edge.inside(p.x, p.z)) };
 }
 
 for (const [field, opts] of [['compact', {}], ['village', {}], ['assault', { defend: 'blue' }]]) {
@@ -45,7 +51,8 @@ for (const [field, opts] of [['compact', {}], ['village', {}], ['assault', { def
     const r = spread(s);
     assert.equal(r.at.length, 60, 'everyone on a team');
     assert.ok(r.closest >= 1.2, `the closest two ${r.closest.toFixed(2)} m apart`);
-    assert.ok(r.far <= 3, `everyone within 3 m of one of their base's start places (the farthest ${r.far.toFixed(1)} m)`);
+    assert.ok(r.placed, 'everyone on a place of their own base');
+    assert.ok(r.beyond <= 12, `the base, not beyond it: at most ${r.beyond.toFixed(1)} m further from the stand than its own furthest start place`);
     assert.ok(r.inside, 'everyone inside the field');
   });
 }

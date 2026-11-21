@@ -39,7 +39,7 @@
 import { homeAt } from '../shared/homes.mjs';
 import { ASSAULT, ROUND_FIELDS, progressOf } from '../shared/assaultFields.mjs';
 import { fieldOf } from '../shared/flagFields.mjs';
-import { FlagGame, REGRAB_MS, RETURN_MS, TOUCH } from './flags.mjs';
+import { FREE_R, FlagGame, REGRAB_MS, RETURN_MS, TOUCH } from './flags.mjs';
 import { AssaultArms, AssaultSupply } from './assaultSupply.mjs';
 
 const other = (team) => (team === 'blue' ? 'red' : 'blue');
@@ -120,10 +120,16 @@ export class AssaultGame extends FlagGame {
     return c;
   }
 
+  /** Where a base's start places face (server/flags.mjs places): the defenders their stand, the camp the defenders. */
+  wayOut(side) {
+    return super.wayOut(side === 'red' ? 'blue' : side);
+  }
+
   /**
-   * Where `name` comes back (game.mjs respawn): a defender at one of their start places, facing their stand; an attacker
-   * by the spawn truck when it may be one (a free spot behind or beside it, inside the edge, never into a home), else at
-   * the camp, facing the defenders.
+   * Where `name` comes back (game.mjs respawn): a defender at one of their start places (server/flags.mjs baseSpot: a
+   * free one, facing out past their stand); an attacker by the spawn truck when it may be one (a free spot behind or
+   * beside it: nobody within FREE_R m; inside the edge, never into a home), else at a free place of the camp, facing the
+   * defenders.
    */
   baseSpot(name) {
     const team = this.teams[name];
@@ -148,12 +154,11 @@ export class AssaultGame extends FlagGame {
       }).filter((q) => q.ok && Math.abs(q.y - truck.y) < 1 && fence.inside(q.x, q.z) && !homeAt(q.x, q.z, q.y) && (!p || g.gate.mayStand(p, q.x, q.y, q.z)));
       const others = [...g.players].filter(([n, o]) => n !== name && o.alive && o.state).map(([, o]) => o.state);
       const room = (q) => Math.min(Infinity, ...others.map((o) => Math.hypot(o.x - q.x, o.z - q.z)));
-      const free = spots.sort((a, b) => room(b) - room(a));
-      // All six taken (a big team back at once): the camp's places, spread (flags.mjs baseSpot).
-      if (free.length && room(free[0]) >= 1.2) return { spawn: 0, x: free[0].x, y: free[0].y, z: free[0].z, face: [stand[0], stand[1]] };
+      // All six taken (a big team back at once): a free place of the camp's (flags.mjs baseSpot).
+      const free = spots.filter((q) => room(q) >= FREE_R).sort((a, b) => room(b) - room(a));
+      if (free.length) return { spawn: 0, x: free[0].x, y: free[0].y, z: free[0].z, face: [stand[0], stand[1]] };
     }
-    const spot = super.baseSpot(name);
-    return spot ? { ...spot, face: [stand[0], stand[1]] } : null;
+    return super.baseSpot(name);
   }
 
   /**
