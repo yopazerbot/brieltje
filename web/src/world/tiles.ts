@@ -283,6 +283,11 @@ export class Tiles {
     this.sets.push(set);
     for (const run of set.runs) this.range(set, run);
     this.wait = 0;
+    // The tiles' own pieces are merged now. The closures made here (each mesh's shadow hooks, a porch lamp's empty
+    // raycast) keep this call's scope, and with it these maps and every tile's unmerged geometry: some 110 MB of arrays
+    // on a phone's start, held for good (a heap snapshot's retainers). Let them go.
+    merged.clear();
+    shapes.clear();
   }
 
   /**
