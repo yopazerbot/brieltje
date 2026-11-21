@@ -27,7 +27,8 @@ Frame and nodes as tools/weapons.py's pistol, so the page reads it the same: the
 metres, the origin where the web of the right hand sits on the grip. pistol (an empty), pistol_body, pistol_slide
 (pivot as before), pistol_mag (extras "out"), pistol_muzzle (the crown), pistol_sight (the front sight's top),
 pistol_kit (Paintball's air cartridge, as before), pistol_hands with pistol_handR and pistol_handL (weapons.py's own
-poses: the grip, the trigger and the frame's lines are those of the pistol in weapons.py). The materials are
+poses: the grip, the trigger and the frame's lines are those of the pistol in weapons.py; the right palm turned so the
+web of the hand closes over the backstrap, as you see it when you aim: held()). The materials are
 weapons.py's names (Steel, Dark, Polymer, Grip, Dot, Brass), so the game's finish and the paint look take them:
 the sights, the levers and the magazine's body Dark, the frame and the magazine's base Polymer, the barrel, the guide
 rod and the pins Steel, the stippling Grip; the slide has a name of its own, PistolSlide (a glossier black than Dark,
@@ -225,14 +226,34 @@ kit = [lathe("tank", [(0.06, 0), (0.062, 0.006), (0.066, 0.0095), (0.072, 0.0105
        lathe("ring", [(0.07, 0), (0.07, 0.0115), (0.077, 0.0115), (0.077, 0)], M["KitTrim"], 14, (0, 0, -0.022))]
 
 # ---- The hands: tools/weapons.py's pistol hands, posed on the same grip ------------------------
+# The right forearm leaves further to the right than weapons.py's, so aimed the two arms come in from the corners.
 H = S.hands_kit()
 Wrap, hand = H["Wrap"], H["hand"]
 gw = Wrap((0, -0.0005, -0.006), (0, -0.017, -0.092), (0, 1, 0), 0.0245, 0.0148)
-right = hand("pistol_handR", gw,
+# The line the right palm faces: 5 cm left of the grip's axis and 3 cm ahead of it (see held).
+PALM = Wrap(Vector(gw.C) + Vector((-0.05, 0.03, 0)), (0, -0.017, -0.092), (0, 1, 0), 0.0245, 0.0148)
+
+
+def held(name, wrap, fingers, palm, wrist, fore, thumb, index=None, side=1):
+    """weapons.py's hand(), with the palm turned to face `palm`'s axis instead of the grip's: the sculpt's palm is flat,
+    so facing the grip's own axis from the knuckles it lies along the grip's right side and leaves the backstrap bare;
+    turned towards a line ahead of and left of the grip, its heel comes round behind the backstrap (the web of the
+    hand high under the beavertail, as a shooter holds), the fingers still on their lines round the grip."""
+    lines = [index[0]] if index else []
+    lines += [wrap.curl(t, deg0, step, length, r * 0.95, slope) for (t, deg0, step, length, r, slope) in fingers]
+    parts = H["real_hand"](name, lines, thumb[0], wrist, side, palm, fore)
+    obj = S.join(name, parts)
+    for p in obj.data.polygons:
+        p.use_smooth = True
+    mid_t = sum(f[0] for f in fingers) / len(fingers)
+    obj["grip"] = S.gl(wrap.C + wrap.A * mid_t - Vector(wrist))
+    return S.pivot(obj, wrist)
+
+
+right = held("pistol_handR", gw,
              [(0.034, 25, -1, 0.068, 0.0098, 0.0), (0.054, 27, -1, 0.063, 0.0094, 0.0), (0.073, 31, -1, 0.046, 0.0086, 0.0)],
-             [gw.at(0.022, 95, 0.004), gw.at(0.085, 100, 0.004), gw.at(0.022, 150, 0.004), gw.at(0.085, 150, 0.006),
-              gw.at(0.02, 200, 0.002), gw.at(0.07, 185, 0.004), gw.at(0.03, 95, 0.026), gw.at(0.07, 100, 0.026)],
-             (0.012, -0.075, -0.042), (0.45, -0.55, -0.7),
+             PALM,
+             (0.012, -0.075, -0.042), (0.75, -0.5, -0.45),
              ([(-0.006, -0.026, -0.0), (-0.021, -0.008, 0.0015), (-0.0255, 0.016, 0.003), (-0.025, 0.040, 0.0035), (-0.023, 0.058, 0.004)], 0.0105),
              ([gw.at(0.012, 60, 0.01), (0.021, 0.028, -0.011), (0.017, 0.044, -0.015), (0.009, 0.0475, -0.019), (0.004, 0.045, -0.022)], 0.0095))
 lw = Wrap((0, -0.0005, -0.006), (0, -0.017, -0.092), (0, 1, 0), 0.0245 + 0.016, 0.0148 + 0.017)
