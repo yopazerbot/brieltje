@@ -5,7 +5,8 @@
 //
 // Made to be driven in a noisy room: how things stand in chips at the top (each jumps to its part), one row for
 // what touches everyone, quick announcements (the last ones sent, and a few ready), people found by typing and sorted by
-// name, points or ping, each person's actions in one menu (⋯), and the server's own figures with a plain verdict.
+// name, points or ping (or network address, while shown), each person's actions in one menu (⋯), and the server's own
+// figures with a plain verdict.
 // Keys: / to announce, Esc to close a menu. The choices of sort and the last announcements are remembered in this
 // browser (localStorage, keys briel.host.*), a convenience only.
 (() => {
@@ -39,6 +40,7 @@
   let busy = false;
   let sure = null; // a button that asks for a second click: { el, until }
   let sortBy = store.get('sort', 'name');
+  let showAddresses = false; // the players' network addresses: off when the page opens, on for this visit only (never stored)
   let recent = store.get('recent', []);
   let frozenSince = 0;
   const drawn = {};
@@ -122,7 +124,7 @@
   async function refresh() {
     let r;
     try {
-      r = await fetch('/api/host', { cache: 'no-store' });
+      r = await fetch(showAddresses ? '/api/host?addresses=1' : '/api/host', { cache: 'no-store' }); // the addresses only while shown
     } catch {
       $('chip-server').textContent = '● No connection';
       $('chip-server').className = 'chip bad';
@@ -261,10 +263,10 @@
   function drawPeople() {
     const find = $('find').value.trim().toLowerCase();
     const list = [...v.players, ...(v.away ?? [])].filter((p) => !find || p.name.includes(find)); // the rooms' players too, tagged
-    const by = { name: (a, b) => a.name.localeCompare(b.name), points: (a, b) => b.points - a.points || b.kills - a.kills, ping: (a, b) => (b.ping ?? -1) - (a.ping ?? -1) }[sortBy];
+    const by = { name: (a, b) => a.name.localeCompare(b.name), points: (a, b) => b.points - a.points || b.kills - a.kills, ping: (a, b) => (b.ping ?? -1) - (a.ping ?? -1), address: byAddress }[sortBy === 'address' && !showAddresses ? 'name' : sortBy];
     list.sort((a, b) => (a.role === 'admin') - (b.role === 'admin') || by(a, b));
     const teamIds = v.teams.list.slice(0, v.teams.count);
-    if (!stale('people-list', [list.map((p) => ({ ...p, ping: p.ping === null ? null : Math.round(p.ping / 20) * 20 })), teamIds, find, sortBy])) return;
+    if (!stale('people-list', [list.map((p) => ({ ...p, ping: p.ping === null ? null : Math.round(p.ping / 20) * 20 })), teamIds, find, sortBy, showAddresses])) return;
     if (!list.length) {
       $('people-list').replaceChildren(el('li', { class: 'empty', text: find ? `Nobody called “${find}”` : 'Nobody here yet. Players type the address shown when the server started.' }));
       return;
@@ -279,12 +281,82 @@
       if (team) team.style.borderLeftColor = teamIds.find((t) => t.id === p.team)?.color ?? 'transparent';
       const ping = p.ping === null ? '' : `${p.ping} ms`;
       return el('li', { class: p.alive ? '' : 'down' },
-        el('span', { class: 'who' }, el('b', { text: p.name }), me ? el('small', { text: ' (you)' }) : null, p.where ? el('small', { class: 'tag', text: p.where === 'room' ? 'Zombies room' : `duel ${p.where.slice(5)}` }) : null, p.muted ? el('small', { class: 'tag', text: 'muted' }) : null),
+        el('span', { class: 'who' }, el('b', { text: p.name }), me ? el('small', { text: ' (you)' }) : null, p.where ? el('small', { class: 'tag', text: p.where === 'room' ? 'Zombies room' : `duel ${p.where.slice(5)}` }) : null, p.muted ? el('small', { class: 'tag', text: 'muted' }) : null,
+          addressOf(p)),
         el('span', { class: `meta${level('pingHigh', p.ping) ? ` lv${level('pingHigh', p.ping)}` : ''}`, text: `${p.points} pts${ping ? ` · ${ping}` : ''}` }),
         team ?? el('span'),
         me ? el('span') : el('button', { class: 'btn ghost small more', type: 'button', 'aria-label': `Actions for ${p.name}`, 'aria-haspopup': 'menu', text: '⋯', on: { click: (e) => openMenu(e.currentTarget, p) } }),
       );
     }));
+  }
+
+  // ------------------------------------------------------------------ the players' network addresses
+  // Each connection's address as the server read it (server/host.mjs connectionOf), to find a device in the network's
+  // own logs. Asked of the server only while shown, and by Copy list; hidden when the page opens (others may see this
+  // screen). Shown as text only (textContent), never as HTML.
+
+  /** An IPv4 address as the network's own logs write it: Node gives a dual-stack socket's as ::ffff:a.b.c.d. */
+  function plainAddress(ip) {
+    return String(ip ?? '').replace(/^::ffff:(?=\d{1,3}(\.\d{1,3}){3}$)/i, '');
+  }
+
+  /** Order by address: IPv4 by its numbers, then IPv6, then the unknown; the name when two are the same. */
+  function byAddress(a, b) {
+    const key = (ip) => {
+      const s = plainAddress(ip);
+      const m = s.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+      return m ? `4${m.slice(1).map((n) => n.padStart(3, '0')).join('.')}` : s.includes(':') ? `6${s.toLowerCase()}` : '9';
+    };
+    return key(a.ip).localeCompare(key(b.ip)) || a.name.localeCompare(b.name);
+  }
+
+  /** "2026-11-21 19:02:11" on this computer's clock (as a network log beside it writes it). */
+  const stamp = (ms) => new Date(ms).toLocaleString('sv-SE');
+
+  /** The address line in a player's row: only while the switch is on. */
+  function addressOf(p) {
+    if (!showAddresses || !p.ip) return null;
+    return el('small', { class: 'address', text: plainAddress(p.ip), title: p.since ? `Connected since ${stamp(p.since)}` : '' });
+  }
+
+  /** Text to the clipboard: the Clipboard API where the page is secure (https, localhost), else the older copy command (plain http on the hall's network). */
+  async function toClipboard(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      const box = el('textarea', { readonly: true, 'aria-hidden': 'true', class: 'copy-box' });
+      box.value = text;
+      document.body.append(box);
+      box.select();
+      let done = false;
+      try {
+        done = document.execCommand('copy');
+      } catch {
+        // no way to copy here
+      }
+      box.remove();
+      return done;
+    }
+  }
+
+  /** Copy list: everyone connected (the house and the rooms), one line each: name, team, address, connected since, tab-separated. */
+  async function copyList() {
+    let data;
+    try {
+      const r = await fetch('/api/host?addresses=1', { cache: 'no-store' });
+      if (!r.ok) throw new Error(String(r.status));
+      data = await r.json();
+    } catch {
+      return toast('No answer from the server', true);
+    }
+    const list = [...data.players, ...(data.away ?? [])].sort(sortBy === 'address' ? byAddress : (a, b) => a.name.localeCompare(b.name));
+    const lines = list.map((p) => [
+      p.name, TEAM_NAMES[p.team] ?? '-', p.ip ? plainAddress(p.ip) : 'unknown', p.since ? stamp(p.since) : '-',
+    ].join('\t'));
+    const text = [`Players connected at ${stamp(Date.now())} (this computer's clock)`, ['Name', 'Team', 'Address', 'Connected since'].join('\t'), ...lines].join('\n');
+    if (await toClipboard(text)) toast(`Copied ${list.length} player${list.length === 1 ? '' : 's'}`);
+    else toast('This browser would not copy. Try again in Chrome or Edge.', true);
   }
 
   /** One player's actions, in a small menu by the button. */
@@ -475,6 +547,14 @@
       render();
     });
   }
+  $('show-addresses').checked = false; // never kept on from before (a browser may restore a checkbox on reload)
+  $('show-addresses').addEventListener('change', (e) => {
+    showAddresses = e.target.checked;
+    $('sort-address').hidden = !showAddresses;
+    if (v) render(); // hidden at once; shown with the next view, which brings them
+    refresh();
+  });
+  $('copy-list').addEventListener('click', copyList);
   $('find').addEventListener('input', () => v && render());
   $('shuffle').addEventListener('click', () => act({ op: 'shuffle' }, 'Teams shuffled'));
   $('words-save').addEventListener('click', () => act({ op: 'words', list: $('words').value.split(/\s*\n\s*/).filter(Boolean) }, 'Words saved'));

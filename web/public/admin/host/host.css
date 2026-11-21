@@ -116,6 +116,13 @@
 .people .meta.lv2 { color: #ff8a80; }
 .people select { padding: 3px 10px; font-size: 14px; border-left: 6px solid transparent; border-radius: 999px; }
 .people .more { padding: 2px 12px; font-size: 18px; line-height: 1.2; }
+/* The players' network addresses (host.js): a small switch, and a monospaced line under each name while it is on. */
+.addresses-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 12px; font-family: var(--display); font-weight: 600; color: var(--soft); }
+.addresses-bar .switch { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.addresses-bar .switch input { width: 18px; height: 18px; margin: 0; accent-color: var(--sun); }
+.people .who .address { display: block; font: 12px ui-monospace, 'Cascadia Mono', Consolas, Menlo, monospace; color: var(--soft); letter-spacing: 0.02em; }
+.host .seg button[hidden] { display: none; }
+.copy-box { position: fixed; top: 0; left: 0; width: 1px; height: 1px; opacity: 0; }
 .words { margin-top: 16px; }
 .words summary { cursor: pointer; color: var(--sun); font-weight: 600; }
 

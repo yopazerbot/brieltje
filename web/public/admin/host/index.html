@@ -68,8 +68,14 @@
         <div class="tools">
           <input type="search" id="find" placeholder="Find a player" aria-label="Find a player" />
           <span class="seg small" id="sort" role="group" aria-label="Sort by">
-            <button type="button" data-sort="name">Name</button><button type="button" data-sort="points">Points</button><button type="button" data-sort="ping">Ping</button>
+            <button type="button" data-sort="name">Name</button><button type="button" data-sort="points">Points</button><button type="button" data-sort="ping">Ping</button><button type="button" data-sort="address" id="sort-address" hidden>Address</button>
           </span>
+        </div>
+        <!-- Each player's network address (server/host.mjs connectionOf), to find a device in the network's own logs.
+             Off when the page opens: this screen may be seen by others. -->
+        <div class="addresses-bar">
+          <label class="switch"><input type="checkbox" id="show-addresses" /> Show addresses</label>
+          <button class="btn ghost small" type="button" id="copy-list" title="Name, team, address and connected since, as plain text">Copy list</button>
         </div>
         <div class="teams-bar">
           <span>Teams</span>
