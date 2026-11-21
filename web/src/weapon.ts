@@ -469,6 +469,9 @@ interface ViewModel {
   handL?: THREE.Object3D;
   hip: THREE.Vector3;
   ads: THREE.Vector3;
+  /** Aimed, the loaded gun's own: how far it turns muzzle up (rad) and its depth squeezed (AIM) */
+  tilt?: number;
+  depth?: number;
 }
 
 /** Gun plus two arms, in metres at real size (scaled down near the camera later). */
@@ -596,6 +599,23 @@ const HIP: Record<WeaponId, [number, number, number]> = {
   bazooka: [0.072, -0.048, -0.1],
   launcher: [0.054, -0.05, -0.095],
   laser: [0.05, -0.045, -0.095], // the carbine's place: its grip and lower line are the carbine's
+};
+
+/**
+ * Aimed, per loaded gun, as big shooters frame it: where the grip is held (its distance ahead in the camera's frame, as
+ * HIP), how far the gun turns muzzle up (rad: the eye then sits a little above the line of sight at the rear sight,
+ * so the top of the gun runs away from you to the front sight, which stays on the crosshair), and its own depth
+ * squeezed by this much about the grip (the gun drawn as with a narrower view, as HIP_VIEW from the hip: the front
+ * sight not tiny, the back of the gun not huge). The line of sight, the world's zoom and the shot do not change.
+ */
+const AIM: Record<WeaponId, [number, number, number]> = {
+  pistol: [-0.085, 0, 1.25],
+  rifle: [-0.088, 0, 1],
+  shotgun: [-0.1, 0, 1],
+  sniper: [-0.1, 0, 1],
+  bazooka: [-0.1, 0, 1],
+  launcher: [-0.1, 0, 1],
+  laser: [-0.1, 0, 1],
 };
 
 /** From the hip the gun is drawn as with a 54 degree view instead of 72: its own depth this much shorter. */
@@ -1088,7 +1108,10 @@ export class Weapon {
         m.mag.userData.len = -low;
       }
       m.hip.fromArray(HIP[w]);
-      m.ads.set(-0.25 * loaded.sight.x, -0.25 * loaded.sight.y, w === 'pistol' ? -0.125 : w === 'rifle' ? -0.088 : m.ads.z); // the pistol held out at arm's length; the rifle near enough for its red-dot sight's window to be a good size
+      // Aimed (AIM): the gun turned by its tilt and placed so that its line of sight runs through the middle of the view.
+      [m.ads.z, m.tilt, m.depth] = AIM[w];
+      _a.copy(loaded.sight).multiplyScalar(0.25).applyAxisAngle(X_AXIS, m.tilt);
+      m.ads.setX(-_a.x).setY(-_a.y);
       // The bazooka lies on your shoulder, the tube beside your face: held up to its side sight the tube fills
       // half the view. So aiming holds it lower, and you look along its top with the crosshair.
       if (w === 'bazooka') m.ads.set(0.012, -0.06, -0.1);
@@ -1862,12 +1885,12 @@ export class Weapon {
     pos.y += hold * (tube ? -0.02 : lob ? -0.004 : 0.01);
     // From the hip the gun is drawn as with a 54 degree view, as shooters do (less stretch: the gun's back
     // end no longer huge, its muzzle no longer tiny): its place `near` times further off here, then the whole of it
-    // squeezed along the view by as much (the scale below), the gun's own depth shorter. Aimed, as before.
-    const near = 1 + (HIP_VIEW - 1) * (1 - this.aim);
+    // squeezed along the view by as much (the scale below), the gun's own depth shorter. Aimed, by its own (AIM).
+    const near = HIP_VIEW + ((m.depth ?? 1) - HIP_VIEW) * this.aim;
     pos.z *= near;
     m.root.position.copy(pos);
     m.root.rotation.set(
-      this.recoil[1] + hold * (tube ? -0.15 : lob ? 0.25 : 0.2) - (1 - raised) * 0.6 - this.lag.y * 0.012 * loose + breathe * 0.004 - this.sprint * 0.32 + step * 0.012 * bob,
+      (m.tilt ?? 0) * this.aim + this.recoil[1] + hold * (tube ? -0.15 : lob ? 0.25 : 0.2) - (1 - raised) * 0.6 - this.lag.y * 0.012 * loose + breathe * 0.004 - this.sprint * 0.32 + step * 0.012 * bob,
       0.02 * (1 - this.aim) - this.lag.x * 0.016 * loose + this.sprint * 0.55 + hold * (tube ? 0 : lob ? 0.2 : 0.15),
       this.recoil[2] * 2 - this.tilt * 0.06 + this.sprint * 0.22 - across * 0.025 * bob,
     );

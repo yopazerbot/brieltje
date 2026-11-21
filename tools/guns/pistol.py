@@ -11,12 +11,14 @@ compact's length), a 24 mm slide over a 24 mm frame, a 9 mm bore in a 12 mm barr
 mm with the magazine), the old pistol's, which the hands are posed on.
 From the top: a matt black slide with rounded top edges, slanted grooves at its back and its front (the serrations),
 a front chamfered in plan and in profile, the ejection port on the right with the barrel's hood filling it and the
-extractor behind it, the barrel's crown and the recoil spring's guide rod in its nose, a plate over the striker at its
-back, three-dot sights in dovetails (a notched rear sight, a front blade). The frame: a dust cover with a rail of
+extractor behind it, the barrel's crown and the recoil spring's guide rod in its nose, three-dot sights in dovetails (a
+notched rear sight, a front blade). Its back, which is what you see when you aim: upright grooves across the rear face
+that cut the glare, a plate over the striker with the striker's indicator at its top, and a channel down the middle of
+the top from the rear sight to the front sight. The frame: a dust cover with a rail of
 three slots, the trigger guard with a square front, a trigger with its safety blade, the slide stop over the trigger
 on the left with its pin's end on the right, the takedown lever ahead of it on the left, the magazine release behind
 the trigger guard on the left, sunk in a recess; two cross pins; a grip with a beavertail, stippled sides as fine
-raised points, a seam where the backstrap fits, a lanyard hole at its foot. The magazine: a steel body with witness
+raised points, raised bands across the backstrap, a seam where the backstrap fits, a lanyard hole at its foot. The magazine: a steel body with witness
 holes, a round on top, a polymer base pad with a lip at the front. The slide moves (it kicks back with each shot and
 stays back when empty, showing the barrel and the spring in the nose and the open chamber in the port); the
 magazine leaves on a reload.
@@ -106,6 +108,12 @@ for k in range(7):
     z = -0.030 - k * 0.0072
     yf = 0.0245 + (0.008 - 0.0245) * (-0.004 - z) / 0.094
     body.append(block("strapgroove", -0.0095, 0.0095, yf - 0.0006, yf + 0.0004, z, z + 0.0028, M["Grip"], 0.0003, 1))
+# The backstrap, which you look down on when you aim: raised bands across it under the beavertail, each catching a line
+# of light (the grip's texture where the web of the hand sits).
+for k in range(14):
+    z = -0.013 - k * 0.0038
+    yb = -0.026 + (-0.037 + 0.026) * (-0.016 - z) / 0.054 if z < -0.016 else -0.026
+    body.append(block("backgroove", -0.0096, 0.0096, yb - 0.0005, yb + 0.0005, z - 0.0008, z + 0.0008, M["Grip"], 0.0003, 1))
 
 
 def trigger_guard(name, y0, y1, ztop, zbot, half, t=0.0042):
@@ -170,13 +178,25 @@ for s in (-1, 1):
 slide_cuts.append(dark(box(-0.0086, 0.02, 0.0312, 0.0662, 0.0228, 0.05)))   # the ejection port
 slide_cuts.append(dark(lathe("borehole", [(0.06, 0), (0.06, 0.0061), (0.16, 0.0061), (0.16, 0)], M["Dark"], 20, (0, 0, B))))
 slide_cuts.append(dark(lathe("rodhole", [(0.10, 0), (0.10, 0.0039), (0.16, 0.0039), (0.16, 0)], M["Dark"], 14, (0, 0, 0.0135))))
-slide_cuts.append(dark(box(-0.0088, 0.0088, -0.040, -0.0345, 0.0128, 0.0342)))  # the striker plate's recess
+slide_cuts.append(dark(box(-0.0068, 0.0068, -0.040, -0.0345, 0.0128, 0.0272)))  # the striker plate's recess
+# The slide's rear face, seen whole when you aim: above the plate and beside it, upright grooves that cut the glare
+# (each catches a line of light), and a channel down the middle of its top from the rear sight to the front sight,
+# a dark line that runs away from you to the front sight.
+for k in range(11):
+    x = -0.009 + k * 0.0018
+    if abs(x) < 0.0078:
+        slide_cuts.append(dark(box(x - 0.00035, x + 0.00035, -0.040, -0.0346, 0.0290, 0.0372)))
+    else:
+        slide_cuts.append(dark(box(x - 0.00035, x + 0.00035, -0.040, -0.0346, 0.0118, 0.0372)))
+slide_cuts.append(dark(box(-0.0012, 0.0012, -0.0186, 0.1332, 0.0389, 0.0400)))
 slide_cuts.append(dark(box(0.0114, 0.013, 0.0035, 0.0312, 0.0250, 0.0306)))     # the extractor's slot
 slide = [prism("slide", [(-0.035, 0.0092), (0.1475, 0.0092), (0.1500, 0.0122), (0.1500, 0.0360), (0.1470, 0.0395), (-0.0310, 0.0395), (-0.0350, 0.0355)],
                SH, M["Slide"], 0.0009, 2, cuts=slide_cuts)]
 slide.append(prism("extractor", [(0.0040, 0.0256), (0.0306, 0.0256), (0.0310, 0.0268), (0.0306, 0.0300), (0.0040, 0.0300)], 0.0005, M["Steel"], 0.0002, 1,
                    x=SH - 0.0001))
-slide.append(block("plate", -0.0082, 0.0082, -0.0352, -0.0343, 0.0134, 0.0336, M["Polymer"], 0.0004, 1))
+slide.append(block("plate", -0.0062, 0.0062, -0.0352, -0.0343, 0.0134, 0.0266, M["Polymer"], 0.0005, 1))
+# The striker's indicator: a steel tab standing out of a slot at the plate's top when the gun is cocked.
+slide.append(block("indicator", -0.0011, 0.0011, -0.0357, -0.0343, 0.0240, 0.0258, M["Steel"], 0.0003, 1))
 # The rear sight: a dovetailed block, a ramp in front, a square notch, two white dots on its back face.
 slide.append(block("dovetail", -0.0094, 0.0094, -0.0290, -0.0192, 0.0386, 0.0399, M["Dark"], 0.0003, 1))
 slide.append(prism("rearsight", [(-0.0298, 0.0390), (-0.0188, 0.0390), (-0.0188, 0.0414), (-0.0222, 0.0470), (-0.0298, 0.0470)], 0.0088, M["Dark"], 0.0005, 2,
