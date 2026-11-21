@@ -39,9 +39,26 @@ test('the losing side gets one: Never gave up, else its best in an award not giv
   // Somebody who left gets no Never gave up; the losing side's best tags instead.
   const left = results('flag', [...rows.slice(0, 4), row('red1', 'red', { tags: 1, tagged: 5 }), row('red2', 'red', { tagged: 8 })], 'blue', new Set(['ann', 'bob', 'cid', 'dee']));
   assert.deepEqual(left.awards.at(-1), { id: 'tagger', name: 'red1', team: 'red', n: 1 });
-  // A draw: no side kept a place; the list goes on.
+  // A draw: the last place still goes to the side with none (red's Never gave up), not to blue's fourth.
   const draw = results('flag', rows, null, new Set(rows.map((x) => x.name)));
-  assert.deepEqual(ids(draw), ['flagsIn:ann', 'saver:bob', 'wall:cid', 'helper:dee']);
+  assert.deepEqual(ids(draw), ['flagsIn:ann', 'saver:bob', 'wall:cid', 'neverGaveUp:red2']);
+  // A draw, red without one but with a count in an award not given yet: that one (Best helper), before Never gave up.
+  const both = results('flag', [...rows.slice(0, 3), row('dee', 'red', { assists: 1 }), row('red1', 'red', { tagged: 5 })], null, new Set(['ann', 'bob', 'cid', 'dee', 'red1']));
+  assert.deepEqual(ids(both), ['flagsIn:ann', 'saver:bob', 'wall:cid', 'helper:dee']);
+});
+
+test('the winners outdone in every count: the last place still goes to them (a side with none), never all four to one side when the other did something', () => {
+  // As played with 30 (a tie-break won by red, blue ahead in every count): blue took the first three.
+  const rows = [row('b1', 'blue', { returns: 1, tags: 4 }), row('b2', 'blue', { guards: 2 }), row('b3', 'blue', { tags: 6 }), row('b4', 'blue', { tagged: 5, tags: 2 }),
+    row('r1', 'red', { stops: 1 }), row('r2', 'red', { tags: 3 }), row('r3', 'red', { tagged: 5 })];
+  const r = results('flag', rows, 'red', new Set(rows.map((x) => x.name)));
+  assert.deepEqual(ids(r).slice(0, 3), ['saver:b1', 'wall:b2', 'tagger:b3']);
+  assert.equal(r.awards.length, 4);
+  assert.equal(r.awards[3].team, 'red', 'the winning side gets the last place');
+  assert.deepEqual(r.awards[3], { id: 'neverGaveUp', name: 'r3', team: 'red', n: 5 }, 'every list award given: Never gave up');
+  // In a draw each side without one gets the place in turn.
+  const d = results('flag', rows, null, new Set(rows.map((x) => x.name)));
+  assert.ok(d.awards.some((a) => a.team === 'red'));
 });
 
 test('level counts: the losing side first, then the more points, then the name; always the same answer', () => {

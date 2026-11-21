@@ -11,9 +11,9 @@
 //   among those without an award yet: at most one award a player, so a different player for each where it can. A
 //   count of zero gives nothing. Level counts: a player of the losing side first, then the more points (or tags), then
 //   the name's order (always the same answer).
-// - At most MAX awards. The first MAX - 1 from the kind's list; the last place keeps one for the losing side when it
-//   has none yet ("Never gave up", else that side's best in an award not yet given). With a draw, or when the losing
-//   side already has one, the list goes on, then "Never gave up" for anyone.
+// - At most MAX awards. The first MAX - 1 from the kind's list; the last place goes to a side with none yet, the losing
+//   side first ("Never gave up", else its best in an award not yet given; a winning side without one: its best in an
+//   award not yet given, else "Never gave up"). When both sides have one, the list goes on, then "Never gave up".
 // - Every player's own line (lineOf): the best thing they did, by what each act is worth, even with no award and on
 //   the losing side; nothing done, "played" (thanks for playing).
 
@@ -105,10 +105,15 @@ export function results(kind, rows, winner, here = null) {
     if (awards.length >= MAX - 1) break;
     give(id, rows);
   }
-  const theirs = losing ? rows.filter((r) => r.team === losing) : [];
+  // The last place: to a side with no award yet, the losing side first ("Never gave up", else its best in an award not
+  // given yet); a winning side without one gets its best in an award not given yet, else "Never gave up".
   const kind1 = (pool) => give('neverGaveUp', pool.filter(present));
-  if (losing && !awards.some((a) => a.team === losing)) {
-    if (!kind1(theirs)) for (const id of list) if (!done.has(id) && give(id, theirs)) break;
+  const sides = [...new Set(rows.map((r) => r.team).filter(Boolean))].sort((a, b) => (b === losing) - (a === losing));
+  for (const side of sides) {
+    if (awards.length >= MAX || awards.some((a) => a.team === side)) continue;
+    const theirs = rows.filter((r) => r.team === side);
+    const best = () => list.some((id) => !done.has(id) && give(id, theirs));
+    if (side === losing ? kind1(theirs) || best() : best() || kind1(theirs)) break;
   }
   if (awards.length < MAX) {
     for (const id of list) if (awards.length < MAX && !done.has(id)) give(id, rows);
