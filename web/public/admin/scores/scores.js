@@ -88,7 +88,8 @@
     const r = el('div', `row${rank === 1 && opts.lead ? ' first' : ''}${rank >= 1 && rank <= 3 && opts.lead ? ` p${rank}` : ''}${opts.it ? ' it' : ''}${opts.out ? ' out' : ''}`);
     const dot = el('i', 'dot');
     dot.style.background = colour(p.color);
-    const name = el('div', 'name', p.name);
+    const name = el('div', 'name');
+    name.append(el('span', '', p.name)); // its own writing direction, kept inside it (scores.css)
     if (opts.note) name.append(el('small', '', opts.note));
     if (p.guard) name.append(el('small', '', t('guard'))); // a Steal the flag guard (server/flagGuards.mjs): counts for nothing
     r.append(el('div', 'rank', rank ? String(rank) : ''), dot, name);
@@ -141,6 +142,7 @@
       $('mode-title').textContent = t('tonight');
       $('mode-sub').textContent = t(board.evening.games === 1 ? 'games1' : 'games', { n: board.evening.games });
       main.replaceChildren(tonight(board.evening));
+      fitBoard(main);
       $('banner').hidden = true;
       return;
     }
@@ -153,8 +155,94 @@
     } else {
       main.replaceChildren(fit(ranking(kind, mode, players)));
     }
+    fitBoard(main);
     banner(kind, mode);
   }
+
+  // ---- the board fitted to the screen
+  /**
+   * What fitted, per layout: the lines a card of tonight's route times and gnomes keeps (5 to 0: none) and the rows'
+   * size (--fit, px; null: the length's own). Kept until the layout changes (who is on it, their names, the cards, the
+   * window), so the board is measured once, not each second.
+   */
+  const fitted = new Map();
+  /** A name shows at least its first ten letters (all of a shorter one); a longer one ends in an ellipsis. */
+  const NAME_MIN = 10;
+  /**
+   * The board in `main` made to fit between the header and the footer: first the side cards give way when the names
+   * need their room or they run off the bottom (fewer lines, then none), then the rows get smaller until the list fits
+   * and every name shows enough of itself, down to a floor; never larger than the length's own size (scores.css).
+   */
+  function fitBoard(main) {
+    const split = main.querySelector('.split');
+    const extras = split?.querySelector(':scope > .extras') ?? null;
+    const list = main.querySelector('.cols, .rows, .teams') ?? main.firstElementChild;
+    const key = [innerWidth, innerHeight, lang, ...[...main.querySelectorAll('.name, .team li span, .won, .total, .card .line, .note')].map((e) => `${e.className}:${e.textContent.length}`)].join('|');
+    const set = (f, lines) => {
+      if (f) main.style.setProperty('--fit', `${f.toFixed(2)}px`);
+      else main.style.removeProperty('--fit');
+      if (split && extras) split.dataset.lines = String(lines);
+    };
+    // Tonight's awards: as many whole cards as fit on their line (the newest first), never one cut off at the edge.
+    const won = main.querySelector('.won-list');
+    if (won) {
+      const edge = won.getBoundingClientRect().right + 0.5;
+      for (const c of won.children) c.style.visibility = c.getBoundingClientRect().right > edge ? 'hidden' : '';
+    }
+    const got = fitted.get(key);
+    if (got) return set(got.f, got.lines);
+    set(null, 5);
+    const pad = parseFloat(getComputedStyle(main).paddingBottom) || 0;
+    const bottom = main.getBoundingClientRect().bottom - pad + 1;
+    const over = (e) => !!e && e.getBoundingClientRect().bottom > bottom;
+    // How many names show fewer letters than they should (measured as drawn: the name's text against its box).
+    const cut = () => {
+      let n = 0;
+      for (const box of main.querySelectorAll('.row:not(.head) .name, .team li')) {
+        const text = box.querySelector('span');
+        if (!text) continue;
+        const len = [...text.textContent].length;
+        const room = box.classList.contains('name') ? box.clientWidth - (box.querySelector('small')?.offsetWidth ?? 0) : text.clientWidth;
+        const full = box.classList.contains('name') ? text.getBoundingClientRect().width : text.scrollWidth;
+        if (full > room + 1 && room < full * (Math.min(len, NAME_MIN) + 1) / len) n++; // +1: the ellipsis takes a letter's room
+      }
+      return n;
+    };
+    let lines = 5;
+    if (extras) {
+      // Beside a long list (two columns and more) the names come first: the cards go when they cut a name.
+      if (split.classList.contains('narrow') && cut()) lines = 0;
+      for (const next of [3, 2, 1, 0]) {
+        if (!lines || !over(extras)) break;
+        lines = next;
+        set(null, lines);
+      }
+      set(null, lines);
+    }
+    const ref = main.querySelector('.row .name, .team ul');
+    let f = ref ? parseFloat(getComputedStyle(ref).fontSize) : 0;
+    // The floors: 1.3vmin for the list to fit (about 14 px on a 1920×1080 screen), 1.6vmin for a long name to show more
+    // (one very wide name never makes everyone's small).
+    const vmin = Math.min(innerWidth, innerHeight) / 100;
+    const floor = 1.3 * vmin;
+    let fit = null;
+    for (let i = 0; f && i < 24 && f > floor && (over(list) || (f > 1.6 * vmin && cut())); i++) {
+      f = Math.max(floor, f * 0.94);
+      fit = f;
+      set(fit, lines);
+    }
+    fitted.set(key, { f: fit, lines });
+    if (fitted.size > 50) fitted.delete(fitted.keys().next().value);
+  }
+  // A new size of the window, or the fonts loaded (they change every width): measured again.
+  addEventListener('resize', () => {
+    fitted.clear();
+    draw();
+  });
+  document.fonts?.ready.then(() => {
+    fitted.clear();
+    draw();
+  });
 
   /** The paint look on (the game's look, or child-friendly for everyone): "tags", never "kills" (server/game.mjs board). */
   const paint = () => board?.paint === true || board?.mode?.look === 'paint';
@@ -218,25 +306,35 @@
 
   /**
    * A ranking with more players than fit in big rows (a LAN night): in columns of compact rows, each with its own
-   * heading, as the Tonight view.
+   * heading (if it has one), as the Tonight view; a note under the ranking (tag, the treasure hunt, Zombies) stays.
    */
   function fit(box) {
-    const [top, ...rows] = [...box.children];
-    if (rows.length <= 8 || !top?.classList.contains('head')) return box;
+    const list = box.classList.contains('rows') ? box : box.querySelector(':scope > .rows');
+    if (!list) return box;
+    const [first, ...rest] = [...list.children];
+    const top = first?.classList.contains('head') ? first : null;
+    const rows = top ? rest : [...list.children];
+    if (rows.length <= 8) return box;
     const grid = el('div', `cols${colsClass(rows.length)}`);
     for (const part of columns(rows)) {
       const col = el('div', 'rows');
-      col.append(top.cloneNode(true), ...part);
+      if (top) col.append(top.cloneNode(true));
+      col.append(...part);
       grid.append(col);
     }
     const wrap = el('div', 'tonight');
-    wrap.append(grid);
+    if (list === box) {
+      wrap.append(grid);
+    } else {
+      list.replaceWith(grid);
+      wrap.append(box);
+    }
     return wrap;
   }
 
   /** The evening's scoreboard (server/host.mjs board): the teams' totals, then everyone's points, wins and games. */
   function tonight(ev) {
-    const box = el('div', 'tonight');
+    const box = el('div', `tonight${ev.players.length > 16 ? ' long' : ''}`); // a long list: the totals slimmer
     if (ev.teams.length) {
       const totals = el('div', 'totals');
       const best = Math.max(...ev.teams.map((x) => x.points));
@@ -255,7 +353,10 @@
     if (!ev.players.length) {
       const empty = el('div', 'empty');
       empty.append(el('div', 'big', t('noGames')));
-      split.append(empty, extras(ev));
+      const side = extras(ev);
+      split.append(empty);
+      if (side) split.append(side);
+      else split.classList.add('alone');
       box.append(split);
       return box;
     }
@@ -263,7 +364,6 @@
     const shown = ev.players;
     const cols = columns(shown);
     const grid = el('div', `cols${colsClass(shown.length)}`);
-    if (colsOf(shown.length) > 2) split.classList.add('many'); // past 40: the whole width for the names, the route times and gnomes left out
     let rank = 0;
     for (const list of cols) {
       const col = el('div', 'rows');
@@ -271,7 +371,16 @@
       for (const p of list) col.append(row(++rank, { name: p.name, color: TEAM_COLOURS[p.team] ?? '#9aa5b1' }, [p.points, p.wins, p.played], { lead: p.points > 0, out: !p.here, note: p.team ? t(p.team) : '' }));
       grid.append(col);
     }
-    split.append(grid, extras(ev));
+    // Tonight's route times and gnomes beside the names: those with a line only; in a narrow column beside two columns
+    // of names; past 40 players never (the whole width for the names). fitBoard takes them away when there is no room.
+    const side = colsOf(shown.length) > 2 ? null : extras(ev);
+    split.append(grid);
+    if (side) {
+      split.append(side);
+      if (colsOf(shown.length) > 1) split.classList.add('narrow');
+    } else {
+      split.classList.add('alone');
+    }
     box.append(split);
     return box;
   }
@@ -298,7 +407,7 @@
       }
     }
     if (!chips.length) return null;
-    const box = el('section', `won-row${ev.players.length > 16 ? ' slim' : ''}`); // a long list below: each card on one line
+    const box = el('section', `won-row${ev.players.length > 6 ? ' slim' : ''}`); // a longer list below: each card on one line, the names' room
     box.append(el('h2', '', t('awardsTonight')));
     const row = el('div', 'won-list');
     row.append(...chips);
@@ -345,7 +454,10 @@
     return c;
   }
 
-  /** Tonight's best route times (top 5 per route) and gnomes found (top 5), from the host's board: guests too. */
+  /**
+   * Tonight's best route times (top 5 per route) and gnomes found (top 5), from the host's board: guests too. Only the
+   * cards with a line (an empty one gives its room to the list); null when none has one.
+   */
   function extras(ev) {
     const box = el('div', 'extras');
     const races = el('section', 'block');
@@ -356,8 +468,9 @@
         const n = nameOf(r?.name), v = time(r?.ms);
         return n && v ? [[n, v]] : [];
       });
-      cards.append(card(t(id), lines));
+      if (lines.length) cards.append(card(t(id), lines));
     }
+    cards.style.setProperty('--n', String(Math.max(1, cards.children.length)));
     races.append(cards);
     const gnomes = el('section', 'block');
     gnomes.append(el('h2', '', t('gnomesTonight')));
@@ -368,8 +481,9 @@
     const one = el('div', 'cards');
     one.append(card(t('gnomesFound'), lines));
     gnomes.append(one);
-    box.append(races, gnomes);
-    return box;
+    if (cards.children.length) box.append(races);
+    if (lines.length) box.append(gnomes);
+    return box.children.length ? box : null;
   }
 
   /** The all-time boards (GET /api/boards and /api/scores, public): the last answers, and when they came. */
@@ -430,15 +544,18 @@
 
   /** House against bungalow: two sides, their score towards the goal, and who plays where. */
   function teams(mode, players) {
-    const box = el('div', 'teams');
+    // A side of many: its names in two or three columns, the score smaller (scores.css); fitBoard does the rest.
+    const most = Math.max(...['house', 'bungalow'].map((k) => players.filter((x) => mode.teams?.[x.name] === k).length));
+    const box = el('div', `teams${most > 8 ? ' long' : ''}`);
     // In the server's colours: blue and red when the host's two teams for the evening play it (server/modes.mjs).
     for (const key of ['house', 'bungalow']) if (mode.colors?.[key]) box.style.setProperty(`--${key}`, colour(mode.colors[key]));
     const side = (key) => {
       const s = el('div', `team ${key}`);
       // By the name it plays under: the evening's blue and red when its teams play it (server/modes.mjs names), else its own.
       s.append(el('h2', '', t(mode.names?.[key] === 'blue' || mode.names?.[key] === 'red' ? mode.names[key] : key)), el('div', 'score', String(mode.score?.[key] ?? 0)));
-      const ul = el('ul');
-      for (const p of players.filter((x) => mode.teams?.[x.name] === key).sort((a, b) => b.kills - a.kills)) {
+      const mine = players.filter((x) => mode.teams?.[x.name] === key);
+      const ul = el('ul', mine.length > 26 ? 'c3' : mine.length > 10 ? 'c2' : '');
+      for (const p of mine.sort((a, b) => b.kills - a.kills)) {
         const li = el('li');
         li.append(el('span', '', p.name), el('b', '', String(p.kills)));
         ul.append(li);

@@ -14,7 +14,7 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }
 body {
-  display: grid; grid-template-rows: auto 1fr auto; overflow: hidden; color: var(--ink); font: 500 2.2vmin/1.3 var(--body);
+  display: grid; grid-template-rows: auto 1fr auto; grid-template-columns: minmax(0, 1fr); overflow: hidden; color: var(--ink); font: 500 2.2vmin/1.3 var(--body);
   background-color: var(--night);
   background-image:
     radial-gradient(120% 55% at 50% 125%, rgba(240, 138, 75, 0.42), transparent 62%),
@@ -35,37 +35,42 @@ header { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center
 .live i { display: inline-block; width: 1.2vmin; height: 1.2vmin; margin-right: 0.4vmin; border-radius: 50%; background: #5a6286; vertical-align: middle; }
 .live.on i { background: var(--good); box-shadow: 0 0 1.2vmin var(--good); animation: beat 2s infinite; }
 @keyframes beat { 50% { opacity: 0.45; } }
-main { min-height: 0; display: flex; flex-direction: column; justify-content: center; padding: 1vmin 6vmin; }
+/* `safe`: a list taller than the room runs down, never up over the header (scores.js fitBoard shrinks it first). */
+main { min-height: 0; display: flex; flex-direction: column; justify-content: safe center; padding: 1vmin 6vmin; }
 
-/* The ranking: one raised row per player. */
-.rows { display: flex; flex-direction: column; gap: 1.3vmin; }
+/* The ranking: one raised row per player. Every size of a row follows its name's size (--f), so one number makes a
+   row smaller as a whole: scores.js fitBoard sets --fit when the list would not fit the screen. */
+.rows { --f: var(--fit, 4vmin); display: flex; flex-direction: column; gap: calc(var(--f) * 0.33); }
 .row {
-  display: grid; grid-template-columns: 6vmin 2.6vmin 1fr repeat(3, 13vmin); align-items: center; gap: 2vmin; padding: 1.4vmin 2.4vmin;
-  background: var(--raised); border-radius: 2vmin; box-shadow: 0 0.6vmin 0 var(--edge); transition: transform 0.4s ease;
+  display: grid; grid-template-columns: calc(var(--f) * 1.5) calc(var(--f) * 0.65) minmax(0, 1fr) repeat(3, calc(var(--f) * 3.25)); align-items: center;
+  gap: calc(var(--f) * 0.5); padding: calc(var(--f) * 0.35) calc(var(--f) * 0.6);
+  background: var(--raised); border-radius: calc(var(--f) * 0.5); box-shadow: 0 calc(var(--f) * 0.15) 0 var(--edge); transition: transform 0.4s ease;
 }
 .row.head { padding-top: 0; padding-bottom: 0; background: none; box-shadow: none; }
-.row.head .num { font-family: var(--display); font-size: 1.7vmin; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+/* A column's heading wider than its numbers runs out to the left, over the gap, never under its neighbour's numbers. */
+.row.head .num { display: flex; justify-content: flex-end; white-space: nowrap; font-family: var(--display); font-size: max(1.15vmin, calc(var(--f) * 0.425)); font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
 .row .rank {
-  display: grid; place-items: center; justify-self: center; width: 5.2vmin; height: 5.2vmin; border-radius: 50%;
-  font-family: var(--display); font-size: 3vmin; font-weight: 700; color: var(--muted); background: rgba(13, 20, 48, 0.55);
+  display: grid; place-items: center; justify-self: center; width: calc(var(--f) * 1.3); height: calc(var(--f) * 1.3); border-radius: 50%;
+  font-family: var(--display); font-size: calc(var(--f) * 0.75); font-weight: 700; color: var(--muted); background: rgba(13, 20, 48, 0.55);
 }
 .row.head .rank { background: none; }
-.row.p1 .rank { color: var(--night); background: var(--accent); box-shadow: 0 0.4vmin 0 var(--accent-deep); }
-.row.p2 .rank { color: var(--night); background: var(--silver); box-shadow: 0 0.4vmin 0 #8f99b8; }
-.row.p3 .rank { color: var(--night); background: var(--bronze); box-shadow: 0 0.4vmin 0 #b8612c; }
-.row.p1 { background: linear-gradient(90deg, rgba(247, 185, 40, 0.22), rgba(247, 185, 40, 0.06) 60%), var(--raised); box-shadow: 0 0.6vmin 0 var(--edge), inset 0 0 0 0.3vmin rgba(247, 185, 40, 0.75); }
-.row .dot { width: 2.6vmin; height: 2.6vmin; border-radius: 50%; box-shadow: 0 0 0 0.35vmin rgba(13, 20, 48, 0.6); }
-.row .name { font-family: var(--display); font-size: 4vmin; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.row .name small { margin-left: 1.2vmin; font-family: var(--body); font-size: 2.1vmin; font-weight: 500; color: var(--muted); }
-.row .num { font-family: var(--display); font-size: 4.2vmin; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
+.row.p1 .rank { color: var(--night); background: var(--accent); box-shadow: 0 calc(var(--f) * 0.1) 0 var(--accent-deep); }
+.row.p2 .rank { color: var(--night); background: var(--silver); box-shadow: 0 calc(var(--f) * 0.1) 0 #8f99b8; }
+.row.p3 .rank { color: var(--night); background: var(--bronze); box-shadow: 0 calc(var(--f) * 0.1) 0 #b8612c; }
+.row.p1 { background: linear-gradient(90deg, rgba(247, 185, 40, 0.22), rgba(247, 185, 40, 0.06) 60%), var(--raised); box-shadow: 0 calc(var(--f) * 0.15) 0 var(--edge), inset 0 0 0 0.3vmin rgba(247, 185, 40, 0.75); }
+.row .dot { width: calc(var(--f) * 0.65); height: calc(var(--f) * 0.65); border-radius: 50%; box-shadow: 0 0 0 calc(var(--f) * 0.09) rgba(13, 20, 48, 0.6); }
+.row .name { font-family: var(--display); font-size: var(--f); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row .name > span { unicode-bidi: isolate; } /* a name's own writing direction stays inside it (scores.js row) */
+.row .name small { margin-left: calc(var(--f) * 0.3); font-family: var(--body); font-size: calc(var(--f) * 0.525); font-weight: 500; color: var(--muted); }
+.row .num { font-family: var(--display); font-size: calc(var(--f) * 1.05); font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
 .row .num.dim { font-weight: 500; color: var(--muted); }
-.row .bar { grid-column: 3 / -1; height: 0.9vmin; margin-top: -0.4vmin; overflow: hidden; border-radius: 1vmin; background: rgba(13, 20, 48, 0.6); }
+.row .bar { grid-column: 3 / -1; height: calc(var(--f) * 0.225); margin-top: calc(var(--f) * -0.1); overflow: hidden; border-radius: 1vmin; background: rgba(13, 20, 48, 0.6); }
 .row .bar i { display: block; height: 100%; border-radius: 1vmin; background: var(--accent); transition: width 0.6s ease; }
-.row.it { box-shadow: 0 0.6vmin 0 var(--edge), inset 0 0 0 0.3vmin var(--accent), 0 0 3vmin rgba(247, 185, 40, 0.3); }
+.row.it { box-shadow: 0 calc(var(--f) * 0.15) 0 var(--edge), inset 0 0 0 0.3vmin var(--accent), 0 0 3vmin rgba(247, 185, 40, 0.3); }
 .row.out { opacity: 0.5; }
 
 /* House against bungalow. */
-.teams { display: grid; grid-template-columns: 1fr auto 1fr; gap: 4vmin; align-items: start; }
+.teams { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 4vmin; align-items: start; }
 .team { padding: 2.4vmin 3vmin; border-radius: 3vmin; background: var(--raised); box-shadow: 0 0.8vmin 0 var(--edge); }
 .team.house { box-shadow: 0 0.8vmin 0 var(--edge), inset 0 0.8vmin 0 var(--house); }
 .team.bungalow { box-shadow: 0 0.8vmin 0 var(--edge), inset 0 0.8vmin 0 var(--bungalow); }
@@ -74,8 +79,19 @@ main { min-height: 0; display: flex; flex-direction: column; justify-content: ce
 .team.bungalow h2 { color: var(--bungalow); text-align: right; }
 .team .score { font-family: var(--display); font-size: 15vmin; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
 .team.bungalow .score { text-align: right; }
-.team ul { list-style: none; margin: 2vmin 0 0; padding: 0; font-size: 3vmin; }
-.team li { display: flex; justify-content: space-between; gap: 2vmin; padding: 0.8vmin 0; border-top: 1px solid var(--line); }
+.team ul { list-style: none; margin: 2vmin 0 0; padding: 0; font-size: var(--fit, 3vmin); }
+.team li { display: flex; justify-content: space-between; gap: 2vmin; padding: 0.27em 0; border-top: 1px solid var(--line); break-inside: avoid; }
+.team li span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; unicode-bidi: isolate; }
+/* A side of many (scores.js teams): its names in two or three columns, the score smaller. */
+.team ul.c2 { columns: 2; column-gap: 3vmin; }
+.team ul.c3 { columns: 3; column-gap: 2.4vmin; }
+.teams.long { gap: 2.4vmin; }
+.teams.long .team { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 2vmin; }
+.teams.long .team h2 { margin: 0; }
+.teams.long .team .score { font-size: 8vmin; }
+.teams.long .team.bungalow .score { order: -1; text-align: left; }
+.teams.long .team ul { grid-column: 1 / -1; }
+.teams.long .versus { max-width: 13vmin; padding-top: 3vmin; font-size: 3vmin; text-align: center; }
 .team li b { font-family: var(--display); font-variant-numeric: tabular-nums; }
 .versus { padding-top: 10vmin; font-family: var(--display); font-size: 4vmin; font-weight: 600; color: var(--muted); }
 .goalbar { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 1vmin; height: 1.6vmin; }
@@ -124,6 +140,10 @@ main:has(.tonight) { justify-content: flex-start; }
 .total b { font-size: 6.4vmin; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
 .total.first { background: linear-gradient(180deg, rgba(247, 185, 40, 0.22), rgba(247, 185, 40, 0.05)), var(--raised); }
 .total.first span::before { content: '★ '; color: var(--accent); }
+/* A long list (past 16): the totals slimmer, so the names keep their size. */
+.tonight.long .totals { gap: 1.6vmin; margin-bottom: 1.4vmin; }
+.tonight.long .total { padding: 0.6vmin 2.4vmin; font-size: 2.8vmin; border-radius: 1.8vmin; box-shadow: 0 0.5vmin 0 var(--edge), inset 0 -0.6vmin 0 var(--team, var(--line)); }
+.tonight.long .total b { font-size: 4.2vmin; }
 /* The hall's sound chip (hall.js, put in the header by scores.js): under the clock, where nothing else is, clear of the
    list, the footer's tools and the address players type, at any size and any length of the list. */
 header .hall-sound { position: static; margin-top: 0.8vmin; }
@@ -143,47 +163,59 @@ header .hall-sound { position: static; margin-top: 0.8vmin; }
 .won-row.slim .won { display: flex; align-items: baseline; gap: 1vmin; padding: 0.5vmin 1.4vmin; }
 .won-row.slim .won-name { font-size: 2.2vmin; }
 .won-row.slim .won small { display: none; }
-.tonight .cols.two { display: grid; grid-template-columns: 1fr 1fr; gap: 0 3vmin; }
-.tonight .row { grid-template-columns: 5vmin 2vmin 1fr repeat(3, 11vmin); padding: 0.8vmin 1.8vmin; border-radius: 1.6vmin; box-shadow: 0 0.45vmin 0 var(--edge); }
-.tonight .row.p1 { box-shadow: 0 0.45vmin 0 var(--edge), inset 0 0 0 0.3vmin rgba(247, 185, 40, 0.75); }
-.tonight .cols.two .row { grid-template-columns: 5vmin 2vmin 1fr repeat(3, 10vmin); }
-.tonight .row .name { font-size: 3.1vmin; }
-.tonight .row:not(.head) .num { font-size: 3.3vmin; }
-.tonight .row .rank { width: 4.2vmin; height: 4.2vmin; font-size: 2.4vmin; }
-.tonight .rows { gap: 0.9vmin; }
-.tonight .cols.tight .row { padding: 0.3vmin 1.6vmin; border-radius: 1.2vmin; box-shadow: 0 0.3vmin 0 var(--edge); }
-.tonight .cols.tight .row .name, .tonight .cols.tight .row:not(.head) .num { font-size: 2.1vmin; }
-.tonight .cols.tight .row .rank { width: 2.9vmin; height: 2.9vmin; font-size: 1.6vmin; }
-.tonight .cols.tight .rows { gap: 0.45vmin; }
-.tonight .cols.tight .row .dot { width: 1.8vmin; height: 1.8vmin; }
-.tonight .cols.two .row .bar { display: none; }
-/* Past 32 (scores.js colsOf): columns of at most 20 rows, up to five; rows tighter still, the numbers narrower. Past 40
-   the ranking takes the whole width (.split.many): tonight's route times and gnomes are left out. */
-.tonight .cols.many { grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); gap: 0 2vmin; }
+/* The ranking, by its length (scores.js colsOf, colsClass): one column up to 8, two of at most 16 up to 32 (20 up to 40),
+   then three to five of 20. The name comes first for the eye: the numbers keep a narrow column each, wins and games
+   smaller and dimmer than the points; the team's name after a player's only in one column (else the dot says it).
+   Each length starts at its own size (--f) and fitBoard makes it smaller where the screen is short. */
+.tonight .rows { --f: var(--fit, 3.2vmin); gap: calc(var(--f) * 0.29); }
+.tonight .row {
+  grid-template-columns: calc(var(--f) * 1.45) calc(var(--f) * 0.62) minmax(0, 1fr) max(calc(var(--f) * 2.4), 6.2vmin) repeat(2, max(calc(var(--f) * 2.1), 6.2vmin));
+  gap: calc(var(--f) * 0.45); padding: calc(var(--f) * 0.26) calc(var(--f) * 0.55);
+}
+.tonight .row:not(.head) .num.dim { font-size: calc(var(--f) * 0.85); }
+.tonight .row.head .num { font-size: max(1.3vmin, calc(var(--f) * 0.46)); letter-spacing: 0.05em; }
+.tonight .cols.two { display: grid; grid-template-columns: repeat(var(--cols, 2), minmax(0, 1fr)); gap: 0 2.6vmin; }
+.tonight .cols.two .rows { --f: var(--fit, 2.9vmin); }
+.tonight .cols.two .row .name small, .tonight .cols.two .row .bar { display: none; }
+.tonight .cols.tight .rows { --f: var(--fit, 2.5vmin); gap: calc(var(--f) * 0.2); }
+.tonight .cols.tight .row { padding: calc(var(--f) * 0.13) calc(var(--f) * 0.5); line-height: 1.2; }
+.tonight .cols.tight .row .rank { width: calc(var(--f) * 1.15); height: calc(var(--f) * 1.15); }
+.tonight .cols.tighter .rows { --f: var(--fit, 2.2vmin); gap: calc(var(--f) * 0.14); }
+.tonight .cols.tighter .row { padding: calc(var(--f) * 0.07) calc(var(--f) * 0.45); line-height: 1.15; }
+.tonight .cols.many { gap: 0 2vmin; }
 .tonight .cols.c3 { --cols: 3; } .tonight .cols.c4 { --cols: 4; } .tonight .cols.c5 { --cols: 5; }
-.tonight .cols.many .row { grid-template-columns: 3vmin 1.6vmin minmax(0, 1fr) repeat(3, 6.5vmin); gap: 1vmin; }
-.tonight .cols.tighter .row { padding: 0.1vmin 1.2vmin; border-radius: 1vmin; }
-.tonight .cols.tighter .row .name, .tonight .cols.tighter .row:not(.head) .num { font-size: 1.7vmin; }
-.tonight .cols.tighter .row { line-height: 1.15; }
-.tonight .cols.tighter .row .name small { margin-left: 0.8vmin; font-size: 1.4vmin; }
-/* Four or five columns: the names first (the team is the dot's colour, out is the row's dimming), the numbers narrower. */
-.tonight .cols.c4 .row, .tonight .cols.c5 .row { grid-template-columns: 2.6vmin 1.4vmin minmax(0, 1fr) repeat(3, 5vmin); gap: 0.8vmin; }
-.tonight .cols.c4 .row .name small, .tonight .cols.c5 .row .name small { display: none; }
-.tonight .cols.c4 .row.head .num, .tonight .cols.c5 .row.head .num { font-size: 1.2vmin; letter-spacing: 0.02em; }
-.tonight .cols.tighter .row .rank { width: 2.2vmin; height: 2.2vmin; font-size: 1.3vmin; }
-.tonight .cols.tighter .rows { gap: 0.2vmin; }
-.tonight .cols.tighter .row .dot { width: 1.4vmin; height: 1.4vmin; }
-.split.many { grid-template-columns: minmax(0, 1fr) !important; }
-.split.many > .extras { display: none; }
+/* Three columns: the last number gives way (tonight: the games; in a game: the points). Four or five: only the first. */
+.tonight .cols.many .row { grid-template-columns: calc(var(--f) * 1.3) calc(var(--f) * 0.6) minmax(0, 1fr) max(calc(var(--f) * 2.4), 6.2vmin) max(calc(var(--f) * 2.1), 5.4vmin); }
+.tonight .cols.many .row > .num:nth-child(6) { display: none; }
+.tonight .cols.c4 .row, .tonight .cols.c5 .row { grid-template-columns: calc(var(--f) * 1.3) calc(var(--f) * 0.6) minmax(0, 1fr) max(calc(var(--f) * 2.4), 6.2vmin); }
+.tonight .cols.c4 .row > .num:nth-child(5), .tonight .cols.c5 .row > .num:nth-child(5) { display: none; }
 
 /* Tonight's route times and gnomes beside the points (under them on a narrow screen), and the all-time boards: small
-   cards with a title and a line per player, the top three's places in gold, silver and bronze. */
+   cards with a title and a line per player, the top three's places in gold, silver and bronze. Only the cards with a
+   line show (scores.js extras): empty, they give their room to the list. */
 .split { display: grid; gap: 3vmin; align-items: start; }
-@media (min-aspect-ratio: 4/3) { .split { grid-template-columns: minmax(0, 1fr) minmax(0, 0.8fr); } }
+@media (min-aspect-ratio: 4/3) {
+  .split { grid-template-columns: minmax(0, 1fr) minmax(0, 0.8fr); }
+  .split.narrow { grid-template-columns: minmax(0, 1fr) 36vmin; } /* beside two columns of names: a narrow column */
+}
+/* No cards (none with a line, past 40 players, or no room: fitBoard): the list has the whole width; one column of
+   names stays a readable width in the middle. */
+.split.alone, .split[data-lines="0"] { grid-template-columns: minmax(0, 1fr); }
+.split[data-lines="0"] > .extras { display: none; }
+.split.alone > .cols:not(.two), .split[data-lines="0"] > .cols:not(.two) { width: min(100%, 104vmin); justify-self: center; }
+/* Fewer lines a card where the room is short (fitBoard). */
+.split[data-lines="3"] .card .line:nth-of-type(n+4), .split[data-lines="2"] .card .line:nth-of-type(n+3), .split[data-lines="1"] .card .line:nth-of-type(n+2) { display: none; }
+.split.narrow .cards.three { grid-template-columns: minmax(0, 1fr); }
+.split.narrow .extras { gap: 1.4vmin; }
+.split.narrow .block h2 { margin-bottom: 0.6vmin; font-size: 1.9vmin; }
+.split.narrow .cards { gap: 1vmin; }
+.split.narrow .card { padding: 0.9vmin 1.4vmin; }
+.split.narrow .card h3 { margin-bottom: 0.4vmin; font-size: 2vmin; }
+.split.narrow .card .line { grid-template-columns: 2.4vmin minmax(0, 1fr) auto; padding: 0.2vmin 0; font-size: 1.9vmin; }
 .extras { display: grid; gap: 2vmin; }
 .block h2 { margin: 0 0 1vmin; font-family: var(--display); font-size: 2.4vmin; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
 .cards { display: grid; gap: 1.6vmin; }
-.cards.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.cards.three { grid-template-columns: repeat(var(--n, 3), minmax(0, 1fr)); }
 .cards.six { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .card { min-width: 0; padding: 1.4vmin 1.8vmin; background: var(--raised); border-radius: 1.8vmin; box-shadow: 0 0.45vmin 0 var(--edge); }
 .card h3 { margin: 0 0 0.8vmin; font-family: var(--display); font-size: 2.3vmin; font-weight: 600; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
