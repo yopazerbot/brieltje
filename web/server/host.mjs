@@ -432,7 +432,6 @@ export class Host {
     }, COUNTDOWN_MS);
     timer.unref?.();
     this.countdown = { kind: e.kind, until, timer };
-    if (!duel) this.game.modes.prepare?.(e.kind, e.place); // its heavy part (the zombie grids) made in the countdown, not at its start
     this.game.broadcast({ t: 'announce', code: 'nextGame', args: { kind: e.kind }, text: `Next: ${KINDS[e.kind] ?? (e.kind === 'assault' ? ASSAULT_TITLE : 'Zombies duel')}`, ms: COUNTDOWN_MS, count: true });
     return { ok: true };
   }
@@ -447,7 +446,6 @@ export class Host {
     const was = !!this.countdown;
     if (was) clearTimeout(this.countdown.timer);
     this.countdown = null;
-    this.game.modes.unprepare?.(); // the grids its start would have taken (server/modes.mjs prepare)
     if (was || always) this.game.broadcast({ t: 'announce', text: '', ms: 0 });
   }
 

@@ -217,8 +217,8 @@ export class AssaultSupply {
   /**
    * The Zombies grid of the defenders' place `id` (the church's or the Sparrenhof's, shared/arenas.mjs): where a trap may
    * stand and what a turret sees through. Taken once per game, both places as it starts, never in its break, when 30
-   * players are moved at once already: from the host's countdown when it came from one (server/modes.mjs prepare), else
-   * made then on the place's kept part (server/navCache.mjs: a few ms each).
+   * players are moved at once already: made then on the place's kept part with the cars as they stand
+   * (server/navCache.mjs: a few ms each).
    */
   nav(id) {
     this.navs ??= new Map();

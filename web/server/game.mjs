@@ -889,8 +889,6 @@ export class Game {
    * edge. A few ms on the place's kept part (NAVS); 10 to 60 ms when it was made whole each time.
    */
   zombieGround(arena) {
-    const ready = this.modes?.readyGround?.(arena); // made in the host's countdown (server/modes.mjs prepare)
-    if (ready) return ready;
     const edge = arenaEdge(arena, BOUNDS);
     const boxes = Object.values(this.cars).filter((c) => edge.inside(c.x, c.z)).map((c) => {
       const s = carSpec(c);
