@@ -260,6 +260,36 @@ export class Crash {
     }
   }
 
+  /**
+   * A car breaking through something at speed (world/breakage.ts), at (x, y, z) going along (nx, nz): through a hedge a
+   * burst of leaves and twigs thrown ahead and up and a loud rustle with stems snapping; through a wire fence the mesh
+   * twanging, a few chips of concrete from its posts; a young tree's trunk cracking, its crown's leaves shaken down.
+   */
+  smash(kind: 'hedge' | 'fence' | 'sapling', x: number, y: number, z: number, nx: number, nz: number, speed: number): void {
+    const h: CrashHit = { x, y, z, nx, nz, speed, what: kind === 'hedge' ? 'nb_hedge' : kind === 'fence' ? 'fence' : 'sapling' };
+    const k = Math.min(1, (speed - 3) / 12);
+    if (kind === 'hedge') {
+      this.leaves({ ...h, y: y + 0.3 }, 30 + 50 * k, 1.1);
+      this.throw(h, 10 + 18 * k, 2.5 + 3 * k, 0.9, 0.6, (s) => {
+        Object.assign(s, { life: 0.6 + Math.random() * 0.5, size0: 0.02 + Math.random() * 0.03, size1: 0.02, alpha: 1, cell: PARTICLE.chip, drag: 0.7, gravity: 9.8, spin: (Math.random() - 0.5) * 22 });
+        s.c0.set(Math.random() < 0.6 ? '#4b3b28' : '#a8875c'); // twigs and their snapped pale wood
+        s.c1.copy(s.c0);
+      });
+      this.crunch({ ...h, speed: Math.max(6, speed) }, 'hedge');
+      this.crunch({ ...h, speed: Math.max(4, speed * 0.6) }, 'hedge'); // a second rustle as it goes through
+    } else if (kind === 'fence') {
+      this.throw(h, 6 + 10 * k, 2 + 2 * k, 0.8, 0.5, (s) => {
+        Object.assign(s, { life: 0.5 + Math.random() * 0.4, size0: 0.02 + Math.random() * 0.03, size1: 0.02, alpha: 1, cell: PARTICLE.chip, drag: 0.4, gravity: 9.8, spin: (Math.random() - 0.5) * 25 });
+        s.c0.set('#bdb9b0'); // concrete from the posts
+        s.c1.copy(s.c0);
+      });
+      this.crunch({ ...h, speed: Math.min(9, Math.max(5, speed * 0.7)) }, 'metal');
+    } else {
+      this.leaves({ ...h, y: y + 1.6 }, 16 + 24 * k, 1);
+      this.crunch({ ...h, speed: Math.max(6, speed) }, 'wood');
+    }
+  }
+
   /** What a car does in the world through this (world/car.ts Car.fx): leaves in a hedge, the water it throws, steam. */
   carFx(splashes: Splashes): CarFx {
     return { brush: (h) => this.brush(h), water: (w) => this.water(w, splashes), steam: (x, y, z, k, dt) => this.steam(x, y, z, k, dt) };

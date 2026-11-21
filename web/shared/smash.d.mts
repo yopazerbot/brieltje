@@ -59,4 +59,5 @@ export function treeKey(t: { x: number; z: number }): string;
 export function smashPieces(sets: { prisms?: BlockLike[]; trees?: TreeLike[] }[]): SmashPiece[];
 export function gapPoint(piece: SmashPiece, s: number): [number, number];
 export function partRings(ring: [number, number][], piece: SmashPiece, gaps: { s: number; w: number }[]): [number, number][][];
+export function stripRing(ring: [number, number][], piece: SmashPiece, a: number, b: number): [number, number][] | null;
 export function gapWidth(piece: SmashPiece, yaw: number, halfL: number, halfW: number): number;

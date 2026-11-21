@@ -153,6 +153,8 @@ export type ServerMsg =
       vdmg?: VehicleDamageMsg[];
       /** The Brook Spirit and its launcher (shared/brookSpirit.mjs readSpirit checks it); missing in a room */
       spirit?: SpiritWelcome;
+      /** The hedges, fences and young trees broken in this game (server/carSmash.mjs): [piece, m along it, m wide, heading] */
+      smashed?: [number, number, number, number][];
     }
   /** The admin changed the weather for everyone (`op`: set, skip or speed; `by`: who, a name for textContent only), with the cycle */
   | { t: 'mood'; mood: unknown; by?: string; op?: unknown; cycle?: unknown; time?: unknown }
@@ -255,6 +257,10 @@ export type ServerMsg =
   | { t: 'bike'; bike: BikeState; knock?: { ms: number; v: number }; home?: boolean }
   /** A rider rang the bell of bike `id` (rung where that bike is drawn) */
   | { t: 'bell'; id: string }
+  /** A car broke piece `id` (shared/smash.mjs) at `s` m along it, `w` m wide, heading `a`; or (`no`) this page's own report refused */
+  | { t: 'smash'; id: number; s: number; w: number; a: number; by?: string; no?: boolean }
+  /** Broken pieces mended: these ([piece, s]) or all */
+  | { t: 'mend'; all?: boolean; list?: [number, number][] }
   | { t: 'flag'; ev: 'taken' | 'dropped' | 'returned' | 'captured' | 'safe'; team: 'blue' | 'red'; name: string; why?: 'zone' | 'home' }
   // Steal the flag's bazooka (server/flagBazooka.mjs): to its team, who took it from the rack; to its holder, the rockets left
   | { t: 'fbz'; ev: 'taken'; team: 'blue' | 'red'; name: string; n: number }

@@ -807,13 +807,39 @@ export function nearHome(x: number, z: number): boolean {
   return homeBoxes.some((b) => x >= b[0] && x <= b[2] && z >= b[1] && z <= b[3]);
 }
 const isHedge = (b: Brush) => !!b.mat && /hedge/.test(b.mat);
+
+/**
+ * What a car breaks at speed (world/breakage.ts): a hedge, a light fence or a young tree, standing where the car meets
+ * it. `width`: the gap the car leaves in the piece of block `b` going along `yaw` (0: it glances off, or `b` is no
+ * piece that breaks); `min`: the speed it breaks from; `smash`: it broke there (opened at once on this page, reported
+ * to the server), the car's middle at (x, z) going along `yaw` at `speed` m/s.
+ */
+export interface Breaker {
+  width(b: Brush, yaw: number, halfL: number, halfW: number): number;
+  min(b: Brush): number;
+  smash(b: Brush, x: number, z: number, yaw: number, width: number, speed: number): { keep: number; lose: number; dent: number } | null;
+  /** A young tree (world/car.ts Obstacle with a piece): the speed it snaps from, and it snapped (the car going along `yaw`) */
+  treeMin(o: { piece?: number }): number;
+  snap(o: { piece?: number }, yaw: number, speed: number): { keep: number; lose: number; dent: number } | null;
+}
+
+/** A young tree in the car's way (world/car.ts Obstacle). */
+interface Tree {
+  x: number;
+  z: number;
+  r: number;
+  piece?: number;
+}
 /** How hard it rains now (0 to 1), as world/water.ts reads it. */
 const raining = () => (mood.current === 'rain' ? 1 - mood.blend : 0) + (mood.next === 'rain' && mood.next !== mood.current ? mood.blend : 0);
 
 /**
  * A Tesla's wear (world/car.ts): its damage (CarDamage), and how the world gives way to it.
  *
- * - A hedge is no wall: the car pushes into it (World.boxFree `give`), held back hard the more of it is in and the
+ * - A garden hedge or a light fence that breaks (world/breakage.ts) is a soft wall to a slow car (no bounce, a rustle);
+ *   at its breaking speed the car ploughs through, leaves a gap its width for everyone and keeps only part of its
+ *   speed, its nose scratched (a hedge) or dented a little (a fence): `plough`.
+ * - Any other hedge is no wall: the car pushes into it (World.boxFree `give`), held back hard the more of it is in and the
  *   faster it goes, leaves and twigs flying and a rustle; a thin hedge it pushes through at a crawl, a thick one holds
  *   it THICK_IN in. Only scratches, no dents. The hedges round a code-locked home and the end house's garden stay
  *   walls (nearHome), so no car ends up in a home's garden or where the server would put it back. Walls, houses,
@@ -845,16 +871,80 @@ export class CarWear {
   private sent = new Array(LOOK_LENGTH).fill(0).join();
   private sentAt = -Infinity;
 
-  constructor(halfL: number, halfW: number) {
+  constructor(private readonly halfL: number, private readonly halfW: number) {
     this.damage = new CarDamage(halfL, halfW);
   }
 
-  /** A block the car may push into (World.boxFree `give`): a hedge, not by a code-locked home. */
+  /** What breaks (world/breakage.ts, main.ts sets it); none: the hedges give as before, nothing breaks. */
+  static breaker: Breaker | null = null;
+  /** m/s it goes and its heading, as the frame's step starts (world/car.ts): whether it breaks what it meets */
+  going = 0;
+  yaw = 0;
+  /** The pieces it is ploughing into this frame (give let it in at speed): broken after the step (plough) */
+  private ahead = new Set<Brush>();
+  private trees = new Set<Tree>();
+
+  /** A young tree in its way (world/car.ts free): at its snapping speed it lets the car through and snaps (plough). */
+  giveTree(o: Tree): boolean {
+    const breaker = CarWear.breaker;
+    if (!breaker || this.going < breaker.treeMin(o)) return false;
+    this.trees.add(o);
+    return true;
+  }
+
+  /**
+   * A block the car may push into (World.boxFree `give`). A piece that breaks (world/breakage.ts): at its breaking
+   * speed and not glancing off, it lets the car in and breaks after the step (plough); slower, it is a soft wall (no
+   * bounce: world/car.ts). Any other hedge, not by a code-locked home: pushed through at a crawl, as before.
+   */
   readonly give = (b: Brush): boolean => {
+    const breaker = CarWear.breaker;
+    if (breaker && b.piece !== undefined) {
+      const w = breaker.width(b, this.yaw, this.halfL, this.halfW);
+      if (w > 0) {
+        if (this.going < breaker.min(b)) return false;
+        this.ahead.add(b);
+        return true;
+      }
+      if (!isHedge(b)) return false;
+    }
     if (!isHedge(b) || nearHome(b.cx, b.cz)) return false;
     if (b.thick >= THICK) this.sawThick = true;
     return true;
   };
+
+  /**
+   * After the step: the pieces it ploughed into at speed are broken (world/breakage.ts smash: a gap the car's width, the
+   * report to the server), the front dented a little, leaves or wire flying. Returns the share of its speed it keeps
+   * (1: nothing broke). (x, z, yaw): where it is now; `speed` m/s.
+   */
+  plough(x: number, z: number, yaw: number, speed: number, others: readonly Tree[] = []): number {
+    const breaker = CarWear.breaker;
+    if ((!this.ahead.size && !this.trees.size) || !breaker) return 1;
+    let v = speed;
+    // The young trees its box is on now (asked while moving: those of a test box it did not take are left standing).
+    const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
+    for (const o of this.trees) {
+      const dx = o.x - x, dz = o.z - z;
+      const u = dx * fx + dz * fz, w = -dx * fz + dz * fx;
+      const on = Math.hypot(u - Math.max(-this.halfL, Math.min(this.halfL, u)), w - Math.max(-this.halfW, Math.min(this.halfW, w))) < o.r + 0.05;
+      const broke = on && others.includes(o) && breaker.snap(o, yaw, v);
+      if (!broke) continue;
+      this.damage.hit(Math.max(-this.halfW, Math.min(this.halfW, w)), -this.halfL, v, broke.dent);
+      v = Math.max(0, v * broke.keep - broke.lose);
+    }
+    this.trees.clear();
+    for (const b of this.ahead) {
+      const w = breaker.width(b, yaw, this.halfL, this.halfW);
+      const broke = w > 0 && this.met.includes(b) && breaker.smash(b, x, z, yaw, w, v);
+      if (!broke) continue;
+      this.damage.hit(0, -this.halfL, v, broke.dent); // its nose, a little: a hedge scratches, a fence dents
+      this.damage.scrape(0, -this.halfL, v, 0.3, broke.dent + 0.3);
+      v = Math.max(0, v * broke.keep - broke.lose);
+    }
+    this.ahead.clear();
+    return speed > 1e-6 ? v / speed : 1;
+  }
   /** Everything but a thick hedge, for the shorter box (held). */
   private readonly notThick = (b: Brush): boolean => !(isHedge(b) && b.thick >= THICK);
 

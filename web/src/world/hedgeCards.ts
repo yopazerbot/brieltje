@@ -179,6 +179,9 @@ export function hedgeCardPlaces(prisms: Prism[]): { side: THREE.Matrix4[]; top: 
   return { side, top };
 }
 
+/** Whether a mesh draws hedge sprigs (world/breakage.ts hides those in a gap a car broke). */
+export const isSprigs = (mesh: THREE.Mesh): boolean => mesh.material === material;
+
 /** The sprigs over these hedge blocks as instanced pieces for the tiles (drawn in the tiles round the eye). */
 export function hedgeCardPieces(prisms: Prism[]): { material: THREE.Material; geometry: THREE.BufferGeometry; at: THREE.Matrix4[] }[] {
   const hedges = prisms.filter((p) => p.m === 'hedge' || p.m === 'nb_hedge');

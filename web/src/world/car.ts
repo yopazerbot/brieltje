@@ -111,6 +111,8 @@ export interface Obstacle {
   r: number;
   /** A young tree (under 6 m): it gives a little, no bounce back, its crown shaken low (world/crash.ts) */
   young?: boolean;
+  /** A young tree a car snaps at speed (world/breakage.ts): its number in the shared list (shared/smash.mjs) */
+  piece?: number;
 }
 
 /** A car in a pond or a ditch this frame (world/crash.ts water): where, the water's surface, its way and speed (m/s). */
@@ -823,7 +825,8 @@ export class Car {
       const dz = o.z - z;
       const u = dx * fx + dz * fz;
       const w = -dx * fz + dz * fx;
-      return Math.hypot(u - Math.max(-this.halfL, Math.min(this.halfL, u)), w - Math.max(-this.halfW, Math.min(this.halfW, w))) < o.r;
+      // A young tree that snaps at speed (world/breakage.ts) lets it through; it breaks after the step (CarWear.plough).
+      return Math.hypot(u - Math.max(-this.halfL, Math.min(this.halfL, u)), w - Math.max(-this.halfW, Math.min(this.halfW, w))) < o.r && !(o.piece !== undefined && wear?.giveTree(o));
     });
   }
 
@@ -872,6 +875,11 @@ export class Car {
     const out = Math.abs(want) > Math.abs(this.steer) && want * this.steer >= 0;
     this.steer += (want - this.steer) * (1 - Math.exp(-dt * (out ? STEER_IN : Math.min(18, 12 + speed * 0.2))));
     const wear = this.wear;
+    if (wear) {
+      // Fast enough, what breaks (world/breakage.ts) lets it in and breaks after the step; slower, it holds (CarWear.give).
+      wear.going = Math.hypot(this.vx, this.vz);
+      wear.yaw = this.yaw;
+    }
     const pull = wear?.damage.pull;
     const delta = pull ? pull - this.steer : -this.steer; // to the right (a bent front corner pulls a little to its side)
 
@@ -990,6 +998,12 @@ export class Car {
     }
     if (impact > 1) this.turn *= 0.3; // what it hit holds it: its own spin mostly stops (the knock above turns it)
     wear?.brushAt(this.world, this.x, this.z, this.yaw, this.halfL, this.halfW, this.y + CLEAR, this.y + this.spec.height, this.key); // in a hedge now?
+    // Through a hedge or a fence at speed: it breaks, and takes much of the car's speed (world/carDamage.ts plough).
+    const through = wear?.plough(this.x, this.z, this.yaw, Math.hypot(vx, vz), others) ?? 1;
+    if (through < 1) {
+      vx *= through;
+      vz *= through;
+    }
     this.vx = vx;
     this.vz = vz;
     [fx, fz] = this.forward;

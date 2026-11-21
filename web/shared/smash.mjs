@@ -115,6 +115,9 @@ export function smashPieces(sets) {
       if (!kind) continue;
       const line = lineOf(p.p[0]);
       if (nearHome(line.cx, line.cz) || !(line.half > 0.3)) continue;
+      // Straight runs only: a hedge or fence bent round a corner (an L or a U in one outline) is cut straight across one
+      // line only, so it stays as it was (a hedge pushed into, a fence a wall).
+      if (area(p.p[0]) < 0.8 * 2 * line.half * line.thick) continue;
       add({ kind, key: pieceKey(p), ...line, y0: p.y0, y1: p.y1 });
     }
     for (const t of trees) {
@@ -173,6 +176,14 @@ export function partRings(ring, piece, gaps) {
     if (r.length >= 3 && area(r) > 0.005) out.push(r);
   }
   return out;
+}
+
+/** The part of a block (its outline `ring`) from `a` to `b` m along the piece's line from its middle, or null. */
+export function stripRing(ring, piece, a, b) {
+  const c0 = piece.cx * piece.ux + piece.cz * piece.uz;
+  let r = clip(ring, -piece.ux, -piece.uz, -(c0 + a));
+  if (r.length >= 3) r = clip(r, piece.ux, piece.uz, c0 + b);
+  return r.length >= 3 && area(r) > 0.002 ? r : null;
 }
 
 /**

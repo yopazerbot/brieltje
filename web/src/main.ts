@@ -166,6 +166,8 @@ import { RoadLife } from './world/roadLife';
 import { looseProps, type Mover } from './world/looseProps';
 import { RotorWash } from './world/rotorWash';
 import { Crash } from './world/crash';
+import { Breakage } from './world/breakage';
+import { CarWear } from './world/carDamage';
 import { TyreSpray } from './world/tyreSpray';
 import { clearOpenGround, cutOut, fitStreetModel, loadStreetModel } from './world/streetModel';
 import { TrunkBlocks } from './world/trunkBlocks';
@@ -818,7 +820,7 @@ const cafeAccess = makeCafe(CAFE_DATA, house.ground + terrain.height(...CAFE_DAT
 undergrowth.addBare([...cafeAccess.clear, ...cafeAccess.outlines, ...cafeAccess.huts.map((h) => h.footprint)].map((ring) => [ring as [number, number][]]));
 const world = new World(house.prisms, house.ground, drawnRoofs);
 const ringModelled = new Set(ringData.removed.prisms ?? []); // not drawn: our models round home stand for them
-world.addPrisms(house.surroundings?.prisms ?? [], (p) => ringModelled.has(p));
+const ringFirst = world.addPrisms(house.surroundings?.prisms ?? [], (p) => ringModelled.has(p));
 world.addPrisms(homeStreet.blocks);
 // Their roofs as drawn, once they are in (world/modelRoofs.ts); not over the main house or the bungalow.
 void homeStreet.ready.then(() => addModelRoofs(world, [homeStreet.group], house.ground, privateHomes(house.prisms, house.surroundings?.roofs ?? [])));
@@ -901,6 +903,11 @@ const rotorWash = new RotorWash(scene, world, effects.particles, effects.splashe
 const crash = new Crash(effects.particles);
 Car.onCrash = (hit) => crash.hit(hit); // sparks, dust or leaves, and a crunch, by what a car hit (world/crash.ts)
 Car.fx = crash.carFx(effects.splashes); // leaves in a hedge, the water a car throws, steam from a crumpled bonnet
+// Hedges and light fences a car breaks at speed, the same gap for everyone (world/breakage.ts, server/carSmash.mjs).
+const breakage = new Breakage(world, tiles, crash);
+breakage.addBlocks(ringFirst, house.surroundings?.prisms ?? [], (house.surroundings?.prisms ?? []).filter((p) => !ringModelled.has(p)));
+breakage.send = (m) => net.connected && net.send(m);
+CarWear.breaker = breakage;
 const tyreSpray = new TyreSpray(effects.particles, world); // behind the wheels on a wet road
 const grenades = new Grenades(world);
 scene.add(grenades.group);
@@ -986,6 +993,7 @@ const pruneTrunks = () => {
 };
 onTreesLeftOut.add(pruneTrunks);
 pruneTrunks();
+breakage.addTrees(trunks); // the young ones snap when a car hits them at speed (world/breakage.ts)
 const cars = Object.entries(CARS.cars).map(([id, spec]) => new Car(world, trunks, id, spec));
 for (const c of cars) scene.add(c.group);
 scene.add(skidMarks.mesh); // the tyre marks every car leaves when it slides (world/skidMarks.ts)
@@ -2995,6 +3003,7 @@ net.onMessage = (m: ServerMsg) => {
       glass.repair();
       for (const i of m.broken ?? []) glass.break(i, null, undefined, true);
       for (const [i, x, y, z] of m.cracked ?? []) glass.crack(i, new THREE.Vector3(x, y, z), true, true); // the cracks there are
+      breakage.setAll(m.smashed ?? []); // the hedges and fences broken in this game (server/carSmash.mjs)
       combat.me = m.you;
       combat.reset(m.scores ?? [], m.limit ?? 10, m.round ?? null);
       grenades.refill();
@@ -3133,6 +3142,13 @@ net.onMessage = (m: ServerMsg) => {
     }
     case 'bell':
       bikes.ring(m.id);
+      break;
+    case 'smash': // a hedge or fence a car broke, or (`no`) this page's own report refused (world/breakage.ts)
+      if (m.no) breakage.refused(m.id, m.s);
+      else breakage.heard(m.id, m.s, m.w, m.a);
+      break;
+    case 'mend':
+      breakage.mend(m.all ? null : (m.list ?? []));
       break;
     case 'flag': // Steal the flag: taken, dropped, returned or captured (server/flags.mjs): a line and a sound
       games.flagHud?.event(m, me?.username ?? '', games.team === 'blue' || games.team === 'red' ? games.team : null);
@@ -4617,6 +4633,7 @@ async function buildVillage(): Promise<void> {
   // A frame between the big steps: built all at once, it stopped the game for a second just after it began.
   const between = () => new Promise((r) => setTimeout(r, 0));
   const data = (await import('./data/village.json')).default as unknown as VillageData;
+  breakage.village(data); // what a car breaks, numbered from the data as it came (world/breakage.ts)
   villageTrees ??= [...data.trees]; // before the football ground's join and the models' open ground takes some
   if (!noFootball) fcGround.addToVillage(data); // the football ground's car park, lane and trees
   wearLonePatches(data); // light patches away from the buildings: worn ground (world/yards.ts)
@@ -4772,6 +4789,7 @@ async function buildVillage(): Promise<void> {
   const villageBlocks = cafePrisms(churchPrisms(data.prisms ?? [], churchAccess), cafeAccess).filter((p) => (!endHouse?.replaces(p) || endHouse.standIn(p)) && !brickHouse?.replaces(p) && !keet?.replaces(p));
   const drawnBlocks = new Set([...(kept.prisms ?? []), ...churchAccess.prisms, ...cafeAccess.prisms]);
   const firstBlock = world.addPrisms(villageBlocks, (p) => !drawnBlocks.has(p)); // the rest: a model stands for it
+  breakage.addBlocks(firstBlock, villageBlocks, kept.prisms ?? []); // its hedges and light fences break (those the tiles draw)
   helis.settle(); // the church's helicopter onto its deck, now there (src/heliPilot.ts)
   if (endHouse) {
     endHouse.holdStandIns(villageBlocks.flatMap((p, i) => (endHouse!.standIn(p) ? [firstBlock + i] : [])));
@@ -4836,6 +4854,7 @@ async function buildVillage(): Promise<void> {
   for (const t of data.trees) trunks.push({ x: t.x, z: t.z, r: 0.35, young: t.h < 6 });
   heliCrowns.push(...data.trees); // the village's crowns for the helicopter
   pruneTrunks();
+  breakage.addTrees(trunks);
   trunkBlocks.add(data.trees);
   for (const m of models) trunkBlocks.add((m.userData.conifers as TreeSpot[] | undefined) ?? []);
   portals.settle(); // the village's paving under its portals
@@ -5179,6 +5198,8 @@ if (import.meta.env.DEV) {
       car,
       cars,
       carPeople,
+      /** What cars break (world/breakage.ts): breakage.nearest('hedge', x, z), breakage.count. */
+      breakage,
       /** The people in the helicopters (world/heliPeople.ts): heliPeople.dummy(helis.machines[0], 1, '#d8452f') fills a seat, heliPeople.report(m) the fit. */
       heliPeople,
       currentCar: () => car,

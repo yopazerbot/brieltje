@@ -32,6 +32,10 @@ interface Solid {
   maxZ: number;
   /** As a car meets it (boxFree `give`), made the first time it is asked */
   brush?: Brush;
+  /** A piece a car can break (shared/smash.mjs, world/breakage.ts): its number in the shared list */
+  piece?: number;
+  /** A part of a broken block (World.split): the block's number */
+  partOf?: number;
 }
 
 /**
@@ -45,6 +49,8 @@ export interface Brush {
   readonly thick: number;
   readonly cx: number;
   readonly cz: number;
+  /** A piece a car can break (world/breakage.ts): its number in the shared list (shared/smash.mjs) */
+  readonly piece?: number;
   has(x: number, z: number): boolean;
 }
 
@@ -58,7 +64,7 @@ function brushOf(s: Solid): Brush {
     edge += Math.hypot(ring[i][0] - ring[j][0], ring[i][1] - ring[j][1]);
   }
   const thick = edge > 0 ? Math.abs(area) / edge : 0; // (area/2) * 2 / edge
-  return (s.brush = { mat: s.mat, name: s.name, thick, cx: (s.minX + s.maxX) / 2, cz: (s.minZ + s.maxZ) / 2, has: (x, z) => inside(x, z, s.rings) });
+  return (s.brush = { mat: s.mat, name: s.name, thick, cx: (s.minX + s.maxX) / 2, cz: (s.minZ + s.maxZ) / 2, piece: s.piece, has: (x, z) => inside(x, z, s.rings) });
 }
 
 export interface Point {
@@ -371,6 +377,50 @@ export class World {
   setPane(number: number, on: boolean): void {
     const index = this.panes.get(number);
     if (index !== undefined) this.setSolid(index, on);
+  }
+
+  /** Mark block `index` as piece `piece` a car can break (world/breakage.ts): a Brush of it says so. */
+  tagPiece(index: number, piece: number): void {
+    const s = this.solids[index];
+    if (!s) return;
+    s.piece = piece;
+    s.brush = undefined;
+  }
+
+  /**
+   * Block `index` broken (world/breakage.ts): it goes, and what stands of it (`rings`, on the plan) takes its place, as
+   * blocks of the same material, heights and piece. Returns the parts' numbers, for `unsplit`.
+   */
+  split(index: number, rings: Ring[]): number[] {
+    const s = this.solids[index];
+    if (!s) return [];
+    s.off = true;
+    if (!rings.length) return [];
+    const first = this.addPrisms(rings.map((ring) => ({ m: s.mat ?? '', y0: s.y0, y1: s.y1, p: [ring], n: s.name, d: s.lift ? 1 : undefined }) as Prism));
+    const parts = rings.map((_, i) => first + i);
+    for (const k of parts) {
+      this.solids[k].piece = s.piece;
+      this.solids[k].partOf = index;
+    }
+    return parts;
+  }
+
+  /** Block `index` whole again: its parts (`split`) gone from the grid for good, itself back. */
+  unsplit(index: number, parts: number[]): void {
+    for (const k of parts) {
+      const s = this.solids[k];
+      if (!s || s.partOf !== index) continue;
+      s.off = true;
+      for (let i = cellOf(s.minX); i <= cellOf(s.maxX); i++) {
+        for (let j = cellOf(s.minZ); j <= cellOf(s.maxZ); j++) {
+          const list = this.grid.get(cellKey(i, j));
+          const at = list?.indexOf(k) ?? -1;
+          if (at >= 0) list!.splice(at, 1);
+        }
+      }
+    }
+    const s = this.solids[index];
+    if (s) s.off = false;
   }
 
   /** Switch off the shell blocks with these keys: an inside brings blocks of its own in their place. */

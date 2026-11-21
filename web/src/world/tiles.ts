@@ -391,6 +391,17 @@ export class Tiles {
     if (count) im.computeBoundingSphere();
   }
 
+  /**
+   * The instances of the runs whose mesh `pick` takes, as made (every tile's, in tile order): `edit` changes their
+   * matrices (world/breakage.ts: a broken hedge's sprigs hidden, a fence's posts knocked flat) and says whether it did;
+   * those runs are shown again from them.
+   */
+  editInstances(pick: (mesh: THREE.InstancedMesh) => boolean, edit: (matrices: Float32Array, mesh: THREE.InstancedMesh) => boolean): void {
+    for (const set of this.sets) {
+      for (const run of set.runs) if (run.source && pick(run.mesh as THREE.InstancedMesh) && edit(run.source, run.mesh as THREE.InstancedMesh)) this.range(set, run);
+    }
+  }
+
   /** Something else that is hidden beyond the draw distance (the house, the bungalow), where it stands; or beyond `reach`, if nearer. */
   track(object: THREE.Object3D, box = new THREE.Box3().setFromObject(object), reach = Infinity): void {
     this.tracked.push({ object, box, reach });
