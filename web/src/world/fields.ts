@@ -59,13 +59,30 @@ const CROPS: Record<string, [number, number?, number?]> = {
   hedgeplants: [NURSERY, 0.05, 0.85],
 };
 
+/** The declared nurseries' crops, in the order of their reach (`nurseryReach`): by their row spacing, narrowest first. */
+export const NURSERY_CROPS = ['hedgeplants', 'roses', 'shrubs', 'fruit', 'avenue'];
+
 /**
- * Give a field's geometry its rows: their direction (along the field's longest side), the kind and a
- * leaf colour, and a number of its own (row spacing or colour within a kind), on every vertex. Every
- * block with the fields' material gets it (the woods' floor with no rows), so their meshes merge.
+ * Metres from the eye within which a declared nursery's young trees and shrubs stand as models (world/nursery.ts), one
+ * per crop in the order of NURSERY_CROPS: there the flat rows give way to the soil of the row they stand in, growing
+ * back as the plants shrink away. 0 (Low, phones): the flat rows everywhere.
  */
-export function fieldRows(g: THREE.BufferGeometry, p: Prism): void {
-  if (!FIELDS.has(p.m)) return;
+export const nurseryReach = { value: [0, 0, 0, 0, 0] };
+
+/** A declared nursery's rows as the shader draws them: the rows' direction and spacing (m), the middle of row n at (n + 0.5) * spacing across. */
+export interface NurseryRows {
+  crop: string;
+  /** Along the rows (a unit vector on the plan, x and z) */
+  dir: [number, number];
+  /** Across the rows: (-dir z, dir x) */
+  perp: [number, number];
+  spacing: number;
+  /** The field's own number (0 to 99, the same for all its pieces) */
+  own: number;
+}
+
+/** The numbers the shader gets per vertex: direction x and z, kind and leaf colour, a number of its own (all -127 to 127). */
+function rowCode(p: Prism): [number, number, number, number] {
   const ring = p.p[0];
   let best = 0;
   let dx = 1;
@@ -105,11 +122,38 @@ export function fieldRows(g: THREE.BufferGeometry, p: Prism): void {
     kind = h < 0.78 ? COVER : SOWN;
     if (kind === COVER) own = 0.9 + 0.1 * own; // the shader's rough grass (over 0.88)
   } else kind = h < 0.45 ? PLOUGHED : h < 0.75 ? STUBBLE : SOWN;
+  return [Math.round(dx * 127), Math.round(dz * 127), kind * 8 + Math.round(hue * 7), Math.round(own * 127)];
+}
+
+/**
+ * Give a field's geometry its rows: their direction (along the field's longest side), the kind and a
+ * leaf colour, and a number of its own (row spacing or colour within a kind), on every vertex. Every
+ * block with the fields' material gets it (the woods' floor with no rows), so their meshes merge.
+ */
+export function fieldRows(g: THREE.BufferGeometry, p: Prism): void {
+  if (!FIELDS.has(p.m)) return;
   const n = g.attributes.position.count;
   const a = new Int8Array(n * 4);
-  const v = [Math.round(dx * 127), Math.round(dz * 127), kind * 8 + Math.round(hue * 7), Math.round(own * 127)];
+  const v = rowCode(p);
   for (let i = 0; i < n * 4; i += 4) a.set(v, i);
   g.setAttribute('row', new THREE.BufferAttribute(a, 4, true));
+}
+
+/**
+ * A declared nursery's rows, worked out from the same numbers the shader reads (rounded as it gets them), so the young
+ * trees stand exactly in the rows it draws. Null for any other block.
+ */
+export function nurseryRows(p: Prism): NurseryRows | null {
+  if (!FIELDS.has(p.m) || !p.c || !NURSERY_CROPS.includes(p.c) || p.m === 'forest') return null;
+  const [cx, cz, code, own] = rowCode(p);
+  if (Math.floor(code / 8) !== NURSERY) return null;
+  // As the shader: normalize(row.xy + vec2(1e-4, 0)), its spacing mix(0.55, 2.0, row.w).
+  const x = cx / 127 + 1e-4;
+  const z = cz / 127;
+  const len = Math.hypot(x, z);
+  const dir: [number, number] = [x / len, z / len];
+  const w = own / 127;
+  return { crop: p.c, dir, perp: [-dir[1], dir[0]], spacing: Math.fround(0.55 + (2.0 - 0.55) * w), own: p.r ? p.r[1] : Math.round(w * 99) };
 }
 
 /** Rows on (1) or off (0) at once, for the graphics settings. */
@@ -127,11 +171,12 @@ export function patchFields(material: THREE.MeshStandardMaterial): void {
     shader.uniforms.fieldNoise = noise;
     shader.uniforms.woodDetail = woodDetail;
     shader.uniforms.windTime = wind.time;
+    shader.uniforms.nurseryReach = nurseryReach;
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nattribute vec4 row;\nvarying vec4 vRow;\nvarying vec2 vFieldXZ;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvRow = row;\nvFieldXZ = (modelMatrix * vec4(transformed, 1.0)).xz;');
+      .replace('#include <common>', '#include <common>\nattribute vec4 row;\nvarying vec4 vRow;\nvarying vec2 vFieldXZ;\nvarying float vFieldY;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvRow = row;\nvFieldXZ = (modelMatrix * vec4(transformed, 1.0)).xz;\nvFieldY = (modelMatrix * vec4(transformed, 1.0)).y;');
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', `#include <common>\nuniform float rowDetail;\nuniform sampler2D fieldNoise;\nvarying vec4 vRow;\nvarying vec2 vFieldXZ;\n${FOREST_COMMON}`)
+      .replace('#include <common>', `#include <common>\nuniform float rowDetail;\nuniform float nurseryReach[5];\nuniform sampler2D fieldNoise;\nvarying vec4 vRow;\nvarying vec2 vFieldXZ;\nvarying float vFieldY;\n${FOREST_COMMON}`)
       .replace(
         '#include <color_fragment>',
         `#include <color_fragment>
@@ -195,11 +240,19 @@ export function patchFields(material: THREE.MeshStandardMaterial): void {
             vec3 leaf = leafHue < 0.35 ? mix(vec3(0.05, 0.1, 0.045), vec3(0.13, 0.19, 0.07), leafHue / 0.35)
               : leafHue < 0.6 ? mix(vec3(0.13, 0.19, 0.07), vec3(0.3, 0.26, 0.06), (leafHue - 0.35) / 0.25)
               : mix(vec3(0.3, 0.26, 0.06), vec3(0.3, 0.13, 0.045), (leafHue - 0.6) / 0.4);
+            // Avenue and fruit trees (the widest rows) are bare by late November: a haze of grey-brown twigs and pale
+            // canes over the row, the odd yellow leaf.
+            if (own > 0.45) leaf = mix(vec3(0.11, 0.09, 0.07), leaf, 0.2) * (0.85 + 0.3 * leafHue);
             float band = smoothstep(0.62, 0.42, tri);
             float gaps = 0.75 + 0.25 * sin(along * 2.6 / spacing + own * 20.0);
-            diffuseColor.rgb = mix(mix(soil, leaf, 0.5), mix(soil, leaf * gaps, band), fade);
+            // Near by the young trees and shrubs stand in these rows as models (world/nursery.ts): the flat leaves give
+            // way to the darker, hoed soil of the row they stand in, as the models grow in from the edge of their reach.
+            float standAt = own < 0.11 ? nurseryReach[0] : own < 0.23 ? nurseryReach[1] : own < 0.45 ? nurseryReach[2] : own < 0.72 ? nurseryReach[3] : nurseryReach[4];
+            float standing = standAt > 0.0 ? smoothstep(standAt, standAt * 0.72, distance(cameraPosition, vec3(vFieldXZ.x, vFieldY, vFieldXZ.y))) : 0.0;
+            leaf = mix(leaf, soil * 0.78, standing);
+            diffuseColor.rgb = mix(mix(soil, leaf, 0.5), mix(soil, leaf * mix(gaps, 1.0, standing), band), fade);
             fieldSlope = side * 0.9 * smoothstep(0.62, 0.3, tri) * smoothstep(0.0, 0.3, tri) * fade;
-            fieldPlant = mix(0.5, band, fade);
+            fieldPlant = mix(mix(0.5, band, fade), 0.45 * band, standing); // under the plants: their fallen leaves, matte
           } else if (fieldKind < 5.5) {
             // Beet (and chicory): broad leaves in rows 48 cm apart, nearly closing over the soil.
             vec3 leaf = mix(vec3(0.045, 0.1, 0.03), vec3(0.1, 0.17, 0.05), fieldHue);

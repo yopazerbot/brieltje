@@ -114,6 +114,7 @@ import { modelTint } from './world/modelTints';
 import { wearLonePatches, weatherYards } from './world/yards';
 import { detailModelPaving, detailPaving, pavingMeshes, planPaving, usePavingPlan } from './world/pavingDetail';
 import { Undergrowth } from './world/undergrowth';
+import { Nursery } from './world/nursery';
 import { BankPlants } from './world/bankPlants';
 import { GrassTufts } from './world/grassTufts';
 import { HostNotice } from './ui/hostNotice';
@@ -617,6 +618,10 @@ weatherYards(['pave_light', 'gravel'].map((n) => blockMaterial(n, renderer).mate
 const undergrowth = new Undergrowth(groundShade.uniforms);
 undergrowth.addWoods(house.surroundings?.prisms, house.surroundings?.trees);
 scene.add(undergrowth.group);
+// The declared tree nurseries' young trees and shrubs, standing in the fields' rows (world/nursery.ts).
+const nursery = new Nursery(groundShade.uniforms);
+nursery.addFields(house.surroundings?.prisms, { dips: house.dips, lawns: house.surroundings?.grass?.lawns, trees: house.surroundings?.trees });
+scene.add(nursery.group);
 const bankPlants = new BankPlants(groundShade.uniforms); // reed, rushes and grass along the water (world/bankPlants.ts)
 scene.add(bankPlants.group);
 // Blades of grass round the eye on Medium and up (world/grassTufts.ts).
@@ -749,6 +754,7 @@ function applyQuality(q: Quality): void {
   setHeliDetail(q === 'low' || phone); // the helicopter's simple copy from nearer (world/heli.ts)
   tiles.drawDistance = phone ? Math.min(FAR_PHONE, preset.far) : preset.far;
   undergrowth.setQuality(q, phone);
+  nursery.setQuality(q, phone);
   bankPlants.setQuality(q, phone);
   farTrees.mesh.visible = q !== 'low' && !phone; // the far land's tree strips: some 250 000 vertices a frame
   woodDetail.value = q !== 'low' && !phone ? 1 : 0; // the woods' fallen leaves and sun flecks near by (world/forestFloor.ts)
@@ -4467,6 +4473,7 @@ renderer.setAnimationLoop((now: number) => {
   horizon.position.z = camera.position.z;
   tiles.update(dt, camera.position);
   undergrowth.update(camera.position);
+  nursery.update(camera.position);
   bankPlants.update(camera.position);
   grassTufts.update(renderer, scene, camera.position, performance.now() / 1000);
   groundDetail(camera.position);
@@ -4605,6 +4612,7 @@ async function buildVillage(): Promise<void> {
   if (!noFootball) fcGround.addToVillage(data); // the football ground's car park, lane and trees
   wearLonePatches(data); // light patches away from the buildings: worn ground (world/yards.ts)
   undergrowth.addWoods(data.prisms, data.trees);
+  nursery.addFields(data.prisms, { dips: data.dips, lawns: data.grass?.lawns, trees: data.trees });
   const first = poles.length;
   poles.push(...(data.poles ?? []));
   const landmarks = (data.landmarks ?? []).map((l) => {
