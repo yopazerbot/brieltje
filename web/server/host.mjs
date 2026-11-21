@@ -45,8 +45,8 @@ const COUNTDOWN_MS = 10_000;
  * (gather), so their players are in the house when it begins (a page connects again in well under a second).
  */
 export const GATHER_MS = 3_000;
-const KNOCK_MS = 30_000;
-const BRING_MS = 15_000; // brought out of a room: put by the host if their page is back in the open world within this // someone who tried to come in this recently is on the host's list
+const KNOCK_MS = 30_000; // someone who tried to come in this recently is on the host's list
+const BRING_MS = 15_000; // brought out of a room: put by the host if their page is back in the open world within this
 const EVENING_KICK_MS = 12 * 3600_000;
 const PLACES = new Set(ARENAS.map((a) => a.id));
 const POINTS = { played: 1, won: 3, wavesPer: 3 };
