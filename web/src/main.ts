@@ -2501,8 +2501,9 @@ function flagTeam(): 'blue' | 'red' | null {
 }
 
 /**
- * The guns you come into play with, besides the pistol (shared/loadout.mjs): the rifle, the shotgun, the sniper rifle and
- * the admin's; none in the Zombies game. Together the server holds the same by its own rule (its 'weapons' on joining).
+ * The guns you come into play with, besides the pistol (shared/loadout.mjs): the rifle, the shotgun, the sniper rifle,
+ * the laser rifle and the admin's; none in the Zombies game. Together the server holds the same by its own rule (its
+ * 'weapons' on joining).
  */
 function startGuns(): WeaponId[] {
   return startingWeapons(adminWeapons(), games.zombies).filter((w) => w !== 'pistol') as WeaponId[];

@@ -4,10 +4,10 @@ import { startingWeapons } from '../shared/loadout.mjs';
 import { Game } from './game.mjs';
 
 // The guns a player starts with (shared/loadout.mjs), by the server's own rule: outside the Zombies game every
-// player holds the pistol, the rifle, the shotgun and the sniper rifle (the admin the bazooka too); in the Zombies
-// game the pistol only, and the rest is found. No message from a page changes that: an old page's 'loadout' least of all.
+// player holds the pistol, the rifle, the shotgun, the sniper rifle and the laser rifle (the admin the bazooka too); in
+// the Zombies game the pistol only, and the rest is found. No message from a page changes that: an old page's 'loadout' least of all.
 
-const ALL = ['pistol', 'rifle', 'shotgun', 'sniper'];
+const ALL = ['pistol', 'rifle', 'shotgun', 'sniper', 'laser'];
 const sorted = (set) => [...set].sort();
 
 /** Each test's game: its ticks stop when the test ends (a fixture's stand-in pages and Zombies game can't tick). */
@@ -41,14 +41,14 @@ function setup() {
   return { game, sent, player, loadout };
 }
 
-test('the rule: all four outside Zombies, the admin\'s on top; the pistol only in Zombies', () => {
+test('the rule: all five outside Zombies, the admin\'s on top; the pistol only in Zombies', () => {
   assert.deepEqual(startingWeapons(), ALL);
   assert.deepEqual(startingWeapons(['bazooka']), [...ALL, 'bazooka']);
   assert.deepEqual(startingWeapons([], true), ['pistol'], 'the Zombies game: the pistol only');
   assert.deepEqual(startingWeapons(['bazooka'], true), ['pistol'], 'the admin too');
 });
 
-test('every player respawns with all four, the admin with the bazooka too, whatever they picked up or lost', () => {
+test('every player respawns with all five, the admin with the bazooka too, whatever they picked up or lost', () => {
   const { game, player } = setup();
   const anna = player('anna');
   const boss = player('boss', 'admin');
@@ -59,7 +59,7 @@ test('every player respawns with all four, the admin with the bazooka too, whate
   assert.deepEqual(sorted(boss.weapons), [...ALL, 'bazooka'].sort());
 });
 
-test('a hit with each of the four counts outside Zombies; the bazooka is still the admin\'s', () => {
+test('a hit with each of the five counts outside Zombies; the bazooka is still the admin\'s', () => {
   const { game, player } = setup();
   const anna = player('anna');
   const bert = player('bert');
@@ -102,7 +102,7 @@ test('thirty old \'loadout\' messages in a second cost the others\' budget only,
   assert.deepEqual(sorted(anna.weapons), [...ALL].sort());
 });
 
-test('the Zombies game: everyone down to the pistol, the admin too; a hit with a gun not found does not count; after it all four again, and told', () => {
+test('the Zombies game: everyone down to the pistol, the admin too; a hit with a gun not found does not count; after it all five again, and told', () => {
   const { game, sent, player } = setup();
   const anna = player('anna');
   const bert = player('bert');
@@ -134,10 +134,10 @@ test('the Zombies game: everyone down to the pistol, the admin too; a hit with a
   assert.deepEqual([...told.list].sort(), [...ALL].sort());
   assert.equal('pick' in told, false);
   rifleHit();
-  assert.ok(bert.hp < 100, 'all four held again: the hit counts');
+  assert.ok(bert.hp < 100, 'all five held again: the hit counts');
 });
 
-test('a page joining is told its guns by the server: all four (in a Zombies game the pistol only: zombie-loot.test.mjs)', () => {
+test('a page joining is told its guns by the server: all five (in a Zombies game the pistol only: zombie-loot.test.mjs)', () => {
   const { game, sent } = setup();
   game.send = (ws, m) => sent.push(m);
   game.auth = { session: () => null, log: () => {}, addressOf: () => '127.0.0.1' };
@@ -150,7 +150,7 @@ test('a page joining is told its guns by the server: all four (in a Zombies game
   assert.deepEqual([...game.players.get('anna').weapons].sort(), [...ALL].sort(), 'what it is told is what the server holds');
 });
 
-test('a rocket from anyone but the admin is dropped, with all four guns in hand or in Zombies; the admin\'s flies', () => {
+test('a rocket from anyone but the admin is dropped, with all five guns in hand or in Zombies; the admin\'s flies', () => {
   const { game, player } = setup();
   const rockets = [];
   game.broadcast = (m) => m.t === 'rocket' && rockets.push(m.name);
@@ -162,7 +162,7 @@ test('a rocket from anyone but the admin is dropped, with all four guns in hand 
     game.handle(name, p, JSON.stringify({ t: 'rocket', tx: 20, ty: 1, tz: 20 }));
   };
   fire('anna', anna);
-  assert.deepEqual(rockets, [], 'all four guns, no bazooka: dropped');
+  assert.deepEqual(rockets, [], 'all five guns, no bazooka: dropped');
   fire('boss', boss);
   assert.deepEqual(rockets, ['boss'], 'the admin\'s bazooka: it flies (the check is real)');
   game.modes.state = { kind: 'zombies', phase: 'playing', z: { stop() {}, blast() {} } };
