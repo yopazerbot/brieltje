@@ -320,6 +320,13 @@ const HUGGING = new Set(['pave_light', 'pave_warm', 'pave_walk', 'gravel', 'trac
  * still lie every 16 m: on the grid too, their pieces would hold some 24 MB more over the whole map; the woods' 12.)
  */
 const ON_GRID = new Set(['forest']);
+/**
+ * The fields: still laid every 16 m, but each piece halved again where the ground under it bends, down to the grass's
+ * own squares (hugField), and only there: finely along the field's edge, coarsely inside it. Laid whole they lay up to
+ * 30 cm off the grass along their edges (the lawn rose through, or the field's edge floated over the verge); cut on
+ * the grass's grid everywhere they would hold some 19 to 24 MB more.
+ */
+const FIELD_HUG = new Set(['field_soil', 'field_dark', 'field_crop']);
 
 /** A piece's corner from hugGround: x, z and its weights on the triangle's three corners. */
 export type Hug = [number, number, number, number, number];
@@ -330,12 +337,12 @@ export type Hug = [number, number, number, number, number];
  * flat between its grid lines and diagonals, so cut along them the triangle follows it exactly; most triangles lie on
  * ground that is near enough a plane and stay whole. `emit` gets each piece's corners, with their weights on the
  * triangle's corners to share out what else they carry (the lift, the texture, the colour). A triangle stays whole
- * while the ground rises less than `tol` over its plane and falls less than `float` under it.
+ * while the ground rises less than `tol` over its plane and falls less than `float` under it. True if it stayed whole.
  */
-export function hugGround(t: [number, number][], lift: [number, number, number], emit: (piece: Hug[]) => void, tol = 0.01, float = 0.05): void {
+export function hugGround(t: [number, number][], lift: [number, number, number], emit: (piece: Hug[]) => void, tol = 0.01, float = 0.05): boolean {
   const [[ax, az], [bx, bz], [cx, cz]] = t;
   const det = (bz - cz) * (ax - cx) + (cx - bx) * (az - cz);
-  if (Math.abs(det) < 1e-9) return; // no area on the plan
+  if (Math.abs(det) < 1e-9) return true; // no area on the plan
   const weights = (x: number, z: number): [number, number, number] => {
     const l1 = ((bz - cz) * (x - cx) + (cx - bx) * (z - cz)) / det;
     const l2 = ((cz - az) * (x - cx) + (ax - cx) * (z - cz)) / det;
@@ -355,7 +362,7 @@ export function hugGround(t: [number, number][], lift: [number, number, number],
     const dc = cx - gx0 - (cz - gz0);
     if ((da > 0 && db > 0 && dc > 0) || (da < 0 && db < 0 && dc < 0)) {
       emit(whole);
-      return;
+      return true;
     }
   }
   const ya = terrain.height(ax, az) + lift[0];
@@ -385,8 +392,48 @@ export function hugGround(t: [number, number][], lift: [number, number, number],
       }
     }
   }
-  if (above <= tol && below <= float) emit(whole);
-  else for (const piece of pieces) emit(piece);
+  if (above <= tol && below <= float) {
+    emit(whole);
+    return true;
+  }
+  for (const piece of pieces) emit(piece);
+  return false;
+}
+
+/** Whether the side a to b lies on the outline `rings`: just beside its middle, one side is outside. */
+function onOutline(a: Pt, b: Pt, rings: [number, number][][]): boolean {
+  const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  if (len < 1e-6) return false;
+  const [mx, mz] = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+  const [nx, nz] = [((b[1] - a[1]) / len) * 0.05, (-(b[0] - a[0]) / len) * 0.05];
+  return !insideRings(mx + nx, mz + nz, rings) || !insideRings(mx - nx, mz - nz, rings);
+}
+
+/**
+ * A field's triangle on the ground (FIELD_HUG), as few pieces as keep it right: whole if it lies close enough, else
+ * halved across its longest side and each half tried again, down to the grass's own squares, which hugGround cuts
+ * exactly. `edge` says which of its sides (ab, bc, ca) lie on the field's outline: a triangle at the edge must lie on
+ * the grass (rising less than 2 cm, floating less than 4 cm over it), one inside only must keep the lawn under it
+ * (it lies 3 cm over the lawn: the ground rises less than 2.5 cm over it) and may float over a hollow, where nothing
+ * shows.
+ */
+function hugField(t: Pt[], edge: [boolean, boolean, boolean], emit: (piece: Hug[]) => void): void {
+  const atEdge = edge[0] || edge[1] || edge[2];
+  const pieces: Hug[][] = [];
+  const [a, b, c] = t;
+  const sides = [Math.hypot(b[0] - a[0], b[1] - a[1]), Math.hypot(c[0] - b[0], c[1] - b[1]), Math.hypot(a[0] - c[0], a[1] - c[1])];
+  const longest = Math.max(...sides);
+  if (hugGround(t, [0, 0, 0], (piece) => pieces.push(piece), atEdge ? 0.02 : 0.025, atEdge ? 0.04 : 0.3) || longest < terrain.step * 1.5) {
+    for (const piece of pieces) emit(piece);
+    return;
+  }
+  // Halved across its longest side: the halves keep their outer sides' marks; the new side lies inside.
+  const k = sides.indexOf(longest);
+  const [p, q, r] = [t[k], t[(k + 1) % 3], t[(k + 2) % 3]];
+  const [e0, e1, e2] = [edge[k], edge[(k + 1) % 3], edge[(k + 2) % 3]];
+  const m: Pt = [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2];
+  hugField([p, m, r], [e0, false, e2], emit);
+  hugField([m, q, r], [e0, e1, false], emit);
 }
 
 /**
@@ -420,7 +467,8 @@ function drapedGeometry(p: Prism): THREE.BufferGeometry {
   // corners and every 8 m, the grass's 4 m grid rose through it on a bump and showed as green patches with hard
   // edges. Those are cut further where the ground isn't flat enough under a piece (hugGround), and only there.
   const precise = p.m === 'pave_grey' || ON_GRID.has(p.m);
-  const hug = HUGGING.has(p.m) || p.m.startsWith('pf:');
+  const field = FIELD_HUG.has(p.m);
+  const hug = HUGGING.has(p.m) || p.m.startsWith('pf:') || field;
   const own = ownLayer(p);
   const cell = precise ? terrain.step : p.d!;
   const pos: number[] = [];
@@ -437,14 +485,16 @@ function drapedGeometry(p: Prism): THREE.BufferGeometry {
         let [a, b, c] = [polygon[0], polygon[k], polygon[k + 1]];
         if ((b[1] - a[1]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[1] - a[1]) < 0) [b, c] = [c, b]; // facing up
         if (hug) {
-          hugGround([a, b, c], [p.y1, p.y1, p.y1], (piece) => {
+          const lay = (piece: Hug[]) => {
             for (let j = 1; j + 1 < piece.length; j++) {
               for (const v of [piece[0], piece[j], piece[j + 1]]) {
                 pos.push(...up(v[0], v[1], p.y1));
                 uv.push(v[0], -v[1]);
               }
             }
-          });
+          };
+          if (field) hugField([a, b, c], [onOutline(a, b, p.p), onOutline(b, c, p.p), onOutline(c, a, p.p)], lay);
+          else hugGround([a, b, c], [p.y1, p.y1, p.y1], lay);
           continue;
         }
         for (const v of [a, b, c]) {
