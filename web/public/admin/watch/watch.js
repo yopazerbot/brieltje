@@ -430,7 +430,10 @@
         const now = playing && a.phase !== 'break' ? (team === a.def ? t('defends') : t('attacks', { n: num(a.best) })) : '';
         const done = r ? (r.ms === null ? t('got', { n: num(r.best) }) : t('inTime', { s: Math.round(num(r.ms) / 100) / 10 })) : '';
         const carrier = team !== a.def && m.flag.flags?.[a.def]?.at === 'carried' ? t('flagBy', { name: String(m.flag.flags[a.def].by ?? '') }) : '';
-        return { id: team, score: r && r.ms !== null ? (Math.round(num(r.ms) / 100) / 10).toFixed(1) : '–', unit: 's', line: [carrier || now, done].filter(Boolean).join(' · '), carried: !!carrier };
+        // Its round's result as the score: a capture's time (s) or how far the flag got (%); none before its round is over
+        // (it showed an "S" over a dash).
+        const score = !r ? '' : r.ms !== null ? (Math.round(num(r.ms) / 100) / 10).toFixed(1) : String(num(r.best));
+        return { id: team, score, unit: !r ? '' : r.ms !== null ? 's' : '%', line: [carrier || now, done].filter(Boolean).join(' · '), carried: !!carrier };
       };
       return { title: t('assault'), sub, clock: playing ? clock(left(m.ms)) : '', teams: ['blue', 'red'].map(block) };
     }
@@ -479,7 +482,7 @@
     const b = el('div', { class: `team${right ? ' right' : ''}${x.out ? ' out' : ''}${x.carried ? ' alarm' : ''}` });
     b.style.setProperty('--c', colour(x.colour, COLOURS[x.id]));
     const words = el('div', { class: 'words' }, el('div', { class: 't-name', text: t(x.id) }), x.line ? el('div', { class: 't-line', text: x.line }) : null, x.sub ? el('div', { class: 't-sub', text: x.sub }) : null);
-    const score = el('div', { class: 't-score' }, x.unit ? el('small', { text: x.unit }) : null, el('b', { text: String(x.score) }));
+    const score = x.score === '' ? el('div', { class: 't-score' }) : el('div', { class: 't-score' }, x.unit ? el('small', { text: x.unit }) : null, el('b', { text: String(x.score) }));
     b.append(...(right ? [score, words] : [words, score]));
     return b;
   }
