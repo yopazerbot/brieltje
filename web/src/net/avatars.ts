@@ -9,6 +9,7 @@ import { muzzleFlash } from '../world/effects';
 import { hitBoxMaterial } from '../world/hitBox';
 import { figureShadowMesh } from '../world/figureShadows';
 import { buildSwat, hasSwat, SEAT_HIP, swatReady, type Body, type Outfit as SwatOutfit } from './swat';
+import type { RiderFeel } from '../world/horses';
 import { onLang, playerName, t } from '../i18n';
 
 /**
@@ -316,8 +317,18 @@ export interface Seat {
   car?: { feet: [THREE.Vector3, THREE.Vector3]; hands: [THREE.Vector3, THREE.Vector3]; head: number; knees: number };
   quat?: THREE.Quaternion;
   tagUp?: number;
+  /** On a horse (world/horses.ts): the stirrups, the gait and how the saddle moves, for the rider's seat (net/swat.ts) */
+  horse?: RiderFeel;
 }
 const _tagQ = new THREE.Quaternion();
+const _foot = new THREE.Vector3();
+const _saddle = new THREE.Vector3();
+/** s to get on or off a horse: the figure goes between the ground beside it and the saddle, no pop */
+const MOUNT_S = 0.4;
+const smoothstep = (a: number, b: number, x: number) => {
+  const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+};
 
 let glintMap: THREE.CanvasTexture | null = null;
 let glintMat: THREE.SpriteMaterial | null = null;
@@ -379,6 +390,11 @@ interface Avatar {
   want: THREE.Vector2;
   /** Where they look, as drawn this frame, and whether they crouch or sit in a car (for a camera that follows them, src/ui/watchView.ts) */
   look?: { yaw: number; pitch: number; crouch: boolean; car: boolean; alive: boolean };
+  /**
+   * Getting on or off a horse: how far into the saddle (0 on the ground .. 1 seated), where they stood before getting on,
+   * and the last saddle (its place, way and stirrups) for the way down.
+   */
+  ride?: { w: number; ground: THREE.Vector3; seat: Seat & { horse: RiderFeel } };
 }
 
 const ANGLES = [false, false, false, true, true] as const; // x, y, z, yaw, pitch
@@ -478,7 +494,7 @@ export class Avatars {
     this.remove(name);
     this.add(name, color);
     const b = this.avatars.get(name)!;
-    Object.assign(b, { track: a.track, latest: a.latest, killed: a.killed, hiddenWarp: a.hiddenWarp, hiddenAt: a.hiddenAt });
+    Object.assign(b, { track: a.track, latest: a.latest, killed: a.killed, hiddenWarp: a.hiddenWarp, hiddenAt: a.hiddenAt, ride: a.ride });
     b.root.visible = a.root.visible;
     this.setRole(name, a.role);
   }
@@ -623,7 +639,9 @@ export class Avatars {
       const ground = this.groundAt && !t.d && far < 80 ? this.groundAt(x, z, y) : y;
       // On a horse: in its saddle as it is drawn (it bounces and rocks), facing its way.
       const seat = alive && this.seatOf ? this.seatOf(name) : null;
+      const saddle = this.mounting(a, seat, alive, dt, jumped, _foot.set(x + a.push.x, y, z + a.push.y)); // on or off a horse
       if (seat?.root) a.root.position.set(seat.root.x, seat.root.y, seat.root.z); // on a bike: leaning with it
+      else if (saddle) a.root.position.copy(saddle.at);
       else if (seat) a.root.position.set(seat.x, seat.y - SEAT_HIP, seat.z);
       else a.root.position.set(x + a.push.x, y, z + a.push.y);
       // On a bike the figure faces the bike's way and leans with it, hands on the bars (no gun).
@@ -634,7 +652,8 @@ export class Avatars {
       a.body.animate(dt, {
         speed: a.speed, forward: a.forward, side: a.side, armed: t.armed && !cycling && !sitting, aim: t.aim, alive, crouch: t.c && !seat, flying: t.flying,
         pitch: sitting ? seat!.pitch ?? 0 : pitch, weapon: t.w as WeaponId, yaw: cycling || sitting ? seat!.yaw + Math.PI : yaw, air: Math.max(0, y - ground), vy: a.vy,
-        seat: seat ? seat.yaw + Math.PI : null, far, bike: cycling, car: sitting,
+        seat: saddle ? saddle.seat.yaw + Math.PI : seat ? seat.yaw + Math.PI : null, far, bike: cycling, car: sitting,
+        horse: saddle?.seat.horse ?? null, ride: saddle?.w ?? 1,
       });
       this.onFigure(name, a.root, a.body, a.color, !!t.chute && alive && !t.d, !!t.open, ground === y && far >= 80 ? 99 : Math.max(0, y - ground), dt); // far off the ground isn't looked up: not flaring
 
@@ -712,6 +731,46 @@ export class Avatars {
    * crowd at a door looks like people, not one body with eight heads. Only the drawing moves: their
    * states, and where the server has them, stay as they are; nobody is blocked.
    */
+  /**
+   * Getting on or off a horse (`seat` with `horse`): over MOUNT_S the figure rises from where it stood beside the horse
+   * and swings over into the saddle, and back down beside its shoulder (where world/horses.ts dismount puts the rider);
+   * its seat (net/swat.ts) blends in with it. Seen already riding (just joined, a teleport), it is in the saddle at once;
+   * dead, off at once. Returns where the figure's root goes, the saddle and how far in, or null on the ground.
+   */
+  private mounting(a: Avatar, seat: Seat | null, alive: boolean, dt: number, jumped: boolean, foot: THREE.Vector3): { at: THREE.Vector3; seat: Seat & { horse: RiderFeel }; w: number } | null {
+    const on = alive && seat?.horse ? seat : null;
+    if (!a.ride) {
+      if (!on) return null;
+      a.ride = { w: 0, ground: foot.clone(), seat: { x: 0, y: 0, z: 0, yaw: 0, horse: { ...on.horse!, stirrups: [new THREE.Vector3(), new THREE.Vector3()] } } };
+    }
+    const r = a.ride;
+    if (on) {
+      const s = r.seat;
+      const f = on.horse!;
+      Object.assign(s, { x: on.x, y: on.y, z: on.z, yaw: on.yaw });
+      Object.assign(s.horse, { gait: f.gait, trot: f.trot, gallop: f.gallop, speed: f.speed, bounce: f.bounce, pitch: f.pitch, roll: f.roll, jump: f.jump });
+      s.horse.stirrups[0].copy(f.stirrups[0]);
+      s.horse.stirrups[1].copy(f.stirrups[1]);
+      r.w = jumped && r.w === 0 ? 1 : Math.min(1, r.w + dt / MOUNT_S);
+    } else {
+      // Down: from the saddle as it was left, beside the horse's shoulder, standing still.
+      r.w = alive ? Math.max(0, r.w - dt / MOUNT_S) : 0;
+      Object.assign(r.seat.horse, { trot: 0, gallop: 0, speed: 0, bounce: 0, jump: 0 });
+      r.ground.set(r.seat.x + Math.cos(r.seat.yaw) * 0.9, foot.y, r.seat.z - Math.sin(r.seat.yaw) * 0.9);
+      if (r.w === 0) {
+        r.ground.copy(foot);
+        return null;
+      }
+    }
+    // Up first, then over: the feet clear the horse's side.
+    const w = r.w;
+    const up = smoothstep(0, 0.6, w);
+    const over = smoothstep(0.25, 1, w);
+    _saddle.set(r.seat.x, r.seat.y - SEAT_HIP, r.seat.z);
+    const at = foot.set(r.ground.x + (_saddle.x - r.ground.x) * over, r.ground.y + (_saddle.y - r.ground.y) * up, r.ground.z + (_saddle.z - r.ground.z) * over);
+    return { at, seat: r.seat, w: w * w * (3 - 2 * w) };
+  }
+
   private apart(walkers: Avatar[], dt: number, me?: { x: number; z: number } | null): void {
     for (const a of walkers) a.want.set(0, 0);
     for (let i = 0; i < walkers.length; i++) {

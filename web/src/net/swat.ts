@@ -6,6 +6,7 @@ import { gunModel, WEAPON_IDS, type WeaponId } from '../weapon';
 import { muzzleFlash } from '../world/effects';
 import { wearPaint } from '../world/paintOn';
 import { GRIPS, gripPose, fitGrip, alignHand } from './grip';
+import type { RiderFeel } from '../world/horses';
 
 /**
  * Other players as a rigged, animated character: the "SWAT" model by
@@ -26,7 +27,9 @@ import { GRIPS, gripPose, fitGrip, alignHand } from './grip';
  * twist gets large. Crouching bends the knees (the hips go down, the legs reach
  * the feet where the clip put them). In the air the legs tuck up, and a hard
  * landing dips the knees. Flying, the legs hang and the body leans into the
- * flight. On a horse they sit in the saddle with their feet in the stirrups.
+ * flight. On a horse they sit in the saddle, the balls of their feet on the stirrups' treads and their hands on
+ * the reins (the left alone with the pistol): the seat goes with the horse's back, rises at the trot, goes forward
+ * into a half seat at the gallop and folds over a jump.
  * The head looks up and down with them, and a shot hit plays a flinch on top.
  *
  * Both hands hold the gun: after the animation has posed the body, each arm
@@ -66,6 +69,10 @@ export interface Pose {
    * how far the head turns (rad, to the left); how far apart the knees go (m)
    */
   car?: { feet: [THREE.Vector3, THREE.Vector3]; hands: [THREE.Vector3, THREE.Vector3]; head: number; knees: number } | null;
+  /** On a horse (world/horses.ts, with `seat`): its stirrups and how its saddle moves */
+  horse?: RiderFeel | null;
+  /** Getting on or off a horse (net/avatars.ts): how far into the saddle, 0 standing beside it .. 1 seated */
+  ride?: number;
 }
 
 export interface Body {
@@ -96,6 +103,16 @@ export interface Outfit {
 const HEIGHT = 1.8;
 /** How far the hips sit under the saddle's point when riding (m, from where the feet would be standing). */
 export const SEAT_HIP = 0.8;
+/**
+ * The seat on a horse (m, rad): the hip joints over the saddle's deepest point and a little behind it, the ankles over
+ * and behind the stirrup's tread (the ball of the foot on it), the heels down, the toes a little out; the back upright
+ * at a halt and a walk, a little forward at the trot, a half seat at the gallop and the fold over a jump.
+ */
+const RIDE = {
+  hipUp: 0.085, hipBack: 0.03, ankleUp: 0.03, ankleBack: 0.07, ankleIn: 0.03, heel: 0.3, toeOut: 0.12,
+  lean: { halt: 0.05, trot: 0.12, post: 0.08, gallop: 0.42, jump: 0.38 },
+  post: 0.07, // m the hips rise out of the saddle at a rising trot
+};
 /**
  * Which of the model's animations to use when holding a gun. The arms are posed by IK
  * either way; these give the legs and a square, upright stance (the 'Gun_Shoot' clip
@@ -545,6 +562,7 @@ export function buildSwat(name: string, color: string, outfit: Outfit, hitMateri
   let fall = 0; // the fastest fall of this time in the air (m/s, negative)
   let landT = -1; // s since landing hard
   let landDepth = 0;
+  let jumpWas = 0; // the horse's jump height a frame ago: going up or coming down
   let clock = 0;
   let skip = 0;
   let pending = 0;
@@ -565,6 +583,48 @@ export function buildSwat(name: string, color: string, outfit: Outfit, hitMateri
   const fwd = new THREE.Vector3();
   const right = new THREE.Vector3();
   const UP = new THREE.Vector3(0, 1, 0);
+
+  // On a horse: how far the seat is in a half seat (the gallop) and in the fold over a jump, for the hands.
+  let seatGallop = 0;
+  let seatAir = 0;
+  /**
+   * The seat on a horse (`w`: how far into the saddle): the pelvis goes with the saddle's roll and half its pitch, and a
+   * walk swings it; the hip joints sit just over the saddle's deepest point (SEAT_HIP over the root, see net/avatars.ts),
+   * rising out of it on one beat of each stride at the trot, held just off it at the gallop (the knees taking the
+   * horse's bounce), and up and back over a jump. The back stays over the hips against the roll. Returns how far it
+   * leans forward (rad).
+   */
+  const seatOnHorse = (h: RiderFeel, w: number): number => {
+    const rising = h.jump > jumpWas + 1e-4;
+    jumpWas = h.jump;
+    seatAir = smooth(0.05, 0.35, h.jump) * (rising ? 1 : 0.6); // folded on the way up and over, opening to land
+    seatGallop = h.gallop;
+    const post = h.trot * (1 - h.gallop) * Math.max(0, Math.sin(h.gait)) ** 1.5; // a rising trot: up one beat a stride
+    const up = RIDE.hipUp + RIDE.post * post + h.gallop * (0.035 - 0.5 * h.bounce) + 0.06 * seatAir;
+    const back = RIDE.hipBack + 0.05 * h.gallop + 0.08 * seatAir;
+    const swing = (1 - h.trot - h.gallop) * Math.min(1, Math.abs(h.speed) / 1.2) * Math.sin(h.gait) * 0.06;
+    rotateWorld(hips, fwd, h.roll * 0.8 * w);
+    rotateWorld(hips, UP, swing * w);
+    rotateWorld(hips, right, -h.pitch * 0.5 * w);
+    hips.updateMatrixWorld(true);
+    worldPos(root, v).addScaledVector(UP, SEAT_HIP + up).addScaledVector(fwd, -back);
+    worldPos(legs[0].upper, _c).add(worldPos(legs[1].upper, _d)).multiplyScalar(0.5);
+    v.sub(_c).multiplyScalar(w);
+    worldPos(hips, _c).add(v);
+    hips.position.copy(hips.parent!.worldToLocal(_c));
+    hips.updateMatrixWorld(true);
+    rotateWorld(spine[0], fwd, -h.roll * 0.6 * w);
+    const L = RIDE.lean;
+    return w * (L.halt + h.trot * L.trot + post * L.post + h.gallop * L.gallop + seatAir * L.jump);
+  };
+  /** A hand on the reins: low in front of the saddle's pommel, further up the neck at the gallop and over a jump (`s`: -1 left, 1 right). */
+  const toReins = (arm: (typeof armList)[number], s: number, w: number) => {
+    worldPos(arm.wrist, v);
+    worldPos(root, target).addScaledVector(UP, SEAT_HIP + 0.17 - 0.03 * seatGallop).addScaledVector(fwd, 0.25 + 0.08 * seatGallop + 0.12 * seatAir).addScaledVector(right, s * 0.08);
+    target.lerp(v, 1 - w);
+    worldPos(arm.upper, pole).addScaledVector(UP, -0.5).addScaledVector(right, s * 0.25).addScaledVector(fwd, -0.2);
+    reach(arm.upper, arm.lower, arm.wrist, target, pole);
+  };
 
   const body: Body = {
     root,
@@ -723,6 +783,8 @@ export function buildSwat(name: string, color: string, outfit: Outfit, hitMateri
       // Lower body: hips down (crouching, landing), legs reaching their feet (or tucked, hanging, in
       // the stirrups). Standing, walking and running the clips' legs are left as they are.
       const sitting = riding && p.car ? p.car : null; // in a car's seat
+      const saddle = riding && !p.bike && !sitting && p.horse ? p.horse : null; // on a horse
+      const rideW = saddle ? Math.max(0, Math.min(1, p.ride ?? 1)) : 0;
       if (ikLegs && deathW < 0.99 && (crouchW > 0.005 || airW > 0.005 || flyW > 0.005 || riding || dip > 0)) {
         const live = 1 - deathW;
         for (const l of legs) worldPos(l.ankle, l.planted);
@@ -737,8 +799,15 @@ export function buildSwat(name: string, color: string, outfit: Outfit, hitMateri
         }
         // Leaning: forward crouching, into the flight when flying.
         const cycling = riding && p.bike ? p.bike : null;
-        const lean = CROUCH_LEAN * crouchW * live + flyW * 0.35 * Math.max(0, Math.min(1, p.forward / 3)) + (cycling ? 0.3 : 0); // on a bike, over the bars
+        let lean = CROUCH_LEAN * crouchW * live + flyW * 0.35 * Math.max(0, Math.min(1, p.forward / 3)) + (cycling ? 0.3 : 0); // on a bike, over the bars
+        const seatLean = saddle ? seatOnHorse(saddle, rideW) : 0; // on a horse, as its gait asks
+        lean += seatLean;
         rotateWorld(spine[0], right, -lean);
+        if (seatLean > 0) {
+          // Leaning over the horse the head stays up, looking ahead.
+          rotateWorld(neck, right, seatLean * 0.4);
+          rotateWorld(head, right, seatLean * 0.4);
+        }
         // Feet: where the clip put them; in the air drawn up (less as they drop fast), flying
         // hanging back, on a horse in the stirrups.
         const tuck = airW * 0.22 * (1 - 0.6 * smooth(-1, -5, p.vy)) + flyW * 0.09;
@@ -749,19 +818,30 @@ export function buildSwat(name: string, color: string, outfit: Outfit, hitMateri
             l.target.copy(cycling.pedals[l.sign < 0 ? 0 : 1]); // on the pedals, going round with them
           } else if (sitting) {
             l.target.copy(sitting.feet[l.sign < 0 ? 0 : 1]); // on the car's floor
+          } else if (saddle) {
+            // The ball of the foot on the stirrup's tread: the ankle a little over and behind it.
+            v.copy(saddle.stirrups[l.sign < 0 ? 0 : 1]).addScaledVector(UP, RIDE.ankleUp).addScaledVector(fwd, -RIDE.ankleBack).addScaledVector(right, -l.sign * RIDE.ankleIn);
+            l.target.lerp(v, rideW);
           } else if (ride) {
             l.target.copy(worldPos(hips, v)).addScaledVector(UP, -0.6).addScaledVector(right, l.sign * 0.27).addScaledVector(fwd, 0.1);
           } else {
             l.target.addScaledVector(UP, tuck).addScaledVector(fwd, airW * 0.05 - trail);
           }
           // The knees forward and out (in the stirrups wide; on a bike forward and up, over the pedals; in a car as wide as the seat says).
-          worldPos(hips, pole).addScaledVector(fwd, 0.8).addScaledVector(right, l.sign * (sitting ? sitting.knees : 0.12 + ride * (cycling ? 0.04 : 0.3))).addScaledVector(UP, cycling || sitting ? 0.4 : -0.3);
+          if (saddle) worldPos(l.upper, pole).addScaledVector(fwd, 0.7).addScaledVector(right, l.sign * (0.04 + 0.2 * rideW)).addScaledVector(UP, -0.25); // along the saddle's flap
+          else worldPos(hips, pole).addScaledVector(fwd, 0.8).addScaledVector(right, l.sign * (sitting ? sitting.knees : 0.12 + ride * (cycling ? 0.04 : 0.3))).addScaledVector(UP, cycling || sitting ? 0.4 : -0.3);
           reach(l.upper, l.lower, l.ankle, l.target, pole);
           // The foot (hung from the root) follows its ankle when the ankle moved.
           v.copy(l.target).sub(l.planted);
           if (v.lengthSq() > 1e-6) {
             worldPos(l.foot, _c).add(v);
             l.foot.position.copy(l.foot.parent!.worldToLocal(_c));
+            l.foot.updateMatrixWorld(true);
+          }
+          if (saddle) {
+            // In the stirrup: the heel down, the toes a little out.
+            rotateWorld(l.foot, right, RIDE.heel * rideW);
+            rotateWorld(l.foot, UP, -l.sign * RIDE.toeOut * rideW);
             l.foot.updateMatrixWorld(true);
           }
         }
@@ -817,6 +897,12 @@ export function buildSwat(name: string, color: string, outfit: Outfit, hitMateri
           reach(arm.upper, arm.lower, arm.wrist, grip, pole);
         }
       }
+      if (saddle && !shownGun && rideW > 0.01) {
+        // On a horse with no gun in hand: both hands on the reins, the fingers closed round them.
+        for (const f of fingers) f.bone.quaternion.copy(f.q);
+        toReins(arms.l, -1, rideW);
+        toReins(arms.r, 1, rideW);
+      }
       if (!shownGun) return;
       // Far off the gun itself isn't drawn (a few pixels), its muzzle flash still is; its shadow only close by.
       for (const m of shownGun.userData.meshes as THREE.Mesh[]) {
@@ -867,6 +953,8 @@ export function buildSwat(name: string, color: string, outfit: Outfit, hitMateri
       pole.copy(shoulder).addScaledVector(UP, -0.5).addScaledVector(side, 0.35).addScaledVector(back, 0.2);
       reach(arms.r.upper, arms.r.lower, arms.r.wrist, target, pole);
       alignHand(arms.r.wrist, gripFrame, t.grip.right);
+      // On a horse the pistol is held in the right hand alone: the left keeps the reins.
+      if (saddle && !long && rideW > 0.5) return toReins(arms.l, -1, rideW);
       target.copy(gunAt).add(gripOffsets[1]);
       const left = worldPos(arms.l.upper, new THREE.Vector3());
       pole.copy(left).addScaledVector(UP, -0.5).addScaledVector(side, -0.3).addScaledVector(back, 0.1);

@@ -38,6 +38,23 @@ export interface HorseState {
   parked: boolean;
 }
 
+/** What a rider's seat follows on a horse someone else rides, as it is drawn this frame (net/swat.ts). */
+export interface RiderFeel {
+  /** The stirrup irons' treads in the world, the horse's left then right */
+  stirrups: [THREE.Vector3, THREE.Vector3];
+  /** The phase of the stride (rad), and how much of a trot and of a gallop it is (0..1) */
+  gait: number;
+  trot: number;
+  gallop: number;
+  /** m/s, negative backing */
+  speed: number;
+  /** The body's rise (m), its pitch (rad, nose down) and roll (rad, as its rotation.z), and the height of a jump (m) */
+  bounce: number;
+  pitch: number;
+  roll: number;
+  jump: number;
+}
+
 export interface RideInput {
   throttle: number;
   brake: number;
@@ -54,6 +71,8 @@ const HEAD = -1.07;
 const BLEND = 1.5; // s to lower or raise the head
 const SADDLE = 1.64; // m, the deepest point of the seat (the model's Tack), 1 cm ahead of its middle
 const EYE = 0.85; // m above the seat
+// The left stirrup iron's tread (the right one mirrored in x), in the horse's frame: measured on horse.glb (tools/horse.py).
+const STIRRUP = new THREE.Vector3(0.325, 0.977, 0.125);
 // Per gait: stride (m), how far the legs swing and the lower legs fold (rad), and each leg's place in the stride (BL, FL, BR, FR).
 const GAITS = [
   { stride: 1.6, swing: 0.3, fold: 0.55, phase: [0, 0.25, 0.5, 0.75] }, // walk: four beats
@@ -282,18 +301,24 @@ export class Horses {
   /**
    * The saddle of the horse someone else rides, as drawn this frame (it rises, falls and rocks with
    * the horse), and the way the horse faces: their figure sits there (net/avatars.ts). Null when
-   * they ride none.
+   * they ride none. `horse`: what the rider's seat follows (net/swat.ts): the stirrups' treads in the
+   * world (left, right), the gait's phase and blend, and the body's rise, pitch, roll and jump.
    */
-  seat(rider: string): { x: number; y: number; z: number; yaw: number } | null {
+  seat(rider: string): { x: number; y: number; z: number; yaw: number; horse: RiderFeel } | null {
     const i = this.horses.findIndex((h) => h.state.rider === rider);
     if (i < 0 || i === this.mounted) return null;
     const h = this.horses[i];
     h.group.updateMatrixWorld();
     const p = this.seatPoint.set(0, SADDLE, 0.01).applyMatrix4(h.group.matrixWorld);
-    return { x: p.x, y: p.y, z: p.z, yaw: h.yaw };
+    const f = this.feel;
+    f.stirrups[0].copy(STIRRUP).applyMatrix4(h.group.matrixWorld);
+    f.stirrups[1].set(-STIRRUP.x, STIRRUP.y, STIRRUP.z).applyMatrix4(h.group.matrixWorld);
+    Object.assign(f, { gait: h.gait, trot: h.weights[1], gallop: h.weights[2], speed: h.speed, bounce: h.bounce, pitch: h.group.rotation.x, roll: h.group.rotation.z, jump: h.jump });
+    return { x: p.x, y: p.y, z: p.z, yaw: h.yaw, horse: f };
   }
 
   private seatPoint = new THREE.Vector3();
+  private feel: RiderFeel = { stirrups: [new THREE.Vector3(), new THREE.Vector3()], gait: 0, trot: 0, gallop: 0, speed: 0, bounce: 0, pitch: 0, roll: 0, jump: 0 };
 
   /** The horse you ride: where it is, for your own state, the map and the prompt. */
   get ridden(): { x: number; y: number; z: number; yaw: number; speed: number; jump: number; i: number } | null {
