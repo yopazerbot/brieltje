@@ -107,7 +107,7 @@
 .tools input[type="search"] { flex: 1 1 140px; border-radius: 999px; }
 .teams-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 12px; font-family: var(--display); font-weight: 600; color: var(--soft); }
 .people { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.people li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; gap: 8px; align-items: center; padding: 7px 8px 7px 14px; border-radius: 14px; background: rgba(31, 42, 82, 0.7); }
+.people li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto auto; gap: 8px; align-items: center; padding: 7px 8px 7px 14px; border-radius: 14px; background: rgba(31, 42, 82, 0.7); }
 .people li.empty { display: block; background: none; color: var(--soft); padding: 8px 0; }
 .people li.down { opacity: 0.6; }
 .people .who { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -125,6 +125,31 @@
 .addresses-bar .switch input { width: 18px; height: 18px; margin: 0; accent-color: var(--sun); }
 .people .who .address { display: block; font: 12px ui-monospace, 'Cascadia Mono', Consolas, Menlo, monospace; color: var(--soft); letter-spacing: 0.02em; }
 .host .seg button[hidden] { display: none; }
+/* Each player's connection (host.js): a phone's signal of four bars (lit as many as the grade: it reads without colour)
+   and the round trip; its detail under the row on a tap; the lines above the list. */
+.people .signal {
+  display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border: 0; border-radius: 999px; cursor: pointer;
+  font: 600 13px var(--display); font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--soft); background: rgba(13, 20, 48, 0.45);
+}
+.people .signal:hover, .people li.open .signal { background: rgba(13, 20, 48, 0.8); }
+.people .signal:focus-visible { outline: 2px solid var(--sun); outline-offset: 2px; }
+.people .signal .bars rect { fill: currentColor; opacity: 0.22; }
+.people .signal .bars rect.lit { opacity: 1; }
+.people .signal .rtt { min-width: 5.2ch; text-align: right; color: var(--chalk); }
+.people .signal .dev { padding: 0 6px; border-radius: 999px; font-style: normal; font-size: 11px; color: var(--night); background: var(--soft); }
+.people .signal.g0 { color: #a6e83a; }
+.people .signal.g1 { color: var(--sun); }
+.people .signal.g2 { color: #ffa45c; }
+.people .signal.g3 { color: #ff8a80; box-shadow: inset 0 0 0 1.5px #ff8a80; }
+.people .signal.gx .rtt { color: var(--soft); font-weight: 500; }
+.people li { cursor: default; }
+.people li .link-detail { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 2px; padding: 6px 4px 2px; font-size: 14px; line-height: 1.35; color: var(--soft); border-top: 1px solid var(--brand-line, rgba(220, 228, 255, 0.14)); }
+.people li .link-detail b { font-family: var(--display); font-weight: 600; color: var(--chalk); }
+.link-busy, .link-line { margin: 0 0 10px; padding: 8px 12px; border-radius: 12px; font: 600 14px/1.35 var(--display); }
+.link-busy { color: var(--night); background: var(--sun); }
+.link-line { color: #ffd2cd; background: rgba(255, 138, 128, 0.14); box-shadow: inset 0 0 0 1.5px rgba(255, 138, 128, 0.55); }
+.link-busy[hidden], .link-line[hidden] { display: none; }
+@media (max-width: 480px) { .people li { gap: 6px; padding-left: 10px; } .people .signal .rtt { min-width: 0; } .people .meta { font-size: 12px; } }
 .copy-box { position: fixed; top: 0; left: 0; width: 1px; height: 1px; opacity: 0; }
 .words { margin-top: 16px; }
 .words summary { cursor: pointer; color: var(--sun); font-weight: 600; }

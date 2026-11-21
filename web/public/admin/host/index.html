@@ -70,7 +70,7 @@
         <div class="tools">
           <input type="search" id="find" placeholder="Find a player" aria-label="Find a player" />
           <span class="seg small" id="sort" role="group" aria-label="Sort by">
-            <button type="button" data-sort="name">Name</button><button type="button" data-sort="points">Points</button><button type="button" data-sort="ping">Ping</button><button type="button" data-sort="address" id="sort-address" hidden>Address</button>
+            <button type="button" data-sort="name">Name</button><button type="button" data-sort="points">Points</button><button type="button" data-sort="ping" title="The game's own ping, answered by the device: a busy one shows here">Ping</button><button type="button" data-sort="link" title="Worst connection first (the network's own round trip)">Connection</button><button type="button" data-sort="address" id="sort-address" hidden>Address</button>
           </span>
         </div>
         <!-- Each player's network address (server/host.mjs connectionOf), to find a device in the network's own logs.
@@ -86,6 +86,9 @@
           </span>
           <button class="btn ghost small" type="button" id="shuffle">Shuffle</button>
         </div>
+        <!-- Each player's connection (server/hostLink.mjs): the server's own delay first, then how many are poor. -->
+        <p class="link-busy" id="link-busy" role="status" hidden></p>
+        <p class="link-line" id="link-line" role="status" hidden></p>
         <ul class="people" id="people-list"></ul>
         <details class="words">
           <summary>Word filter</summary>

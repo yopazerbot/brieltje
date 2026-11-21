@@ -5,7 +5,8 @@
 //
 // Made to be driven in a noisy room: how things stand in chips at the top (each jumps to its part), one row for
 // what touches everyone, quick announcements (the last ones sent, and a few ready), people found by typing and sorted by
-// name, points or ping (or network address, while shown), each person's actions in one menu (⋯), and the server's own
+// name, points, ping or connection (or network address, while shown), each with a signal of their connection (its detail
+// on a tap), each person's actions in one menu (⋯), and the server's own
 // figures with a plain verdict.
 // Keys: / to announce, Esc to close a menu. The choices of sort and the last announcements are remembered in this
 // browser (localStorage, keys briel.host.*), a convenience only.
@@ -126,7 +127,7 @@
   async function refresh() {
     let r;
     try {
-      r = await fetch(showAddresses ? '/api/host?addresses=1' : '/api/host', { cache: 'no-store' }); // the addresses only while shown
+      r = await fetch(`/api/host?links=1${showAddresses ? '&addresses=1' : ''}`, { cache: 'no-store' }); // the addresses only while shown
     } catch {
       $('chip-server').textContent = '● No connection';
       $('chip-server').className = 'chip bad';
@@ -303,10 +304,12 @@
   function drawPeople() {
     const find = $('find').value.trim().toLowerCase();
     const list = [...v.players, ...(v.away ?? [])].filter((p) => !find || p.name.includes(find)); // the rooms' players too, tagged
-    const by = { name: (a, b) => a.name.localeCompare(b.name), points: (a, b) => b.points - a.points || b.kills - a.kills, ping: (a, b) => (b.ping ?? -1) - (a.ping ?? -1), address: byAddress }[sortBy === 'address' && !showAddresses ? 'name' : sortBy];
+    const by = { name: (a, b) => a.name.localeCompare(b.name), points: (a, b) => b.points - a.points || b.kills - a.kills, ping: (a, b) => (b.ping ?? -1) - (a.ping ?? -1), address: byAddress, link: byLink }[sortBy === 'address' && !showAddresses ? 'name' : sortBy] ?? ((a, b) => a.name.localeCompare(b.name));
     list.sort((a, b) => (a.role === 'admin') - (b.role === 'admin') || by(a, b));
     const teamIds = v.teams.list.slice(0, v.teams.count);
-    if (!stale('people-list', [list.map((p) => ({ ...p, ping: p.ping === null ? null : Math.round(p.ping / 20) * 20 })), teamIds, find, sortBy, showAddresses])) return;
+    drawLinkLines();
+    const focused = document.activeElement?.dataset?.linkOf; // the signal being used keeps the focus through a redraw
+    if (!stale('people-list', [list.map(({ link, ...p }) => ({ ...p, ping: p.ping === null ? null : Math.round(p.ping / 20) * 20, link: linkKey(p.name, link) })), teamIds, find, sortBy, showAddresses])) return;
     if (!list.length) {
       $('people-list').replaceChildren(el('li', { class: 'empty', text: find ? `Nobody called “${find}”` : 'Nobody here yet. Players type the address shown when the server started.' }));
       return;
@@ -319,15 +322,117 @@
           ...teamIds.map((t, i) => el('option', { value: String(i), selected: p.team === t.id, text: TEAM_NAMES[t.id] })))
         : null;
       if (team) team.style.borderLeftColor = teamIds.find((t) => t.id === p.team)?.color ?? 'transparent';
-      const ping = p.ping === null ? '' : `${p.ping} ms`;
-      return el('li', { class: p.alive ? '' : 'down' },
+      // The game's own ping (answered by the page: a busy device shows in it) beside the points only while sorted by it;
+      // the row's number is the network's (the signal), the game's is in the signal's detail.
+      const ping = p.ping === null || sortBy !== 'ping' ? '' : `game ${p.ping} ms`;
+      const open = openLinks.has(p.name) && p.link;
+      return el('li', { class: `${p.alive ? '' : 'down'}${open ? ' open' : ''}`, on: { click: (e) => p.link && !e.target.closest('button, select, a') && toggleLink(p.name) } },
         el('span', { class: 'who' }, el('b', { text: p.name }), me ? el('small', { text: ' (you)' }) : null, p.where ? el('small', { class: 'tag', text: p.where === 'room' ? 'Zombies room' : `duel ${p.where.slice(5)}` }) : null, p.muted ? el('small', { class: 'tag', text: 'muted' }) : null,
           addressOf(p)),
-        el('span', { class: `meta${level('pingHigh', p.ping) ? ` lv${level('pingHigh', p.ping)}` : ''}`, text: `${p.points} pts${ping ? ` · ${ping}` : ''}` }),
+        signalOf(p),
+        el('span', { class: `meta${ping && level('pingHigh', p.ping) ? ` lv${level('pingHigh', p.ping)}` : ''}`, text: `${p.points} pts${ping ? ` · ${ping}` : ''}` }),
         team ?? el('span'),
         me ? el('span') : el('button', { class: 'btn ghost small more', type: 'button', 'aria-label': `Actions for ${p.name}`, 'aria-haspopup': 'menu', text: '⋯', on: { click: (e) => openMenu(e.currentTarget, p) } }),
+        open ? el('div', { class: 'link-detail', id: `link-${slug(p.name)}` }, ...linkLines(p).map((line, i) => el(i === 0 ? 'b' : 'span', { text: line }))) : null,
       );
     }));
+    if (focused) [...$('people-list').querySelectorAll('[data-link-of]')].find((b) => b.dataset.linkOf === focused)?.focus();
+  }
+
+  // ------------------------------------------------------------------ each player's connection
+  // From server/hostLink.mjs (GET /api/host?links=1): the network's round trip (WebSocket pings the browser answers by
+  // itself), one of four grades drawn as a phone's signal (bars, so it reads without colour), and the game's own ping
+  // (answered by the page's code) to tell a slow device from a slow network. When the server itself is late it says so
+  // above the list, and the server has taken its own delay off before grading. Names go in with textContent only.
+
+  const GRADES = [
+    { cls: 'g0', word: 'Good', bars: 4 }, { cls: 'g1', word: 'Fair', bars: 3 }, { cls: 'g2', word: 'Poor', bars: 2 }, { cls: 'g3', word: 'Bad', bars: 1 },
+  ];
+  const SLOW = {
+    none: 'The network and the device are fine.',
+    device: 'The network is fine, the device is slow.',
+    network: 'The network is slow.',
+    both: 'The network is slow, and the device too.',
+  };
+  const openLinks = new Set(); // the names whose detail is open (this visit only)
+  const ms = (n) => `${Math.round(n)} ms`;
+  const slug = (name) => Array.from(name, (c) => c.codePointAt(0).toString(36)).join('-'); // an id from any name
+  /** How long ago, as "12 min" or "1 h 5 min". */
+  const ago = (t) => {
+    const m = Math.max(0, Math.floor((Date.now() - t) / 60000));
+    return m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m} min`;
+  };
+
+  /** The row's number: the round trip on average (the grade's own; the one now is in the detail), or why there is none. */
+  function linkNumber(l) {
+    if (!l || l.grade === null) return 'measuring';
+    if (l.mean === null) return 'no answer';
+    return ms(l.mean);
+  }
+
+  /** The detail's lines: the verdict first, then the numbers. */
+  function linkLines(p) {
+    const l = p.link;
+    if (!l) return [];
+    if (l.grade === null) return ['Measuring: the first answer comes within a few seconds.'];
+    const lines = [`${GRADES[l.grade].word} connection. ${l.slow ? SLOW[l.slow] : ''}`.trim()];
+    lines.push(l.mean === null ? 'No answer to the network\'s pings yet.' : `Round trip ${l.rtt === null ? 'none' : ms(l.rtt)} now, ${ms(l.mean)} on average, jitter ${l.jitter === null ? '–' : ms(l.jitter)}.`);
+    lines.push(`The game's own ping: ${l.ping === null ? '–' : ms(l.ping)} (answered by the device, so a busy one shows here).`);
+    lines.push(`Pings missed in the last minute: ${l.missed}${l.waiting ? ', one unanswered now' : ''}. Reconnects this evening: ${l.reconnects}.`);
+    if (l.since) lines.push(`Connected since ${new Date(l.since).toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit' })} (${ago(l.since)}).`);
+    return lines;
+  }
+
+  /** What a redraw depends on: the grade, the shown number, and the detail while it is open. */
+  function linkKey(name, l) {
+    if (!l) return null;
+    return [l.grade, l.slow, linkNumber(l), openLinks.has(name) ? linkLines({ link: l }) : null];
+  }
+
+  /** The signal: four bars (as many lit as the grade allows) and the round trip; a tap or click opens the rest. */
+  function signalOf(p) {
+    const l = p.link;
+    if (!l) return el('span');
+    const g = l.grade === null ? null : GRADES[l.grade];
+    const bars = svg('svg', { viewBox: '0 0 20 16', width: '20', height: '16', 'aria-hidden': 'true', class: 'bars' });
+    for (let i = 0; i < 4; i++) bars.append(svg('rect', { x: String(i * 5 + 0.5), y: String(12 - i * 4), width: '3.5', height: String(4 + i * 4), rx: '1', class: g && i < g.bars ? 'lit' : '' }));
+    const open = openLinks.has(p.name);
+    const label = g ? `${g.word} connection, ${l.mean === null ? 'no answer' : `${linkNumber(l)} on average`}` : 'Connection: measuring';
+    return el('button', {
+      type: 'button', class: `signal ${g ? g.cls : 'gx'}`, 'data-link-of': p.name, 'aria-expanded': String(open), 'aria-controls': open ? `link-${slug(p.name)}` : null,
+      'aria-label': `${label}. Show the details.`, title: linkLines(p).join('\n'),
+      on: { click: () => toggleLink(p.name) },
+    }, bars, el('span', { class: 'rtt', text: linkNumber(l) }), g && l.slow === 'device' ? el('i', { class: 'dev', text: 'device', title: SLOW.device }) : null);
+  }
+
+  /** A row's detail open or shut (a tap on the signal or on the row). */
+  function toggleLink(name) {
+    if (openLinks.has(name)) openLinks.delete(name);
+    else openLinks.add(name);
+    drawPeople();
+  }
+
+  /** Worst connection first: by grade, then the round trip (none at all is the worst), then the name. */
+  function byLink(a, b) {
+    const grade = (p) => p.link?.grade ?? -1;
+    const rtt = (p) => (p.link?.grade == null ? -1 : p.link.mean ?? Infinity);
+    return grade(b) - grade(a) || rtt(b) - rtt(a) || a.name.localeCompare(b.name);
+  }
+
+  /** Above the list: the server's own delay, if any, and how many have a poor connection (nothing when all are good). */
+  function drawLinkLines() {
+    const say = (id, text) => $(id).textContent !== text && ($(id).textContent = text); // a status line speaks only when it changes
+    const busy = !!v.load?.busy;
+    $('link-busy').hidden = !busy;
+    say('link-busy', busy ? 'The server is busy: connections may look worse than they are. Its own delay is not counted against anyone.' : '');
+    const graded = [...v.players, ...(v.away ?? [])].filter((p) => p.role !== 'admin' && p.link && p.link.grade !== null);
+    const poor = graded.filter((p) => p.link.grade >= 2).length;
+    const devices = graded.filter((p) => p.link.slow === 'device' || p.link.slow === 'both').length;
+    const parts = [];
+    if (poor) parts.push(`${poor} of ${graded.length} ${poor === 1 ? 'has' : 'have'} a poor connection.`);
+    if (devices) parts.push(`${devices} ${devices === 1 ? 'device is' : 'devices are'} slow.`);
+    $('link-line').hidden = !parts.length;
+    say('link-line', parts.join(' '));
   }
 
   // ------------------------------------------------------------------ the players' network addresses
