@@ -3767,10 +3767,12 @@ let wasFlying = false;
 let inside = false; // in the house's rooms or on its stairs: the minimap names the floor only then
 
 let last = performance.now();
+/** Development only (briel.hold): input held on top of the real one each frame, for checks and recordings. */
+let devHold: Partial<typeof NO_INPUT> | null = null;
 renderer.setAnimationLoop((now: number) => {
   const dt = Math.min((now - last) / 1000, 0.05);
   last = now;
-  const polled = input.poll();
+  const polled = import.meta.env.DEV && devHold ? { ...input.poll(), ...devHold } : input.poll();
   // The feedback card takes the keys while it shows, and for a moment after (its Esc isn't the menu's).
   const card = feedback.open || homeCard.open || now - Math.max(feedback.closedAt, homeCard.closedAt) < 250;
   // Frozen by the host: only looking round and the menu (the server keeps everyone where they stood too).
@@ -5286,6 +5288,10 @@ if (import.meta.env.DEV) {
       stallChip,
       marketStall,
       fire,
+      /** Input held in the real frames from now on, e.g. hold({ moveY: 1, sprint: true }); hold(null) lets go. */
+      hold(partial: Partial<typeof NO_INPUT> | null) {
+        devHold = partial;
+      },
       /** One frame of input, e.g. { jumpPressed: true } or { usePressed: true }. */
       press(partial: Partial<typeof NO_INPUT>, seconds = 1 / 60) {
         for (let i = 0; i < Math.max(1, Math.round(seconds * 60)); i++) player.update(1 / 60, { ...idle, ...partial }, camera);
