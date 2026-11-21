@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Game } from './game.mjs';
+import { STAGE, VEHICLE } from './vehicleDamage.mjs';
 
 // A car's look (`dent`, src/world/carDamage.ts): its dents, scratches and mud as its driver's page shows them, nine
 // whole numbers 0 to 15. Only the car's driver may set it, at most every 800 ms, only exactly that shape; it is kept as
@@ -118,4 +119,88 @@ test('the look stays with the car after the driver gets out, and a new driver ma
   at(1000);
   send('pam', pam, { t: 'dent', dm: [0, 0, 0, 0, 0, 0, 0, 0, 2] });
   assert.deepEqual(car.dm, [0, 0, 0, 0, 0, 0, 0, 0, 2]);
+});
+
+/** A team match on (vehicles take damage only then), its vehicles' clock started; ticks of `ms` after. */
+function match(s) {
+  const now = Date.now();
+  s.game.modes.state = { kind: 'teams', phase: 'playing', until: now + 600_000, teams: Object.create(null), score: { house: 0, bungalow: 0 }, switched: Object.create(null), goal: 25 };
+  const vd = s.game.vehicleDamage;
+  vd.tick(now);
+  const ticks = (ms) => {
+    for (let t = 0; t < ms; t += 100) {
+      s.at(100);
+      vd.tick(Date.now());
+    }
+  };
+  /** Car `c` destroyed by the server's own vehicle damage (no attacker: nobody's kill, no blast). */
+  const wreck = (c) => vd.harm('car', c.id, c, VEHICLE.health.car, null, 'rifle', Date.now());
+  return { vd, ticks, wreck };
+}
+
+/** Every `car` and `vdmg` message told through broadcastThing (its home's audience only), as it was then. */
+function things(game) {
+  const out = [];
+  const broadcastThing = game.broadcastThing.bind(game);
+  game.broadcastThing = (msg, kind, t, except) => {
+    if (msg.t === 'car' || msg.t === 'vdmg') out.push({ ...structuredClone(msg), kind, same: msg.t !== 'car' || t === msg.car });
+    return broadcastThing(msg, kind, t, except);
+  };
+  return out;
+}
+
+test('a wreck back whole: its dents and broken parts gone on the server and on every page, its mud kept', () => {
+  const s = setup();
+  const { car, send, dan, pam, eve } = s;
+  send('dan', dan, { t: 'dent', dm: LOOK });
+  const { vd, ticks, wreck } = match(s);
+  wreck(car);
+  assert.equal(vd.out('car', car.id), true, 'a wreck');
+  assert.deepEqual([car.driver, car.passenger], [null, null], 'everyone put out');
+  assert.deepEqual(car.dm, LOOK, 'a wreck keeps its look while it lies');
+  for (const p of [dan, pam, eve]) p.state.x += 40; // away from its parking place: it may go home
+  const told = things(s.game);
+  ticks(VEHICLE.wreckMs + VEHICLE.goneMs + 1000);
+  assert.equal(vd.recs.size, 0, 'whole again');
+  assert.deepEqual(car.dm, [0, 0, 0, 0, 0, 0, 0, 0, 4], 'dents, glass and lamps mended, the mud kept');
+  const whole = told.findIndex((m) => m.t === 'vdmg' && m.st === STAGE.whole);
+  const mended = told.findIndex((m) => m.t === 'car' && m.car.dm.every((v, i) => (i < 8 ? v === 0 : v === 4)));
+  assert.ok(mended >= 0 && mended < whole, 'every page told the mended look, then that it is whole');
+  const m = told[mended];
+  assert.equal(m.kind, 'car');
+  assert.ok(m.same, 'about the car itself, to those who may see it where it stands (broadcastThing)');
+  // Nobody at its wheel: every page takes it as the car's look, its last driver's too (src/main.ts 'car': only the
+  // page of the car's driver skips the look, its own dents being newer than the server's echo).
+  assert.deepEqual([m.car.driver, m.car.passenger ?? null], [null, null]);
+  // A new driver dents it again as before.
+  Object.assign(pam.state, { x: car.x + 1.5, z: car.z });
+  send('pam', pam, { t: 'car', op: 'in', id: car.id });
+  assert.equal(car.driver, 'pam');
+  s.at(1000);
+  send('pam', pam, { t: 'dent', dm: [2, 0, 0, 0, 0, 0, 0, 0, 5] });
+  assert.deepEqual(car.dm, [2, 0, 0, 0, 0, 0, 0, 0, 5]);
+});
+
+test('the match ends: a wreck comes back mended at once; a car only damaged keeps its dents; one never dented is not told', () => {
+  const s = setup();
+  const { game, car, send, dan, pam } = s;
+  send('dan', dan, { t: 'dent', dm: LOOK });
+  send('dan', dan, { t: 'car', op: 'out' });
+  send('pam', pam, { t: 'car', op: 'out' });
+  const other = game.cars.model3;
+  other.dm = [0, 5, 0, 0, 0, 0, 0, 0, 1];
+  const { vd, ticks, wreck } = match(s);
+  wreck(car);
+  vd.harm('car', other.id, other, Math.round(VEHICLE.health.car * 0.6), null, 'rifle', Date.now()); // smoking, not a wreck
+  const plain = Object.values(game.cars).find((c) => c !== car && c !== other && !c.dm);
+  wreck(plain);
+  ticks(1000);
+  const told = things(game);
+  game.modes.state = { kind: 'free' };
+  ticks(100);
+  assert.equal(vd.recs.size, 0);
+  assert.deepEqual(car.dm, [0, 0, 0, 0, 0, 0, 0, 0, 4], 'the wreck: mended, the mud kept');
+  assert.deepEqual(other.dm, [0, 5, 0, 0, 0, 0, 0, 0, 1], 'only damaged: its dents are its own');
+  assert.equal(plain.dm, undefined, 'never dented: no look made up');
+  assert.deepEqual(told.filter((m) => m.t === 'car' && m.car.dm).map((m) => m.car.id), [car.id], 'one mended look told');
 });

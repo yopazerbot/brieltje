@@ -378,6 +378,7 @@ export class VehicleDamage {
       }
       if (!live) {
         if (r.st >= STAGE.wreck && !r.homed) this.home(r, v, true);
+        if (r.st >= STAGE.wreck) this.mend(r, v);
         this.recs.delete(key);
         this.tell({ ...r, pct: 100, st: STAGE.whole }, v);
         continue;
@@ -396,6 +397,7 @@ export class VehicleDamage {
       } else if (r.st === STAGE.gone) {
         if (!r.homed) r.homed = this.home(r, v);
         if (r.homed && now >= r.until) { // back whole only on its parking place, and not before its time
+          this.mend(r, v);
           this.recs.delete(key);
           this.tell({ ...r, pct: 100, st: STAGE.whole }, v);
           continue;
@@ -406,6 +408,18 @@ export class VehicleDamage {
         this.tell(r, v);
       }
     }
+  }
+
+  /**
+   * A car back whole after a wreck (or out of play, hold): its look (`dm`, game.mjs `dent`) without its dents, scratches
+   * and broken glass and lamps, its mud kept (as a portal's or its own parking spot's repair on the page,
+   * src/world/carDamage.ts), told to those who may see it as the car's other changes are. Nobody sits in it then (put out
+   * at the wreck, nobody gets in while it is out), so every page takes it, its last driver's too (src/main.ts 'car').
+   */
+  mend(r, v) {
+    if (r.kind !== 'car' || !Array.isArray(v.dm) || !v.dm.some((n, i) => i < v.dm.length - 1 && n > 0)) return;
+    v.dm = v.dm.map((n, i) => (i < v.dm.length - 1 ? 0 : n));
+    this.game.broadcastThing({ t: 'car', car: v }, 'car', v);
   }
 
   /** A destroyed helicopter drops to the server's floor under it (the relief: it knows no roofs). */
