@@ -226,6 +226,7 @@ left = hand("pistol_handL", lw,
 
 ROOT = finish("pistol", GRIP, body, {"slide": (slide, (0, 0.06, B)), "mag": (mag, (0, -0.012, -0.004), {"out": ax})},
               MUZZLE, SIGHT, kit, [right, left])
+__import__("farcopy").far(ROOT)  # the light copy the others' figures and the pickups use (tools/guns/farcopy.py)
 H["drop_arms"]()
 S.bake_shade(ROOT)
 S.export(OUT)

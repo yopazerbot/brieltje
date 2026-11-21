@@ -305,6 +305,7 @@ left = H["hand"]("bazooka_handL", fw,
                  side=-1)
 
 ROOT = K.finish(W, GRIP, body, {"rocket": (rocket, (0, 0.62, T))}, (0, 0.765, T), (OX, 0.0615, OZ), kit, [right, left])
+__import__("farcopy").far(ROOT)  # the light copy the others' figures and the pickups use (tools/guns/farcopy.py)
 K.export(OUT, ROOT, H)
 
 if PREVIEW:

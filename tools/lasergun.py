@@ -665,6 +665,8 @@ def finish():
 
 
 ROOT = finish()
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "guns"))
+__import__("farcopy").far(ROOT)  # the light copy the others' figures and the pickups use (tools/guns/farcopy.py)
 
 
 def bake_shade():

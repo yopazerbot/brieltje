@@ -329,6 +329,7 @@ left = H["hand"]("launcher_handL", fw,
                  side=-1)
 
 ROOT = K.finish(W, GRIP, body, {"barrel": (barrel, (0, HY, HZ)), "round": (round_, (0, 0.114, B))}, (0, 0.393, B), (0, SY, SZ), kit, [right, left])
+__import__("farcopy").far(ROOT)  # the light copy the others' figures and the pickups use (tools/guns/farcopy.py)
 K.export(OUT, ROOT, H)
 
 if PREVIEW:

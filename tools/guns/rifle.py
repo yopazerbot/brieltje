@@ -317,6 +317,7 @@ handL = H["hand"]("rifle_handL", H["Wrap"]((0, 0.30, B), (0, -1, 0), (0, 0, -1),
 
 ROOT = finish("rifle", GRIP, body, {"mag": (mag, (0, 0.068, 0.0), {"out": (0, 0.06, -1)}), "optic": (optic, (0, 0.0, 0.0795))},
               MUZZLE, DOT, kit, [handR, handL])
+__import__("farcopy").far(ROOT)  # the light copy the others' figures and the pickups use (tools/guns/farcopy.py)
 export(ROOT, OUT)
 
 if PREVIEW:

@@ -313,6 +313,7 @@ sh.parent = left
 sh.matrix_parent_inverse = left.matrix_world.inverted()
 
 ROOT = finish("shotgun", GRIP, body, {"pump": (pump, PUMP)}, MUZZLE, SIGHT, kit, [right, left])
+__import__("farcopy").far(ROOT)  # the light copy the others' figures and the pickups use (tools/guns/farcopy.py)
 H["drop_arms"]()
 S.bake_shade(ROOT)
 S.export(OUT)

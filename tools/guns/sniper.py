@@ -306,6 +306,7 @@ handL = H["hand"]("sniper_handL", pw,
 
 ROOT = finish("sniper", GRIP, body, {"bolt": (bolt, (0, -0.06, B), {"knob": KNOB}), "mag": (mag, (0, 0.082, 0.0), {"out": (0, 0.0, -1)})},
               MUZZLE, SIGHT, kit, [handR, handL])
+__import__("farcopy").far(ROOT)  # the light copy the others' figures and the pickups use (tools/guns/farcopy.py)
 export(ROOT, OUT)
 
 if PREVIEW:
