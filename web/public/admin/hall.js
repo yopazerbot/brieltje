@@ -352,10 +352,16 @@
       if (flash) this.hideAt = performance.now() + 4000;
       this.chip.classList.toggle('shown', !this.on || performance.now() < this.hideAt);
     },
-    /** The chip on the page and the touches that switch the sound on (once per page). */
-    mount(lang = 'nl') {
+    /**
+     * The chip on the page and the touches that switch the sound on (once per page). `where`: the element it goes in
+     * (the page's body, in a corner, by default; the scoreboard puts it in its header, scores.css).
+     */
+    mount(lang = 'nl', where = document.body) {
       this.lang = lang;
-      if (this.chip) return this.draw();
+      if (this.chip) {
+        if (where && this.chip.parentNode !== where) where.append(this.chip);
+        return this.draw();
+      }
       const chip = el('button', 'hall-sound');
       chip.type = 'button';
       chip.addEventListener('click', (e) => {
@@ -363,7 +369,7 @@
         if (!this.unlocked) this.unlock();
         else this.toggle();
       });
-      document.body.append(chip);
+      (where ?? document.body).append(chip);
       this.chip = chip;
       const first = () => this.unlock();
       addEventListener('pointerdown', first, { capture: true });

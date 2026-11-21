@@ -124,8 +124,9 @@ main:has(.tonight) { justify-content: flex-start; }
 .total b { font-size: 6.4vmin; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
 .total.first { background: linear-gradient(180deg, rgba(247, 185, 40, 0.22), rgba(247, 185, 40, 0.05)), var(--raised); }
 .total.first span::before { content: '★ '; color: var(--accent); }
-/* The hall's sound chip (hall.js): over the footer's tools on the right, clear of the address players type. */
-body .hall-sound { left: auto; right: 4vmin; bottom: 7.4vmin; } /* hall.css comes after this file */
+/* The hall's sound chip (hall.js, put in the header by scores.js): under the clock, where nothing else is, clear of the
+   list, the footer's tools and the address players type, at any size and any length of the list. */
+header .hall-sound { position: static; margin-top: 0.8vmin; }
 /* Tonight's awards (scores.js awardsRow): one row of small cards under the totals, the newest first, as many as fit. */
 .won-row { margin: 0 0 2.2vmin; }
 .won-row h2 { margin: 0 0 0.8vmin; font-family: var(--display); font-size: 2vmin; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }

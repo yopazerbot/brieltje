@@ -112,7 +112,7 @@
   function draw() {
     for (const b of document.querySelectorAll('.tools [data-set]')) b.setAttribute('aria-pressed', String(b.dataset.set === lang));
     document.documentElement.lang = lang;
-    window.BrielHall?.sound.mount(lang); // the sound chip, in this language (hall.js)
+    window.BrielHall?.sound.mount(lang, document.querySelector('header .right')); // the sound chip, in this language, under the clock (hall.js)
     $('full').textContent = t('full');
     $('join').replaceChildren(document.createTextNode(t('join')), el('b', '', location.host));
     const next = VIEWS[(VIEWS.indexOf(view) + 1) % VIEWS.length];
