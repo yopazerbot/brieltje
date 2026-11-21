@@ -231,9 +231,13 @@ function boxOf(ring: [number, number][]): Box {
 function near(ring: [number, number][], x: number, z: number, slack: number): boolean {
   let hit = false;
   let best = Infinity;
+  // Index access, no destructuring: asked for many points of the street models at the start, a small array per corner
+  // made hundreds of megabytes of garbage (a phone's start ran out of memory).
   for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    const [xi, zi] = ring[i];
-    const [xj, zj] = ring[j];
+    const xi = ring[i][0];
+    const zi = ring[i][1];
+    const xj = ring[j][0];
+    const zj = ring[j][1];
     if (zi > z !== zj > z && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) hit = !hit;
     const dx = xj - xi;
     const dz = zj - zi;

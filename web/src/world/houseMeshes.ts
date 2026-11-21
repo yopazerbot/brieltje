@@ -301,10 +301,13 @@ function worldUV(y0: number): THREE.UVGenerator {
 /** Even-odd test across an outline and its holes. */
 function insideRings(x: number, z: number, rings: [number, number][][]): boolean {
   let hit = false;
-  for (const ring of rings) {
+  for (let r = 0; r < rings.length; r++) {
+    const ring = rings[r];
     for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-      const [xi, zi] = ring[i];
-      const [xj, zj] = ring[j];
+      const xi = ring[i][0];
+      const zi = ring[i][1];
+      const xj = ring[j][0];
+      const zj = ring[j][1];
       if (zi > z !== zj > z && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) hit = !hit;
     }
   }
@@ -340,14 +343,11 @@ export type Hug = [number, number, number, number, number];
  * while the ground rises less than `tol` over its plane and falls less than `float` under it. True if it stayed whole.
  */
 export function hugGround(t: [number, number][], lift: [number, number, number], emit: (piece: Hug[]) => void, tol = 0.01, float = 0.05): boolean {
-  const [[ax, az], [bx, bz], [cx, cz]] = t;
+  // Plain numbers and index loops here: called for every piece of every ground cover and field at the start, its small
+  // arrays were among the start's biggest makers of garbage (a phone's start ran out of memory).
+  const ax = t[0][0], az = t[0][1], bx = t[1][0], bz = t[1][1], cx = t[2][0], cz = t[2][1];
   const det = (bz - cz) * (ax - cx) + (cx - bx) * (az - cz);
   if (Math.abs(det) < 1e-9) return true; // no area on the plan
-  const weights = (x: number, z: number): [number, number, number] => {
-    const l1 = ((bz - cz) * (x - cx) + (cx - bx) * (z - cz)) / det;
-    const l2 = ((cz - az) * (x - cx) + (ax - cx) * (z - cz)) / det;
-    return [l1, l2, 1 - l1 - l2];
-  };
   const step = terrain.step;
   const gx0 = terrain.x0 + Math.floor((Math.min(ax, bx, cx) - terrain.x0) / step) * step;
   const gz0 = terrain.z0 + Math.floor((Math.min(az, bz, cz) - terrain.z0) / step) * step;
@@ -368,7 +368,9 @@ export function hugGround(t: [number, number][], lift: [number, number, number],
   const ya = terrain.height(ax, az) + lift[0];
   const yb = terrain.height(bx, bz) + lift[1];
   const yc = terrain.height(cx, cz) + lift[2];
-  const pieces: Hug[][] = [];
+  // The pieces' corners are kept as clipped; their weights are worked out again only when the triangle is cut (most
+  // stay whole), with the same sums, so the pieces are the same to the last bit.
+  const pieces: Pt[][] = [];
   let above = 0; // the most the ground rises over the triangle's plane: it would show through
   let below = 0; // the most it falls away under it: the cover floats a little there
   for (let gx = gx0; gx < x1; gx += step) {
@@ -378,17 +380,19 @@ export function hugGround(t: [number, number][], lift: [number, number, number],
       for (let side = 1; side >= -1; side -= 2) {
         const piece = clipDiagonal(box, gx, gz, side);
         if (piece.length < 3) continue;
-        const hugs: Hug[] = [];
-        for (const [x, z] of piece) {
-          const [l1, l2, l3] = weights(x, z);
+        for (let k = 0; k < piece.length; k++) {
+          const x = piece[k][0];
+          const z = piece[k][1];
+          const l1 = ((bz - cz) * (x - cx) + (cx - bx) * (z - cz)) / det;
+          const l2 = ((cz - az) * (x - cx) + (ax - cx) * (z - cz)) / det;
+          const l3 = 1 - l1 - l2;
           // How far the ground's surface (with the lift) is from the whole triangle's plane here.
           const hug = terrain.height(x, z) + lift[0] * l1 + lift[1] * l2 + lift[2] * l3;
           const d = hug - (ya * l1 + yb * l2 + yc * l3);
           above = Math.max(above, d);
           below = Math.max(below, -d);
-          hugs.push([x, z, l1, l2, l3]);
         }
-        pieces.push(hugs);
+        pieces.push(piece);
       }
     }
   }
@@ -396,7 +400,17 @@ export function hugGround(t: [number, number][], lift: [number, number, number],
     emit(whole);
     return true;
   }
-  for (const piece of pieces) emit(piece);
+  for (const piece of pieces) {
+    emit(
+      piece.map((p): Hug => {
+        const x = p[0];
+        const z = p[1];
+        const l1 = ((bz - cz) * (x - cx) + (cx - bx) * (z - cz)) / det;
+        const l2 = ((cz - az) * (x - cx) + (ax - cx) * (z - cz)) / det;
+        return [x, z, l1, l2, 1 - l1 - l2];
+      }),
+    );
+  }
   return false;
 }
 

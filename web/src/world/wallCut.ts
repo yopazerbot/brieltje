@@ -171,7 +171,10 @@ export function cutWall(g: THREE.BufferGeometry, faces: WallFace[], missed?: Wal
           for (let k = 0; k < 3; k++) {
             const i = t + k;
             const m = Math.abs(sOf(i) - q.s) * 10 + Math.abs(pos.getY(i) - y);
-            if (m < miss) [best, miss] = [i, m];
+            if (m < miss) {
+              best = i;
+              miss = m;
+            }
           }
         }
         return best;
@@ -197,19 +200,35 @@ export function cutWall(g: THREE.BufferGeometry, faces: WallFace[], missed?: Wal
     const sample = (row: number, s: number, y: number): number[][] => {
       let best = byRow[row][0] ?? mine[0];
       let worst = -Infinity;
-      let w = [1, 0, 0];
-      for (const t of byRow[row].length ? byRow[row] : mine) {
-        const [s0, s1, s2] = [sOf(t), sOf(t + 1), sOf(t + 2)];
-        const [y0, y1, y2] = [pos.getY(t), pos.getY(t + 1), pos.getY(t + 2)];
+      // Plain numbers in the loop (it runs over every triangle of the face for every corner asked for): small arrays
+      // there were the start's biggest maker of garbage, and a phone's start ran out of memory.
+      let w0 = 1;
+      let w1 = 0;
+      let w2 = 0;
+      const list = byRow[row].length ? byRow[row] : mine;
+      for (let n = 0; n < list.length; n++) {
+        const t = list[n];
+        const s0 = sOf(t);
+        const s1 = sOf(t + 1);
+        const s2 = sOf(t + 2);
+        const y0 = pos.getY(t);
+        const y1 = pos.getY(t + 1);
+        const y2 = pos.getY(t + 2);
         const det = (s1 - s0) * (y2 - y0) - (s2 - s0) * (y1 - y0);
         if (Math.abs(det) < 1e-12) continue;
         const b1 = ((s - s0) * (y2 - y0) - (s2 - s0) * (y - y0)) / det;
         const b2 = ((s1 - s0) * (y - y0) - (s - s0) * (y1 - y0)) / det;
-        const b = [1 - b1 - b2, b1, b2];
-        const least = Math.min(...b);
-        if (least > worst) [best, worst, w] = [t, least, b];
+        const b0 = 1 - b1 - b2;
+        const least = Math.min(b0, b1, b2);
+        if (least > worst) {
+          best = t;
+          worst = least;
+          w0 = b0;
+          w1 = b1;
+          w2 = b2;
+        }
       }
-      const c = w.map((x) => Math.max(0, x));
+      const c = [Math.max(0, w0), Math.max(0, w1), Math.max(0, w2)];
       const sum = c[0] + c[1] + c[2] || 1;
       return attrs.map((a) => {
         const out: number[] = [];
