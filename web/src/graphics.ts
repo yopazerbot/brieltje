@@ -108,10 +108,12 @@ export function timeFrames(render: () => void, gl: WebGL2RenderingContext | WebG
  * `measure` applies a preset and returns milliseconds per frame.
  * `views`: the split screen's views sharing the chip (src/seat.ts). Each gets its share of the time,
  * and none goes above Medium: Low by default, Medium on a fast chip.
+ * `cap`: the highest preset to try at all. Trying a preset allocates its shadow maps, targets and sharper textures,
+ * and a phone's browser ends a page that takes too much memory, however fast its chip is.
  */
-export async function pickQuality(guess: Quality, measure: (q: Quality) => number, views = 1): Promise<{ quality: Quality; ms: number }> {
+export async function pickQuality(guess: Quality, measure: (q: Quality) => number, views = 1, cap: Quality = 'ultra'): Promise<{ quality: Quality; ms: number }> {
   const budget = BUDGET_MS / views;
-  const top = views > 1 ? ORDER.indexOf('medium') : ORDER.length - 1;
+  const top = Math.min(views > 1 ? ORDER.indexOf('medium') : ORDER.length - 1, ORDER.indexOf(cap));
   let i = Math.min(ORDER.indexOf(guess), top);
   let ms = measure(ORDER[i]);
   if (ms <= budget) {

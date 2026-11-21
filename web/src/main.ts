@@ -680,7 +680,12 @@ warmPasses(renderer, ao, smaa); // their shaders compile in the background while
 // to 75% for a moment when frames take too long.
 const gpu = gpuName(renderer);
 let mode: Mode = loadMode();
-let quality: Quality = mode === 'auto' ? guessFromName(gpu) : mode;
+// A phone or tablet on Auto starts on Low and stays there: its chip is fast enough for more, but a higher preset's
+// shadow maps, targets and sharper textures take more memory than its browser gives a page (an iPhone ended the page
+// while it loaded, again and again, 21 Nov 2026). Choosing a preset by hand in the menu still works.
+const autoTop: Quality = phone ? 'low' : 'ultra';
+const autoGuess = (): Quality => ORDER[Math.min(ORDER.indexOf(guessFromName(gpu)), ORDER.indexOf(autoTop))];
+let quality: Quality = mode === 'auto' ? autoGuess() : mode;
 let preset: Preset = PRESETS[quality];
 let dynScale = 1;
 
@@ -5089,7 +5094,7 @@ async function autoDetect(): Promise<void> {
   ];
   const gl = renderer.getContext();
   loading(0.85, () => t('load.gfx'));
-  const result = await pickQuality(guessFromName(gpu), (q) => {
+  const result = await pickQuality(autoGuess(), (q) => {
     applyQuality(q);
     loading(Math.min(0.97, loadShare + 0.05));
     let total = 0;
@@ -5102,7 +5107,7 @@ async function autoDetect(): Promise<void> {
       }, gl, 5);
     }
     return total / views.length;
-  }, seat?.views ?? watch?.views ?? 1); // the split screen's (or the watch page's) views share the chip (src/seat.ts, src/watch.ts)
+  }, seat?.views ?? watch?.views ?? 1, autoTop); // the split screen's (or the watch page's) views share the chip (src/seat.ts, src/watch.ts); a phone stays on Low
   player.place(keep.x, keep.z, keep.feet, keep.yaw, keep.pitch);
   player.update(0, still, camera);
   if (mode === 'auto') applyQuality(result.quality);
