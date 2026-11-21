@@ -203,16 +203,25 @@
     return box;
   }
 
+  // A LAN night has no ceiling on the players (server/game.mjs): a ranking of `n` in one column, two past 8, three past
+  // 32, four past 60, each in compact rows (tight past 16, tighter past 32). Readable on a beamer up to about 100.
+  const colsOf = (n) => (n > 60 ? 4 : n > 32 ? 3 : n > 8 ? 2 : 1);
+  const colsClass = (n) => ['', ' two', ' two three', ' two three four'][colsOf(n) - 1] + (n > 16 ? ' tight' : '') + (n > 32 ? ' tighter' : '');
+  /** `list` cut into its columns, top to bottom, then left to right. */
+  const columns = (list) => {
+    const per = Math.ceil(list.length / colsOf(list.length));
+    return Array.from({ length: colsOf(list.length) }, (_, i) => list.slice(i * per, (i + 1) * per));
+  };
+
   /**
-   * A ranking with more players than fit in big rows (a LAN night, up to 32): in two columns of compact rows, each
-   * with its own heading, as the Tonight view.
+   * A ranking with more players than fit in big rows (a LAN night): in columns of compact rows, each with its own
+   * heading, as the Tonight view.
    */
   function fit(box) {
     const [top, ...rows] = [...box.children];
     if (rows.length <= 8 || !top?.classList.contains('head')) return box;
-    const half = Math.ceil(rows.length / 2);
-    const grid = el('div', `cols two${rows.length > 16 ? ' tight' : ''}`);
-    for (const part of [rows.slice(0, half), rows.slice(half)]) {
+    const grid = el('div', `cols${colsClass(rows.length)}`);
+    for (const part of columns(rows)) {
       const col = el('div', 'rows');
       col.append(top.cloneNode(true), ...part);
       grid.append(col);
@@ -245,10 +254,10 @@
       box.append(split);
       return box;
     }
-    // Up to 32 players: in two columns of compact rows past eight, each with its own heading.
-    const shown = ev.players.slice(0, 32);
-    const cols = shown.length > 8 ? [shown.slice(0, Math.ceil(shown.length / 2)), shown.slice(Math.ceil(shown.length / 2))] : [shown];
-    const grid = el('div', `cols${cols.length > 1 ? ' two' : ''}${shown.length > 16 ? ' tight' : ''}`);
+    // Everyone (no ceiling on the players): in columns of compact rows past eight (colsOf), each with its own heading.
+    const shown = ev.players;
+    const cols = columns(shown);
+    const grid = el('div', `cols${colsClass(shown.length)}`);
     let rank = 0;
     for (const list of cols) {
       const col = el('div', 'rows');

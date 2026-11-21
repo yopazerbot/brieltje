@@ -25,6 +25,25 @@ function span(text: string, cls = '', color = ''): HTMLSpanElement {
   return s;
 }
 
+/**
+ * The scoreboard's rows that fit on the screen (no ceiling on the players: a LAN night of 60 ran off it): the best ones,
+ * your own row if it is further down, then how many more. Each row is about 33 px high, the title and goal 130 px. On a
+ * touch screen everyone: its scoreboard scrolls with a finger (style.css body.touch #scoreboard).
+ */
+function fitRows(rows: HTMLTableRowElement[], cols: number): HTMLTableRowElement[] {
+  const fit = Math.max(8, Math.floor((innerHeight - 180) / 33));
+  if (rows.length <= fit || document.body.classList.contains('touch')) return rows;
+  const mine = rows.findIndex((r) => r.classList.contains('me'));
+  const top = rows.slice(0, mine >= fit - 1 ? fit - 2 : fit - 1);
+  const more = document.createElement('tr');
+  const td = document.createElement('td');
+  td.colSpan = cols;
+  td.className = 'exploring';
+  td.textContent = t('online.more', { n: rows.length - top.length - (mine >= top.length ? 1 : 0) });
+  more.append(td);
+  return mine >= top.length ? [...top, rows[mine], more] : [...top, more];
+}
+
 export class Combat {
   hp = 100;
   /** A vest's armour points left (Zombies) */
@@ -323,7 +342,7 @@ export class Combat {
         tr.append(name, ...cells);
         return tr;
       });
-    $('score-table').replaceChildren(head, ...rows);
+    $('score-table').replaceChildren(head, ...fitRows(rows, 4));
   }
 
   /** The scoreboard during Zombies: the wave (and the best ever), each player's zombies beaten (most first) and times down; who waits for the wave's end. */
@@ -356,7 +375,7 @@ export class Combat {
         tr.append(name, ...cells);
         return tr;
       });
-    $('score-table').replaceChildren(head, ...rows);
+    $('score-table').replaceChildren(head, ...fitRows(rows, 3));
   }
 
   /** Paintball: hit by paint, a wet splat close by (noise falling in pitch). */

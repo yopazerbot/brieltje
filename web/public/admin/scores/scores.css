@@ -138,6 +138,16 @@ main:has(.tonight) { justify-content: flex-start; }
 .tonight .cols.tight .rows { gap: 0.45vmin; }
 .tonight .cols.tight .row .dot { width: 1.8vmin; height: 1.8vmin; }
 .tonight .cols.two .row .bar { display: none; }
+/* Past 32 (scores.js colsOf): three columns, four past 60, rows tighter still and the numbers narrower. */
+.tonight .cols.three { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 2vmin; }
+.tonight .cols.four { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0 1.6vmin; }
+.tonight .cols.three .row { grid-template-columns: 3.4vmin 1.6vmin minmax(0, 1fr) repeat(3, 6.5vmin); gap: 1vmin; }
+.tonight .cols.tighter .row { padding: 0.15vmin 1.2vmin; }
+.tonight .cols.tighter .row .name, .tonight .cols.tighter .row:not(.head) .num { font-size: 1.8vmin; }
+.tonight .cols.tighter .row .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tonight .cols.tighter .row .rank { width: 2.5vmin; height: 2.5vmin; font-size: 1.4vmin; }
+.tonight .cols.tighter .rows { gap: 0.3vmin; }
+.tonight .cols.tighter .row .dot { width: 1.5vmin; height: 1.5vmin; }
 
 /* Tonight's route times and gnomes beside the points (under them on a narrow screen), and the all-time boards: small
    cards with a title and a line per player, the top three's places in gold, silver and bronze. */

@@ -424,6 +424,19 @@ export class Avatars {
   private shadows = shadowPatches(16);
   private m = new THREE.Matrix4();
 
+  /**
+   * More figures than shadow patches (a LAN night past 16, no ceiling on the players: server/game.mjs): twice as many
+   * as needed so far. The renderer lets go of the old buffer and its binding first (WebGLObjects' dispose of an
+   * instanced mesh), then takes the new one on the next draw; still one draw for all.
+   */
+  private growShadows(): void {
+    const old = this.shadows.instanceMatrix;
+    let n = old.count;
+    while (n < this.avatars.size) n *= 2;
+    this.shadows.dispatchEvent({ type: 'dispose' });
+    this.shadows.instanceMatrix = new THREE.InstancedBufferAttribute(new Float32Array(n * 16), 16).setUsage(old.usage);
+  }
+
   constructor() {
     this.group.add(this.shadows);
     // Players who joined before the character and gun models finished loading get them now.
@@ -614,6 +627,7 @@ export class Avatars {
     const k = 1 - Math.exp(-dt * 10);
     const walkers: Avatar[] = [];
     let patches = 0;
+    if (this.avatars.size > this.shadows.instanceMatrix.count) this.growShadows();
     for (const [name, a] of this.avatars) {
       if (a.away || !a.track.at(netClock.time, p) || !a.track.shown) continue;
       const t = a.track.shown;
