@@ -204,6 +204,8 @@ function groundMap() {
     return true;
   };
 }
+/** groundMap's map, made with the first game and only read after: a room's game (a duel's two) no longer makes its own. */
+let GROUND_MAP = null;
 const CARS = shared('car.json'); // the cars: where each is parked, its size and top speed
 /** The Teslas spawned with /tesla (shared/car.json): how many at most, the kinds (a car above in a paint of its own). */
 const PLACED = CARS.placed;
@@ -478,7 +480,7 @@ export class Game {
     this.vilPaint = new Map(); // villager number -> { until, w }: paint on its clothes, from which gun
     // Clowns and strongmen: id -> { id, x, y, z, kind, until (down until) }; the starting ones, then the admin's (until a restart).
     this.clowns = this.startingClowns();
-    this.free = groundMap(); // where the strongmen have room to walk
+    this.free = (GROUND_MAP ??= groundMap()); // where the strongmen have room to walk: made once (0.3 s), every room's game reads it
     this.rocks = []; // strongmen's rocks in the air: { id, to, at (lands at) }
     this.nextClown = CLOWNS.spots.length + 1;
     this.furniture = new Map(); // id -> placed piece (kept in the database)
