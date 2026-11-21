@@ -15,7 +15,8 @@ work dir (<model>_<page>_<pass>.npy, the top row first, as the game reads the la
 - sky: the light from the sky photo, as the game uses it (turned, capped and scaled as in
   world/environment.ts), with every bounce: irradiance / pi, without the surface's own colour
 - bounce: the game's sun, only what bounces off other surfaces (the game draws the sun's direct light)
-- sun: how much of the sun each point sees (soft edges, as the sun's disc and the texel blur it)
+- sun: how much of the sun each point sees (soft edges, as the sun's disc and the texel blur it); the thin parts
+  (trims, gutters, pipes, frames) cast no shadow here, too thin for the page's texels
 - rain: how much of the sky straight above each point sees (sheltered under eaves and sills)
 - ao: how open each point is within 0.8 m (corners and joints)
 - position, normal: where each texel is and which way it faces (for the wear: tools/bake/encode_buildings.py)
@@ -164,13 +165,30 @@ print(f"{len(targets)} target objects on {len(pages)} pages; {len(scene.objects)
 # Everything else in one object: Cycles then syncs one mesh per bake instead of thousands of objects (trees).
 t = time.time()
 others = [o for o in scene.objects if o.type == "MESH" and "lmModel" not in o.keys()]
-bpy.ops.object.select_all(action="DESELECT")
-for o in others:
-    o.select_set(True)
-bpy.context.view_layer.objects.active = others[0]
-bpy.ops.object.make_single_user(object=True, obdata=True)
-bpy.ops.object.join()
-print(f"joined {len(others)} other objects in {time.time() - t:.0f} s", flush=True)
+# The thin parts (gutters, downpipes, frames, sills: a model's trims and small details) are joined apart: they cast
+# no shadow in the sun pass. Their sharp noon shadows, a few centimetres wide, came out of a page of 10 cm texels as
+# grey smears on the town's white fronts, read as soot (21 Nov 2026). They still shade the sky's light.
+THIN = ("trim", "_small", "frames", "gutter", "pipe")
+
+
+def thin(o):
+    return any(w in n.lower() for n in [o.name, *(s.material.name for s in o.material_slots if s.material)] for w in THIN)
+
+
+def join(objs):
+    bpy.ops.object.select_all(action="DESELECT")
+    for o in objs:
+        o.select_set(True)
+    bpy.context.view_layer.objects.active = objs[0]
+    bpy.ops.object.make_single_user(object=True, obdata=True)
+    bpy.ops.object.join()
+    return bpy.context.view_layer.objects.active
+
+
+thin_parts = [o for o in others if thin(o)]
+join([o for o in others if not thin(o)])
+thin_joined = join(thin_parts) if thin_parts else None
+print(f"joined {len(others)} other objects ({len(thin_parts)} thin) in {time.time() - t:.0f} s", flush=True)
 # And the targets into one object per page: Cycles bakes object by object.
 groups = {key: [o for o in targets if (o["lmModel"], int(o["lm"])) == key] for key in pages}
 joined = []
@@ -295,7 +313,11 @@ setting(sun_on=True)
 bake("DIFFUSE", max(64, SKY_SAMPLES // 2), pass_filter={"INDIRECT"})
 keep("bounce", 3)
 print("sun ...", flush=True)
+if thin_joined:
+    thin_joined.visible_shadow = False
 bake("SHADOW", 64)
+if thin_joined:
+    thin_joined.visible_shadow = True
 keep("sun", 1)
 print("rain ...", flush=True)
 setting(rain_on=True)
