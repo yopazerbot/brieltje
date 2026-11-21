@@ -113,6 +113,8 @@ const ROLE: Record<string, Role> = {
   LaserPolymer: 'body', LaserAnodised: 'trim', LaserFin: 'trim', LaserAccent: 'deep', LaserGlass: 'lens',
   PistolSlide: 'trim', // the pistol's own (gun-pistol.glb): its slide, as the steel slide it had
   ShotgunBlued: 'trim', // the shotgun's own (gun-shotgun.glb): its receiver, barrel and tube, steel as before
+  // The carbine's own (tools/guns/rifle.py): its receivers and handguard the paint, its barrel the trim.
+  RifleAnodised: 'body', RiflePhosphate: 'trim',
 };
 const TOY: Record<WeaponId, Record<Role, string>> = {
   pistol: { body: GUN_PAINT.pistol, trim: '#ffd23f', deep: '#2f6fe0', lens: '#8fe9ff' },
@@ -253,6 +255,7 @@ function gloveMaps(m: THREE.MeshStandardMaterial): void {
 const GUN_FILES: Partial<Record<WeaponId, string>> = {
   laser: '/models/lasergun.glb',
   pistol: '/models/gun-pistol.glb',
+  rifle: '/models/gun-rifle.glb',
   shotgun: '/models/gun-shotgun.glb',
   bazooka: '/models/gun-bazooka.glb',
   launcher: '/models/gun-launcher.glb',

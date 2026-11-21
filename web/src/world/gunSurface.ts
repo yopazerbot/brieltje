@@ -60,6 +60,10 @@ const LOOKS: Record<string, Look> = {
   PistolSlide: { finish: ['#2b2e33', 0.85, 0.26], wear: '#8e9298', metal: 1, rough: 0.22, grain: 0.25, amount: 0.65 },
   // The pump shotgun's receiver, barrel and magazine tube (gun-shotgun.glb): glossy blue-black bluing, worn to steel on the edges.
   ShotgunBlued: { finish: ['#272b32', 0.95, 0.28], wear: '#8e949c', metal: 1, rough: 0.22, grain: 0.25, amount: 0.6 },
+  // The carbine (tools/guns/rifle.py): anodised aluminium (receivers, handguard, sights), a dyed satin layer that wears
+  // through to bright aluminium on the edges; phosphated steel (barrel, gas block), a flat grey-black that wears to grey steel.
+  RifleAnodised: { finish: ['#2a2d32', 0.35, 0.42], wear: '#8b9098', metal: 1, rough: 0.28, grain: 0.3, amount: 0.55 },
+  RiflePhosphate: { finish: ['#2e2f30', 0.5, 0.62], wear: '#6c6f72', metal: 0.9, rough: 0.35, grain: 0.45, amount: 0.6 },
   // Your hands and arms: the sleeve's cloth (a fine weave, faded where it rubs), the glove's leather and its trim.
   Sleeve: { wear: '#ffffff', metal: 0, rough: 0.95, grain: 0.75, scale: [70, 70, 70], amount: 0.5, fade: true },
   Glove: { wear: '#ffffff', metal: 0, rough: 0.7, grain: 0.25, scale: [46, 46, 46], amount: 0.2, fade: true }, // its pieces are painted (tools/gloves.py): a little grain over them
