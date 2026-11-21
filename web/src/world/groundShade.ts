@@ -9,6 +9,7 @@ import { compileDrawn, compileQuad } from './warmShaders';
 import { groundNoise } from './groundNoise';
 import { SPRUCE_WOOD } from './cardTrees';
 import { DuskShade } from './duskShade';
+import { wallSun } from './wallSun';
 
 /**
  * Light on the ground of the whole neighbourhood, worked out once when the sky
@@ -368,6 +369,8 @@ export class GroundShade {
   private grass = { pos: [] as number[], attr: [] as number[] };
   /** The dusk sun's shadow of each bake, made in the background when a dusk comes (world/duskShade.ts) */
   readonly dusk = new DuskShade();
+  /** The village's houses' sun beyond the shadow maps, from each bake's heights (world/wallSun.ts) */
+  readonly wallSun = wallSun;
 
   /** `live`: where the real-time shadow map lies now (world/sunShadow.ts uniforms), for the handover to it. */
   constructor(
@@ -387,6 +390,7 @@ export class GroundShade {
   follow(eye: THREE.Vector3): void {
     this.lastEye.copy(eye);
     this.duskStep();
+    wallSun.follow(eye, groundSun.low, groundSun.dusk);
     let best = -1;
     let bestD = Math.hypot(eye.x - this.center.x, eye.z - this.center.z);
     this.areas.forEach(({ area }, i) => {
@@ -809,6 +813,7 @@ export class GroundShade {
     renderer.setRenderTarget(out);
     this.combine!.render(renderer);
     renderer.setRenderTarget(before);
+    wallSun.capture(renderer, topTarget!.depthTexture!, solidTarget!.depthTexture!, topCam, center, half, size, dir); // the heights, for the houses' sun
     for (const t of [sunTarget!, topTarget!, solidTarget!, cover!]) t.dispose();
     relief.dispose();
     out.textures[0].anisotropy = out.textures[1].anisotropy = 4;

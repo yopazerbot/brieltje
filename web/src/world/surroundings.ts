@@ -30,6 +30,7 @@ import { roofRelief, TILE_BYTE } from './roofRelief';
 import type { RoofField } from './roofField';
 import { inHomes } from './modelRoofs';
 import { snowy } from './snowCover';
+import { sunOnWalls } from './wallSun';
 
 /**
  * Around the plot, from Flemish open data (GRB footprints, DHM laser heights;
@@ -98,6 +99,13 @@ const cableMat = new THREE.MeshStandardMaterial({ color: '#1d1e20', roughness: 0
 cableMat.userData.noGroundShade = true;
 const panelEdgeMat = new THREE.MeshStandardMaterial({ color: '#8f9398', roughness: 0.45, metalness: 0.6, side: THREE.DoubleSide });
 let panelMat: THREE.MeshStandardMaterial | null = null;
+// The sun's shadow beyond the real-time maps, from the heights round them (world/wallSun.ts): on the houses' walls,
+// gables, roofs and what sits on them, the posts and the lamps; not on the ground (its own bake) nor the trees.
+for (const m of [gableMat, skylightFrame, gableFrame, gutterMat, frameMat, trimMat, paneMat, postMat, lampMat, panelEdgeMat]) sunOnWalls(m);
+/** What stands on the ground among the blocks that are not brick walls: sheds, carports, garden walls, posts. */
+const STANDING = new Set(['concrete', 'stone', 'bluestone', 'alu', 'old_wood', 'steel']);
+/** A house's brick, its render and the sun's shadow beyond the maps. */
+const wallMat = (m: THREE.Material) => sunOnWalls(renderable(m));
 /** Materials made on first use and shared by every tile (the roof tiles, the bungalow's gables and ceilings). */
 const mats = new Map<string, THREE.Material>();
 const material = (key: string, make: () => THREE.Material) => {
@@ -677,7 +685,7 @@ export function buildTile(data: TileData, poles: Pole[], renderer: THREE.WebGLRe
   // Gutters and downpipes, from the roofs and the flat roofs' lids.
   const gutterGeos: THREE.BufferGeometry[] = [];
   // The flat roofs' lids: gravel's texture, the covering's colour per vertex (taking the snow, as nb_roof's).
-  const flatMat = material('flat', () => snowy(Object.assign(tintedMaterial('gravel', '#ffffff', renderer), { vertexColors: true })));
+  const flatMat = material('flat', () => sunOnWalls(snowy(Object.assign(tintedMaterial('gravel', '#ffffff', renderer), { vertexColors: true }))));
   for (const p of data.prisms ?? []) {
     const { material: mat, tint, tag } = blockMaterial(p.m, renderer);
     // A house wall's base: a plinth following the ground, where the house has one (world/housePlan.ts, world/houseTrim.ts).
@@ -688,8 +696,8 @@ export function buildTile(data: TileData, poles: Pole[], renderer: THREE.WebGLRe
       // Holes in its faces for the windows and doors that sit back in it (world/wallCut.ts).
       const faces = index.reveals.faces.get(p);
       const wall = base ? g : walls(p.m, houses.keyOf(p), g);
-      put(renderable(mat), faces ? cutWall(wall, faces) : wall, tag);
-    } else if (p.m !== 'nb_roof' || p.lm) put(mat, coloured(mat) ? paint(g, tint) : g, tag, true, GROUND_COVERS.has(p.m) ? COVER_ORDER : undefined);
+      put(wallMat(mat), faces ? cutWall(wall, faces) : wall, tag);
+    } else if (p.m !== 'nb_roof' || p.lm) put(STANDING.has(p.m) ? sunOnWalls(mat) : mat, coloured(mat) ? paint(g, tint) : g, tag, true, GROUND_COVERS.has(p.m) ? COVER_ORDER : undefined);
     if (p.m === 'nb_roof' && !p.lm) {
       // A flat roof: on many houses an edge trim in the house's trim colour (world/houseTrim.ts), found from a point
       // inside the lid (the middle of an L-shaped one is outside it) and the walls under it.
@@ -707,7 +715,7 @@ export function buildTile(data: TileData, poles: Pole[], renderer: THREE.WebGLRe
         const wall = house!;
         const { blocks, parts: bits } = flatRoofParts(p, wall.m, sides, parapet, style.flat.dome);
         const { material: brick, tag: brickTag } = blockMaterial(wall.m, renderer);
-        for (const b of blocks) put(renderable(brick), walls(wall.m, wall.key, prismGeometry(b)), brickTag);
+        for (const b of blocks) put(wallMat(brick), walls(wall.m, wall.key, prismGeometry(b)), brickTag);
         for (const b of bits) put(frameMat, b, 'alu', false, undefined, true);
       }
       const pipe = index.downpipes.get(p);
@@ -718,7 +726,7 @@ export function buildTile(data: TileData, poles: Pole[], renderer: THREE.WebGLRe
   // Roofs: the tiles in their colour per vertex, the gables in the brick of the walls below. A roof
   // over a room (the bungalow's) has a ceiling colour: then the outside (front faces) and the
   // underside (back faces) differ.
-  const tiles = material('tiles', () => roofRelief(glazeable(Object.assign(tintedMaterial('roof_tiles', '#ffffff', renderer, THREE.DoubleSide), { vertexColors: true }))));
+  const tiles = material('tiles', () => sunOnWalls(roofRelief(glazeable(Object.assign(tintedMaterial('roof_tiles', '#ffffff', renderer, THREE.DoubleSide), { vertexColors: true })))));
   // The house under a roof; each house's chimney on its largest roof that can carry one; the houses with a gable or hip
   // roof (leaf shutters go only on those): all for the whole set (world/houseIndex.ts).
   const { chimneys, pitched, keyOf } = index;
@@ -774,15 +782,15 @@ export function buildTile(data: TileData, poles: Pole[], renderer: THREE.WebGLRe
         roofs.add([a[0], stack.y1, a[1], b[0], stack.y1, b[1], c[0], stack.y1, c[1], a[0], stack.y1, a[1], c[0], stack.y1, c[1], d[0], stack.y1, d[1]], r.y, null, true);
       }
       const { material: mat, tag } = blockMaterial(r.wall!, renderer);
-      put(renderable(mat), walls(r.wall!, key, prismGeometry(stack)), tag);
+      put(wallMat(mat), walls(r.wall!, key, prismGeometry(stack)), tag);
       for (const part of cap) put(frameMat, part, 'alu', false, undefined, true);
     }
     if (r.wall) {
       const { material: mat, tint: brick, tag } = blockMaterial(r.wall, renderer);
-      if (isBrick(r.wall)) put(renderable(mat), walls(r.wall, key, g.gables), tag);
-      else put(mat, coloured(mat) ? paint(g.gables, brick) : g.gables, tag);
+      if (isBrick(r.wall)) put(wallMat(mat), walls(r.wall, key, g.gables), tag);
+      else put(STANDING.has(r.wall) ? sunOnWalls(mat) : mat, coloured(mat) ? paint(g.gables, brick) : g.gables, tag);
     } else {
-      put(r.gable || r.ceiling ? material(`gable|${r.gable}|${side}`, () => new THREE.MeshStandardMaterial({ color: r.gable ?? '#b98068', roughness: 0.9, side })) : gableMat, g.gables, 'nb_roof');
+      put(r.gable || r.ceiling ? material(`gable|${r.gable}|${side}`, () => sunOnWalls(new THREE.MeshStandardMaterial({ color: r.gable ?? '#b98068', roughness: 0.9, side }))) : gableMat, g.gables, 'nb_roof');
     }
     if (r.ceiling) {
       const under = material(`under|${r.ceiling}`, () => new THREE.MeshStandardMaterial({ color: r.ceiling, roughness: 0.95, side: THREE.BackSide }));
@@ -1138,7 +1146,7 @@ function buildSolar(list: NonNullable<Surroundings['solar']>): Piece[] {
   g.setAttribute('position', new THREE.Float32BufferAttribute(top, 3));
   g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   g.computeVertexNormals();
-  panelMat ??= new THREE.MeshStandardMaterial({ map: panelTexture(), roughness: 0.22, metalness: 0.35 });
+  panelMat ??= sunOnWalls(new THREE.MeshStandardMaterial({ map: panelTexture(), roughness: 0.22, metalness: 0.35 }));
   const e = new THREE.BufferGeometry();
   e.setAttribute('position', new THREE.Float32BufferAttribute(edge, 3));
   e.computeVertexNormals();
