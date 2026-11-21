@@ -371,9 +371,9 @@ async function partOne() {
   const pts = (p) => vb.players.find((x) => x.name === p.name)?.points ?? 0;
   ok('the evening\'s points: 4 to each winner, 1 to each loser', winners.every((p) => pts(p) === 4) && losers.every((p) => pts(p) === 1), `${winners.map(pts).join(',')} / ${losers.map(pts).join(',')}`);
   console.log(`     the teams' totals: ${JSON.stringify(vb.teams.map((t) => [t.id, t.points]))}`);
-  // Its result shown, then free play: everyone in their own colour.
+  // Its result shown (the results moment, 20 s: server/awards.mjs), then free play: everyone in their own colour.
   const f0 = Date.now();
-  while (Date.now() - f0 < 15_000 && lastMode(hall).kind !== 'free') await sleep(200);
+  while (Date.now() - f0 < 30_000 && lastMode(hall).kind !== 'free') await sleep(200);
   ok('free play once its result has shown', lastMode(hall).kind === 'free');
 
   // ---- 2. The clock: the next one in the programme (a minute, goal 50) ends at time with the leader or a draw.

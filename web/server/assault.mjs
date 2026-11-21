@@ -190,6 +190,11 @@ export class AssaultGame extends FlagGame {
     return null;
   }
 
+  /** Each player's counts (server/flags.mjs statsList), with `far`: the furthest they carried the flag, whole per cent. */
+  statsList() {
+    return super.statsList().map((r) => ({ ...r, far: Math.floor(Math.min(1, this.counts.get(r.name)?.far ?? 0) * 100) }));
+  }
+
   /** A tag in the break counts for nothing (the tie-break counts the rounds' tags only). */
   tagged(killer, victim) {
     if (this.phase !== 'break') super.tagged(killer, victim);
@@ -305,6 +310,10 @@ export class AssaultGame extends FlagGame {
     if (flag.at === 'carried') {
       this.escortStep(flag, now); // who walks with the carrier (an assist at a capture: server/flags.mjs)
       const p = g.players.get(flag.by);
+      if (p && !p.guard) { // the furthest each carrier got it, for the results moment (statsList `far`, server/awards.mjs)
+        const c = this.countOf(flag.by);
+        c.far = Math.max(c.far ?? 0, progressOf(this.field, flag.x, flag.z));
+      }
       const [cx, cz, cy] = this.camp;
       const reach = g.carOf?.(flag.by) ? ASSAULT.campRCar : ASSAULT.campR;
       if (p?.alive && p.state && this.teams[flag.by] === att && Math.hypot(p.state.x - cx, p.state.z - cz) <= reach && Math.abs(p.state.y - cy) <= ASSAULT.campHigh) {

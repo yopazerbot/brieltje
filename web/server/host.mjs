@@ -94,6 +94,7 @@ export class Host {
     this.scores = table(); // name -> { points, wins, played }
     this.teamPoints = [0, 0, 0, 0];
     this.history = []; // { kind, at, winners }
+    this.awards = []; // tonight's awards, a game at a time (gameOver): { game, n, list: [{ id, name, team, color, n }] }
     this.actions = []; // when the host's last actions came (a flood guard)
     this.bringing = new Map(); // name -> { by, until }: brought out of a room, put by the host when they come in (fetch)
     this.starts = { ...DEFAULT_STARTS }; // the teams game's starts tonight: blue's and red's, each a place's id or a spot's
@@ -279,6 +280,13 @@ export class Host {
     if (['hide', 'tag', 'treasure', 'teams'].includes(state.kind)) this.game.partyWon?.(state.kind, winners); // the all-time board of party games won
     this.history.push({ kind: state.kind, at: Date.now(), winners });
     if (this.history.length > 50) this.history.shift();
+    // A team game's awards (server/awards.mjs, chosen by the server from its own counts): kept for tonight's board.
+    const list = state.results?.awards ?? [];
+    if (list.length) {
+      const game = state.kind === 'flag' ? (state.f?.assault ? 'assault' : 'flag') : state.open ? 'teamvteam' : 'teams';
+      this.awards.push({ game, n: this.history.length, list: list.map((a) => ({ id: a.id, name: a.name, team: a.team, color: a.color, n: a.n })) });
+      if (this.awards.length > 30) this.awards.shift();
+    }
   }
 
   /** A round of free play was won (first to the kill limit): a game too. Those who fought in it took part. */
@@ -292,7 +300,8 @@ export class Host {
   board() {
     const players = Object.entries(this.scores).map(([name, s]) => ({ name, ...s, team: this.teamIdOf(name), here: this.game.players.has(name) })).sort((a, b) => b.points - a.points || b.wins - a.wins);
     const teams = EVENING_TEAMS.slice(0, this.teamCount).map((t, i) => ({ ...t, points: this.teamPoints[i], players: Object.keys(this.teams).filter((n) => this.teams[n] === i) }));
-    return { players, teams, games: this.history.length, ...this.game.goals?.tonight() }; // tonight's route times and gnomes (server/goals.mjs)
+    const awards = this.awards.map((g) => ({ game: g.game, n: g.n, list: g.list.map((a) => ({ ...a })) })); // tonight's awards, newest last
+    return { players, teams, games: this.history.length, awards, ...this.game.goals?.tonight() }; // tonight's route times and gnomes (server/goals.mjs)
   }
 
   teamIdOf(name) {
@@ -520,6 +529,7 @@ export class Host {
         this.scores = table();
         this.teamPoints = [0, 0, 0, 0];
         this.history = [];
+        this.awards = [];
         this.hosted = false; // a new evening: calm again once the host starts a game (or while the programme has one to come)
         this.game.goals?.resetTonight();
         return { ok: true };

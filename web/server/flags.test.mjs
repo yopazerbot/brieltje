@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Game } from './game.mjs';
+import { RESULTS_MS } from './awards.mjs';
 import { ASSIST_MS, BACK_MS, BEACON_MS, CAPTURE, FLAG_MS, GUARD_R, RETURN_MS, SAFE_MS, SUDDEN_MS, TOUCH, WORTH, flagTie } from './flags.mjs';
 import { FIELDS, fieldOf } from '../shared/flagFields.mjs';
 import { NO_SHOOT, noShoot } from '../shared/zones.mjs';
@@ -1082,8 +1083,8 @@ test('the evening\'s scoreboard: a point for playing, three more for the winners
   const board = Object.fromEntries(s.game.host.board().players.map((p) => [p.name, p.points]));
   for (const n of s.red) assert.equal(board[n], n === r ? 5 : 4, 'the capturer one more: 500 of credit (the helpers\' credit test)');
   for (const n of s.blue) assert.equal(board[n], 1);
-  // Its result shown, back to free play: the teams' colours go and the vehicles with them.
-  s.at(11_000);
+  // Its result shown (the results moment, server/awards.mjs RESULTS_MS), back to free play: the teams' colours go and the vehicles with them.
+  s.at(RESULTS_MS + 1000);
   s.tick();
   assert.equal(s.game.modes.state.kind, 'free');
 });

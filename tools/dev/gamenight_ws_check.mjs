@@ -244,9 +244,9 @@ if (o.stall) {
       part(row, 'round2', r2 - 1500, r2 + 1500);
       part(row, 'end', end - 1500, end + 1500);
       ok('Attack and defend played through: its break, its second round and its end', lines().includes('assaultRound2'));
-      // Its result shown (10 s), free play: everyone back in their own colours.
+      // Its result shown (the results moment, 20 s: server/awards.mjs), free play: everyone back in their own colours.
       const f0 = Date.now();
-      while (Date.now() - f0 < 20_000 && lastMode(hall)?.kind !== 'free') await sleep(50);
+      while (Date.now() - f0 < 30_000 && lastMode(hall)?.kind !== 'free') await sleep(50);
       const free = performance.now();
       await sleep(1500);
       part(row, 'free', free - 1500, free + 1500);

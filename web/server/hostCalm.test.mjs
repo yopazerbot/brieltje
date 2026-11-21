@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Game } from './game.mjs';
+import { RESULTS_MS } from './awards.mjs';
 
 // A hosted evening (server/host.mjs calm): free play between the host's games stays calm, no "first to 10 kills" round
 // starts after a team game and none ends (game.mjs freshRound, damage); on an ordinary day nothing changes.
@@ -38,7 +39,7 @@ test('a hosted evening: after a team game free play stays calm, no "first to 10 
     s.tick();
     assert.equal(s.game.modes.state.phase, 'done');
     s.out.length = 0;
-    s.at(11_000);
+    s.at(RESULTS_MS + 1000); // a team game's results moment (server/awards.mjs)
     s.tick();
     assert.equal(s.game.modes.state.kind, 'free');
     assert.equal(s.out.some((m) => m.t === 'newround'), !hosted, hosted ? 'no new round told' : 'an ordinary day: the round as before');

@@ -11,6 +11,7 @@ import { arenaOf, portalOf } from '../shared/arenas.mjs';
 import { BACK_MS, FIELDS, FLAG_COLORS, FLAG_MS, FLAG_TEAMS, FlagGame, SAFE_MS, SUDDEN_MS, flagTie } from './flags.mjs';
 import { AssaultGame } from './assault.mjs';
 import { placeName } from './teamStarts.mjs';
+import { NEAR_M, RESULTS_MS, results } from './awards.mjs';
 
 const HIDE_MS = 30_000; // the seeker counts with eyes shut
 const SEEK_MS = 180_000;
@@ -260,10 +261,53 @@ export class Modes {
     const team = s.teams[killer];
     if (!team || team === s.teams[victim]) return;
     s.score[team]++;
+    this.teamActs(killer, victim, team);
     // `team` the name it plays under (the page's words for it), `side` the game's own (the host's points: host.mjs gameOver).
     const shown = this.sideName(team);
     if (s.score[team] >= (s.goal ?? TEAM_GOAL)) this.finish(`Team ${SIDE_NAMES[shown]} wins, ${s.score.house} to ${s.score.bungalow}`, 'teamWon', { team: shown, side: team, ...s.score });
     else this.send();
+  }
+
+  /**
+   * The team deathmatch's counts for its results moment (server/awards.mjs), from the server's own tag: the tagger's
+   * tags, their run of tags without being tagged (`run`, the best `best`) and their tags with a teammate alive within
+   * NEAR_M m (`near`); the tagged one's `tagged`, their run back to nought. Nothing a page says goes in.
+   */
+  teamActs(killer, victim, team) {
+    const acts = (this.state.acts ??= new Map());
+    const row = (n) => {
+      let r = acts.get(n);
+      if (!r) acts.set(n, (r = { tags: 0, tagged: 0, run: 0, best: 0, near: 0 }));
+      return r;
+    };
+    const k = row(killer);
+    k.tags++;
+    k.best = Math.max(k.best, ++k.run);
+    const at = this.game.players.get(killer)?.state;
+    if (at && [...this.game.players].some(([n, o]) => n !== killer && !o.guard && o.alive && o.state && this.state.teams[n] === team && Math.hypot(o.state.x - at.x, o.state.z - at.z) <= NEAR_M && Math.abs(o.state.y - at.y) <= NEAR_M)) k.near++;
+    const v = row(victim);
+    v.tagged++;
+    v.run = 0;
+  }
+
+  /**
+   * The results moment of a team game that just ended with `code` and `args` (server/awards.mjs): the awards and every
+   * player's own line, each award with the team it plays under and its colour. Null for any other game.
+   */
+  resultsOf(code, args) {
+    const s = this.state;
+    const winner = typeof args?.team === 'string' ? args.team : null;
+    const here = new Set(this.game.players.keys());
+    if (s.kind === 'flag') {
+      const r = results(s.f.assault ? 'assault' : 'flag', s.f.statsList(), winner, here);
+      return { ...r, awards: r.awards.map((a) => ({ ...a, color: FLAG_COLORS[a.team] ?? null })) };
+    }
+    if (s.kind !== 'teams') return null;
+    const acts = s.acts ?? new Map();
+    const rows = Object.keys(s.teams).map((name) => ({ name, team: s.teams[name], ...(acts.get(name) ?? { tags: 0, tagged: 0, best: 0, near: 0 }) }));
+    const side = typeof args?.side === 'string' ? args.side : null; // the game's own side (house, bungalow): `team` is the name it plays under
+    const r = results('teams', rows, side, here);
+    return { ...r, awards: r.awards.map((a) => ({ ...a, team: a.team ? this.sideName(a.team) : null, color: (s.colors ?? TEAM_COLORS)[a.team] ?? null })) };
   }
 
   /**
@@ -280,6 +324,7 @@ export class Modes {
       ...(s.kind === 'teams' ? { names: s.names ?? undefined, open: s.open || undefined, starts: s.startsView ?? undefined } : {}),
       seekers: s.seekers ? [...s.seekers].filter((n) => this.game.players.has(n)) : undefined, it: s.it, times: s.times, coins: s.coins, counts: s.counts,
       result: s.result, resultCode: s.resultCode, resultArgs: s.resultArgs,
+      results: s.phase === 'done' ? s.results ?? undefined : undefined, // a team game's awards and lines (server/awards.mjs)
       teams: s.teams && this.here(s.teams), score: s.score, goal: s.kind === 'teams' ? s.goal ?? TEAM_GOAL : undefined,
       colors: s.kind === 'teams' ? s.colors ?? TEAM_COLORS : s.kind === 'flag' ? FLAG_COLORS : undefined, // the teams' colours, for the big screen (admin/scores)
       // Steal the flag: the field, each flag, the tags (server/flags.mjs); each player's counts once it is over (`stats`).
@@ -504,8 +549,11 @@ export class Modes {
     return this.corked(() => {
       this.game.flagGuards?.clear(); // the guards go before the evening's points are given out (server/flagGuards.mjs)
       const long = this.state.kind === 'zombies'; // the end screen: the wave, everyone's zombies and the best ever
+      // A team game: its results moment (server/awards.mjs), RESULTS_MS long, its awards kept on the evening's board too.
+      this.state.results = this.resultsOf(code, args);
       this.game.host?.gameOver(this.state, code, args); // the evening's scoreboard (server/host.mjs)
-      this.state = { ...this.state, phase: 'done', until: Date.now() + (long ? ZOMBIES_DONE_MS : DONE_MS), result, resultCode: code, resultArgs: args };
+      const ms = long ? ZOMBIES_DONE_MS : this.state.results ? RESULTS_MS : DONE_MS;
+      this.state = { ...this.state, phase: 'done', until: Date.now() + ms, result, resultCode: code, resultArgs: args };
       this.say(result, code, args);
       this.send();
     });
