@@ -134,6 +134,9 @@ export async function loadSky(renderer: THREE.WebGLRenderer, url: string, wanted
   const env = pmrem.fromEquirectangular(source).texture;
   pmrem.dispose();
   if (source !== hdr) source.dispose();
+  // A phone: once the chip has the photo, its copy beside it goes (16 MB for the sunny sky). Nothing draws it into the
+  // texture again: the sky only switches between photos already uploaded; its size (`image.width`) stays known.
+  if (PHONE) hdr.onUpdate = () => ((hdr.image as { data: ArrayBufferView | null }).data = null);
   return { photo: hdr, env, turn, bright, haze, irradiance: irr / Math.max(1e-6, weight), sun: sun / Math.max(1e-6, weight) };
 }
 
