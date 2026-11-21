@@ -532,7 +532,11 @@ const en = {
   'game.treasure': 'Treasure hunt',
   'game.treasureSub': '15 coins in and around the house; most coins wins',
   'game.teams': 'House against bungalow',
-  'game.teamsSub': 'Two teams fight, each starts at its own house; first to 25 kills',
+  'game.teamvteam': 'Team against team',
+  'game.teamStartBlue': 'Blue starts here',
+  'game.teamStartRed': 'Red starts here',
+  'game.teamStartSub': 'Where you stand now: that team\'s start in the next team game',
+  'game.teamsSub': 'Two teams fight, each from its own start (its house, or where the host chose); first to 25 kills',
   'game.zombies': 'Zombies',
   'game.duel': 'Zombies duel',
   'game.zombiesSub': 'Everyone together against waves of zombies',
@@ -540,7 +544,7 @@ const en = {
   'game.assault': 'Attack and defend',
   'game.flagCompactSub': 'Blue at the church, red at Molenhoek (about 200 m)',
   'game.flagVillageSub': 'Blue at the church, red at the Sparrenhof (1.7 km, with cars and bikes)',
-  'game.teamsSub.paint': 'Two teams, each starts at its own house; first team to tag the others 25 times',
+  'game.teamsSub.paint': 'Two teams, each from its own start (its house, or where the host chose); first team to tag the others 25 times',
   'game.stop': 'Stop the game',
   'game.stopSub': 'Back to playing freely',
   'game.stopAsk': 'Stop the game for everyone?',
@@ -890,7 +894,7 @@ const en = {
   'combat.respawning': 'Respawning…',
   'combat.newRoundIn': 'New round in {n}',
   'combat.goal': 'First to {n} kills wins the round · kill 100 · headshot +50',
-  'combat.teamsGoal': 'First team to {n} kills wins · House {h} – {b} Bungalow',
+  'combat.teamsGoal': 'First team to {n} kills wins · {ta} {h} – {b} {tb}',
   'combat.player': 'Player',
   'combat.kills': 'Kills',
   'combat.deaths': 'Deaths',
@@ -915,7 +919,7 @@ const en = {
   'paint.splattered': 'splattered',
   'paint.you': 'you',
   'paint.goal': 'First to tag {n} times wins the round · tag 100 · bullseye +50',
-  'paint.teamsGoal': 'First team to tag the others {n} times wins · House {h} – {b} Bungalow',
+  'paint.teamsGoal': 'First team to tag the others {n} times wins · {ta} {h} – {b} {tb}',
   'paint.tags': 'Tags',
   'paint.taggedCol': 'Tagged',
   'paint.out': 'tagged',
@@ -926,13 +930,14 @@ const en = {
   'games.teamCount.other': '{n} playing, start at {place}',
   'games.atHouse': 'the house',
   'games.atBungalow': 'the bungalow',
+  'games.nearSpot': "the host's spot near {place}",
   'games.blind': 'You seek. Eyes shut while the others hide… {n}',
   'games.youSeekHide': 'You seek: count with your eyes shut',
   'games.hide.one': 'Hide! {names} will seek',
   'games.hide.other': 'Hide! {names} will seek',
   'games.youSeek': 'You seek: tag everyone you find ({use})',
   'games.stayHidden': 'Stay hidden',
-  'games.teamsLine': 'House {h} – {b} Bungalow · first to {goal} · you: {team}',
+  'games.teamsLine': '{ta} {h} – {b} {tb} · first to {goal} · you: {team}',
   'games.teamsExplore': "You're exploring. Pick Paintball or Action to take part.",
   'games.teamsByHost': 'Teams are set by the host.',
   'flag.score': 'Blue {b} – {r} Red',
@@ -1326,6 +1331,16 @@ const en = {
   'srv.hideStarted': '{name} started hide and seek: {seeker} seeks. Hide! (30 seconds)',
   'srv.teamsStarted': '{name} started House against bungalow: first team to {n} kills. The host sets the teams.',
   'srv.teamsStarted.paint': '{name} started House against bungalow: the first team to tag the others {n} times wins. The host sets the teams.',
+  'srv.teamvteamStarted': '{name} started Team against team: first team to {n} kills. {team} starts at {place}, {team2} at {place2}.',
+  'srv.teamvteamStarted.paint': '{name} started Team against team: the first team to tag the others {n} times wins. {team} starts at {place}, {team2} at {place2}.',
+  'srv.teamStartHere': '{team} starts here now, in the next team game.',
+  'srv.startHome': 'Not inside a private home or its garden: step outside first.',
+  'srv.startOutside': 'That spot is outside the map.',
+  'srv.startIndoors': 'Not indoors: step outside first.',
+  'srv.startWater': 'Not in the water: stand on dry ground.',
+  'srv.startGround': 'Stand on the ground: not on a roof or in the air.',
+  'srv.startCramped': 'Too cramped here: find open ground with room for a team.',
+  'srv.tooManySpots': 'Too many spots tonight: give a game in the programme a place first.',
   'srv.tagStarted': '{name} started tag: {it} is it. The least time as "it" wins.',
   'srv.huntStarted': '{name} started a treasure hunt: {n} coins in and around the house',
   'srv.found': '{name} found {target}',
@@ -1981,7 +1996,11 @@ const nl = {
   'game.treasure': 'Schattenjacht',
   'game.treasureSub': '15 munten in en rond het huis; wie de meeste vindt, wint',
   'game.teams': 'Huis tegen bungalow',
-  'game.teamsSub': 'Twee teams vechten, elk start bij zijn eigen huis; het eerste team aan 25 kills wint',
+  'game.teamvteam': 'Team tegen team',
+  'game.teamStartBlue': 'Blauw start hier',
+  'game.teamStartRed': 'Rood start hier',
+  'game.teamStartSub': 'Waar je nu staat: de start van dat team in het volgende teamspel',
+  'game.teamsSub': 'Twee teams vechten, elk vanaf zijn eigen start (zijn huis, of waar de host koos); het eerste team aan 25 kills wint',
   'game.zombies': 'Zombies',
   'game.duel': 'Zombies-duel',
   'game.zombiesSub': 'Iedereen samen tegen golven zombies',
@@ -1989,7 +2008,7 @@ const nl = {
   'game.assault': 'Aanvallen en verdedigen',
   'game.flagCompactSub': 'Blauw bij de kerk, rood aan de Molenhoek (zo’n 200 m)',
   'game.flagVillageSub': 'Blauw bij de kerk, rood aan de Sparrenhof (1,7 km, met auto’s en fietsen)',
-  'game.teamsSub.paint': 'Twee teams, elk start bij zijn eigen huis; het eerste team dat de anderen 25 keer geraakt heeft, wint',
+  'game.teamsSub.paint': 'Twee teams, elk vanaf zijn eigen start (zijn huis, of waar de host koos); het eerste team dat de anderen 25 keer geraakt heeft, wint',
   'game.stop': 'Spel stoppen',
   'game.stopSub': 'Terug naar vrij spelen',
   'game.stopAsk': 'Het spel voor iedereen stoppen?',
@@ -2335,7 +2354,7 @@ const nl = {
   'combat.respawning': 'Je komt terug…',
   'combat.newRoundIn': 'Nieuwe ronde over {n}',
   'combat.goal': 'Wie eerst aan {n} kills is, wint de ronde · kill 100 · headshot +50',
-  'combat.teamsGoal': 'Het eerste team aan {n} kills wint · Huis {h} – {b} Bungalow',
+  'combat.teamsGoal': 'Het eerste team aan {n} kills wint · {ta} {h} – {b} {tb}',
   'combat.player': 'Speler',
   'combat.kills': 'Kills',
   'combat.deaths': 'Gestorven',
@@ -2359,7 +2378,7 @@ const nl = {
   'paint.splattered': 'bespatte',
   'paint.you': 'jou',
   'paint.goal': 'Wie eerst {n} keer raak schiet, wint de ronde · raak 100 · voltreffer +50',
-  'paint.teamsGoal': 'Het eerste team dat de anderen {n} keer geraakt heeft, wint · Huis {h} – {b} Bungalow',
+  'paint.teamsGoal': 'Het eerste team dat de anderen {n} keer geraakt heeft, wint · {ta} {h} – {b} {tb}',
   'paint.tags': 'Raak',
   'paint.taggedCol': 'Geraakt',
   'paint.out': 'geraakt',
@@ -2370,13 +2389,14 @@ const nl = {
   'games.teamCount.other': '{n} spelers, start bij {place}',
   'games.atHouse': 'het huis',
   'games.atBungalow': 'de bungalow',
+  'games.nearSpot': 'de plek van de host bij {place}',
   'games.blind': 'Jij zoekt. Ogen dicht terwijl de anderen zich verstoppen… {n}',
   'games.youSeekHide': 'Jij zoekt: tel met je ogen dicht',
   'games.hide.one': 'Verstop je! {names} komt zoeken',
   'games.hide.other': 'Verstop je! {names} komen zoeken',
   'games.youSeek': 'Jij zoekt: tik iedereen aan die je vindt ({use})',
   'games.stayHidden': 'Blijf verstopt',
-  'games.teamsLine': 'Huis {h} – {b} Bungalow · eerst aan {goal} · jij: {team}',
+  'games.teamsLine': '{ta} {h} – {b} {tb} · eerst aan {goal} · jij: {team}',
   'games.teamsExplore': 'Je verkent nu. Kies Verfballen of Actie om mee te doen.',
   'games.teamsByHost': 'De host bepaalt de teams.',
   'flag.score': 'Blauw {b} – {r} Rood',
@@ -2763,6 +2783,16 @@ const nl = {
   'srv.hideStarted': '{name} is verstoppertje begonnen: {seeker} zoekt. Verstop je! (30 seconden)',
   'srv.teamsStarted': '{name} is Huis tegen bungalow begonnen: het eerste team aan {n} kills wint. De host bepaalt de teams.',
   'srv.teamsStarted.paint': '{name} is Huis tegen bungalow begonnen: het eerste team dat de anderen {n} keer geraakt heeft, wint. De host bepaalt de teams.',
+  'srv.teamvteamStarted': '{name} is Team tegen team begonnen: het eerste team aan {n} kills wint. {team} start bij {place}, {team2} bij {place2}.',
+  'srv.teamvteamStarted.paint': '{name} is Team tegen team begonnen: het eerste team dat de anderen {n} keer geraakt heeft, wint. {team} start bij {place}, {team2} bij {place2}.',
+  'srv.teamStartHere': '{team} start nu hier, in het volgende teamspel.',
+  'srv.startHome': 'Niet in een privéwoning of haar tuin: ga eerst naar buiten.',
+  'srv.startOutside': 'Die plek ligt buiten de kaart.',
+  'srv.startIndoors': 'Niet binnen: ga eerst naar buiten.',
+  'srv.startWater': 'Niet in het water: ga op droge grond staan.',
+  'srv.startGround': 'Ga op de grond staan: niet op een dak of in de lucht.',
+  'srv.startCramped': 'Te krap hier: zoek open terrein met plaats voor een team.',
+  'srv.tooManySpots': 'Te veel plekken vanavond: geef eerst een spel in het programma een plaats.',
   'srv.tagStarted': '{name} is tikkertje begonnen: {it} is de tikker. Wie het kortst tikker is, wint.',
   'srv.huntStarted': '{name} is een schattenjacht begonnen: {n} munten in en rond het huis',
   'srv.found': '{name} heeft {target} gevonden',
@@ -3237,7 +3267,18 @@ function validArgs(a: unknown): ServerArgs | null {
 
 const RULES = ['flying', 'spawn', 'names', 'guests', 'portals', 'travel', 'paintball', 'parachute', 'heli'] as const;
 const TEAMS: Partial<Record<string, PlainKey>> = { house: 'team.house', bungalow: 'team.bungalow', blue: 'eteam.blue', red: 'eteam.red' };
-const GAMES: Partial<Record<string, PlainKey>> = { hide: 'game.hide', tag: 'game.tag', treasure: 'game.treasure', teams: 'game.teams', zombies: 'game.zombies', duel: 'game.duel', flag: 'game.flag', assault: 'game.assault' };
+const GAMES: Partial<Record<string, PlainKey>> = { hide: 'game.hide', tag: 'game.tag', treasure: 'game.treasure', teams: 'game.teams', teamvteam: 'game.teamvteam', zombies: 'game.zombies', duel: 'game.duel', flag: 'game.flag', assault: 'game.assault' };
+/**
+ * A place an argument names: a portal's (where Zombies is played, where a team starts), or `near.` one: the host's own
+ * spot for a team's start (server/teamStarts.mjs). Undefined for anything else.
+ */
+function placeText(v: string): string | undefined {
+  const near = v.startsWith('near.');
+  const id = near ? v.slice(5) : v;
+  if (!isKey(`portal.${id}`)) return undefined;
+  const name = t(`portal.${id}` as PlainKey);
+  return near ? t('games.nearSpot', { place: name }) : name;
+}
 
 /**
  * A message from the server in the current language: its `code` (a 'srv.' key) with its `args`, or
@@ -3249,13 +3290,13 @@ export function serverText(code: unknown, args: unknown, fallback: string): stri
   if (typeof code !== 'string' || !a) return fallback;
   const params: Record<string, string | number> = {};
   for (const [k, v] of Object.entries(a)) {
-    const team = k === 'team' && typeof v === 'string' ? TEAMS[v] : undefined;
+    const team = (k === 'team' || k === 'team2') && typeof v === 'string' ? TEAMS[v] : undefined;
     const game = k === 'kind' && typeof v === 'string' ? GAMES[v] : undefined;
-    const place = k === 'place' && typeof v === 'string' && isKey(`portal.${v}`) ? (`portal.${v}` as PlainKey) : undefined; // where Zombies is played: a portal's name
+    const place = (k === 'place' || k === 'place2') && typeof v === 'string' ? placeText(v) : undefined; // where Zombies is played, where a team starts
     if (Array.isArray(v)) params[k] = listOf(v);
     else if (team) params[k] = t(team);
     else if (game) params[k] = t(game);
-    else if (place) params[k] = t(place);
+    else if (place) params[k] = place;
     else params[k] = typeof v === 'boolean' ? String(v) : v;
   }
   if (code === 'rules') {

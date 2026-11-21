@@ -12,7 +12,7 @@
   const $ = (id) => document.getElementById(id);
   const T = {
     nl: {
-      free: 'Vrij spel', hide: 'Verstoppertje', tag: 'Tikkertje', treasure: 'Schattenjacht', teams: 'Huis tegen bungalow',
+      free: 'Vrij spel', hide: 'Verstoppertje', tag: 'Tikkertje', treasure: 'Schattenjacht', teams: 'Huis tegen bungalow', teamvteam: 'Team tegen team',
       firstTo: 'Eerste tot {n} kills wint de ronde', hiding: 'Verstoppen', seeking: 'Zoeken', playing: 'Bezig', done: 'Afgelopen',
       left: 'nog {t}', kills: 'Kills', deaths: 'Dood', points: 'Punten', timeIt: 'Tijd als tikker', coins: 'Munten',
       coinsLeft: '{n} munten liggen nog verstopt', fewest: 'Wie het minst lang tikker was, wint', seeks: 'zoekt', hidden: 'verstopt', it: 'tikker',
@@ -29,7 +29,7 @@
       accounts: 'Spelers met een account · bijgewerkt om {time}', offline: 'Nu even niet op te halen',
     },
     en: {
-      free: 'Free play', hide: 'Hide and seek', tag: 'Tag', treasure: 'Treasure hunt', teams: 'House against bungalow',
+      free: 'Free play', hide: 'Hide and seek', tag: 'Tag', treasure: 'Treasure hunt', teams: 'House against bungalow', teamvteam: 'Team against team',
       firstTo: 'First to {n} kills wins the round', hiding: 'Hiding', seeking: 'Seeking', playing: 'Playing', done: 'Over',
       left: '{t} left', kills: 'Kills', deaths: 'Deaths', points: 'Points', timeIt: 'Time as it', coins: 'Coins',
       coinsLeft: '{n} coins still hidden', fewest: 'Least time as it wins', seeks: 'seeks', hidden: 'hidden', it: 'it',
@@ -127,7 +127,7 @@
     const mode = board.mode;
     const kind = mode.kind || 'free';
     const left = mode.ms !== undefined ? mode.ms - (Date.now() - boardAt) : 0;
-    $('mode-title').textContent = t(kind);
+    $('mode-title').textContent = t(kind === 'teams' && mode.open ? 'teamvteam' : kind); // the teams game from the host's starts: Team against team
     const z = mode.zombies;
     $('mode-sub').textContent = kind === 'free' ? t('firstTo', { n: board.limit })
       : kind === 'zombies' && z ? [t('wave', { n: z.wave }), mode.phase === 'break' ? `${t('break')} · ${t('left', { t: clock(left) })}` : mode.phase === 'wave' ? t('zleft', { n: z.left }) : t('done')].join(' · ')
@@ -377,7 +377,8 @@
     for (const key of ['house', 'bungalow']) if (mode.colors?.[key]) box.style.setProperty(`--${key}`, colour(mode.colors[key]));
     const side = (key) => {
       const s = el('div', `team ${key}`);
-      s.append(el('h2', '', t(key)), el('div', 'score', String(mode.score?.[key] ?? 0)));
+      // By the name it plays under: the evening's blue and red when its teams play it (server/modes.mjs names), else its own.
+      s.append(el('h2', '', t(mode.names?.[key] === 'blue' || mode.names?.[key] === 'red' ? mode.names[key] : key)), el('div', 'score', String(mode.score?.[key] ?? 0)));
       const ul = el('ul');
       for (const p of players.filter((x) => mode.teams?.[x.name] === key).sort((a, b) => b.kills - a.kills)) {
         const li = el('li');

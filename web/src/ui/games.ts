@@ -3,6 +3,7 @@ import { lang, listOf, onLang, plural, serverText, t } from '../i18n';
 import { paintball } from '../paintball';
 import { keepRun } from '../start';
 import type { LootKind } from '../../shared/loot.mjs';
+import { PORTALS } from '../../shared/portals.mjs';
 import type { FlagGameView, FlagHud, FlagTeam } from './flagHud';
 import type { AssaultView } from '../world/assaultCamp';
 
@@ -16,7 +17,7 @@ import type { AssaultView } from '../world/assaultCamp';
 
 export type Team = 'house' | 'bungalow';
 const TEAM_NAMES = { house: 'team.house', bungalow: 'team.bungalow' } as const;
-const TITLES: Partial<Record<string, 'game.hide' | 'game.tag' | 'game.treasure' | 'game.teams' | 'game.zombies' | 'game.flag' | 'game.assault'>> = { hide: 'game.hide', tag: 'game.tag', treasure: 'game.treasure', teams: 'game.teams', zombies: 'game.zombies', flag: 'game.flag' };
+const TITLES: Partial<Record<string, 'game.hide' | 'game.tag' | 'game.treasure' | 'game.teams' | 'game.teamvteam' | 'game.zombies' | 'game.flag' | 'game.assault'>> = { hide: 'game.hide', tag: 'game.tag', treasure: 'game.treasure', teams: 'game.teams', zombies: 'game.zombies', flag: 'game.flag' };
 
 /** The Zombies game in a mode's view (server/zombies.mjs view). */
 export interface ZombiesView {
@@ -71,6 +72,12 @@ export interface ModeView {
   teams?: Record<string, Team | FlagTeam>;
   score?: Record<string, number>;
   goal?: number;
+  /** The teams game: the names its sides play under (the evening's blue and red), else their own (House, Bungalow) */
+  names?: Partial<Record<Team, 'blue' | 'red'>>;
+  /** The teams game from starts the host chose (server/teamStarts.mjs): "Team against team" */
+  open?: boolean;
+  /** The teams game: where each side starts, a portal's place or the host's own spot near one (`spot`), the metres between */
+  starts?: { house: { place: string; spot?: boolean }; bungalow: { place: string; spot?: boolean }; m?: number };
   zombies?: ZombiesView;
   /** Steal the flag: its field and flags (server/flags.mjs view) */
   flag?: FlagGameView;
@@ -227,11 +234,30 @@ export class Games {
         if (!ours) return;
         const n = teams.filter((x) => x === team).length;
         const place = a ? (team === a.def ? t(this.view.flag?.field === 'assaultSparrenhof' ? 'portal.sparrenhof' : 'portal.church') : t('assault.camp'))
-          : team === 'house' ? t('games.atHouse') : team === 'bungalow' ? t('games.atBungalow') : team === 'blue' ? t('portal.church') : t(redAt);
+          : team === 'house' || team === 'bungalow' ? this.startOf(team) : team === 'blue' ? t('portal.church') : t(redAt);
         b.classList.toggle('selected', this.team === team);
         b.querySelector('span')!.textContent = plural(n, 'games.teamCount.one', 'games.teamCount.other', { n, place });
       });
     }
+  }
+
+  /** A side of the teams game by the name it plays under: the evening's (Blue, Red) when the host's teams play it, else its own. */
+  sideLabel(side: Team): string {
+    const named = this.view.names?.[side];
+    return named ? t(named === 'blue' ? 'eteam.blue' : 'eteam.red') : t(TEAM_NAMES[side]);
+  }
+
+  /** Where a side of the teams game starts: the house or the bungalow, a place, or the host's own spot near one. */
+  private startOf(side: Team): string {
+    const s = this.view.open ? this.view.starts?.[side] : null;
+    if (!s) return t(side === 'house' ? 'games.atHouse' : 'games.atBungalow');
+    const name = PORTALS.some((p) => p.id === s.place) ? t(`portal.${s.place}` as 'portal.church') : s.place;
+    return s.spot ? t('games.nearSpot', { place: name }) : name;
+  }
+
+  /** The teams game being played (not once its result shows): on the open map, as Steal the flag (server/game.mjs fenced). */
+  get teamsOn(): boolean {
+    return this.view.kind === 'teams' && this.view.phase === 'playing';
   }
 
   /** A game is on (not just its result showing). */
@@ -242,6 +268,7 @@ export class Games {
   /**
    * A game in the house is being played (any of the four; not once its result shows): everyone stays
    * near the two houses (shared/bounds.json `party`) and nobody travels. The server holds to it too.
+   * The teams game too, for its no trip and no portal; its edge is the open map and it flies (teamsOn, main.ts).
    */
   get fenced(): boolean {
     return this.active && this.view.phase !== 'done' && !this.flagOn; // Steal the flag: its field is the edge (main.ts)
@@ -374,7 +401,7 @@ export class Games {
     this.zexplore.classList.toggle('show', this.zombies && this.exploring);
     this.showEnd();
     if (!this.active) return;
-    const titleKey = v.kind === 'flag' && v.flag?.assault ? 'game.assault' : TITLES[v.kind];
+    const titleKey = v.kind === 'flag' && v.flag?.assault ? 'game.assault' : v.kind === 'teams' && v.open ? 'game.teamvteam' : TITLES[v.kind];
     const title = titleKey ? t(titleKey) : v.title ?? '';
     let text = `${title} · ${clock(left)} · `;
     if (v.phase === 'done') text = `${title} · ${serverText(v.resultCode, v.resultArgs, v.result ?? '')}`;
@@ -392,7 +419,7 @@ export class Games {
       text = this.flagHud?.bar(title, left, v.score, v.flag, this.team === 'blue' || this.team === 'red' ? this.team : null) ?? title;
     } else if (v.kind === 'teams') {
       const s = v.score ?? { house: 0, bungalow: 0 };
-      text += t('games.teamsLine', { h: s.house, b: s.bungalow, goal: v.goal ?? '', team: this.team === 'house' || this.team === 'bungalow' ? t(TEAM_NAMES[this.team]) : '–' });
+      text += t('games.teamsLine', { ta: this.sideLabel('house'), tb: this.sideLabel('bungalow'), h: s.house, b: s.bungalow, goal: v.goal ?? '', team: this.team === 'house' || this.team === 'bungalow' ? this.sideLabel(this.team) : '–' });
     } else if (v.kind === 'tag') {
       const mine = Math.round(v.times?.[this.me] ?? 0);
       text += v.it === this.me ? t('games.youreIt', { n: mine, use }) : t('games.isIt', { name: v.it ?? '', n: mine });

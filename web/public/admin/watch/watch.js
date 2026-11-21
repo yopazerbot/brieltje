@@ -36,7 +36,7 @@
 
   const T = {
     nl: {
-      free: 'Vrij spel', hide: 'Verstoppertje', tag: 'Tikkertje', treasure: 'Schattenjacht', teams: 'Huis tegen bungalow', zombies: 'Zombies',
+      free: 'Vrij spel', hide: 'Verstoppertje', tag: 'Tikkertje', treasure: 'Schattenjacht', teams: 'Huis tegen bungalow', teamvteam: 'Team tegen team', zombies: 'Zombies',
       flag: 'Pak de vlag', duel: 'Zombies-duel', warmup: 'opwarmer', final: 'finale', tonight: 'Vanavond',
       blue: 'Blauw', red: 'Rood', green: 'Groen', purple: 'Paars', house: 'Huis', bungalow: 'Bungalow',
       flagHome: 'Vlag thuis', flagBy: 'Vlag bij {name}', flagGround: 'Vlag op de grond · {n} s', sudden: 'Sudden death: de volgende vlag wint',
@@ -56,7 +56,7 @@
       aFar: '{team} wint! Vlag het verst: {a}%', aTags: '{team} wint op tikken, {a}–{b}', aDraw: 'Gelijkspel',
     },
     en: {
-      free: 'Free play', hide: 'Hide and seek', tag: 'Tag', treasure: 'Treasure hunt', teams: 'House against bungalow', zombies: 'Zombies',
+      free: 'Free play', hide: 'Hide and seek', tag: 'Tag', treasure: 'Treasure hunt', teams: 'House against bungalow', teamvteam: 'Team against team', zombies: 'Zombies',
       flag: 'Steal the flag', duel: 'Zombies duel', warmup: 'warm-up', final: 'final', tonight: 'Tonight',
       blue: 'Blue', red: 'Red', green: 'Green', purple: 'Purple', house: 'House', bungalow: 'Bungalow',
       flagHome: 'Flag home', flagBy: 'Flag: {name} has it', flagGround: 'Flag on the ground · {n} s', sudden: 'Sudden death: the next flag wins',
@@ -402,7 +402,7 @@
     const m = v.mode ?? { kind: 'free' };
     const evening = () => (v.board?.teams ?? []).map((x) => ({ id: x.id, score: num(x.points), unit: t('points'), line: x.players?.length === 1 ? t('players1') : t('players', { n: x.players?.length ?? 0 }) }));
     if (v.countdown) {
-      return { title: t('next', { game: t(v.countdown.kind) }), sub: t('starts'), clock: clock(left(v.countdown.ms)), teams: evening() };
+      return { title: t('next', { game: t(v.countdown.open ? 'teamvteam' : v.countdown.kind) }), sub: t('starts'), clock: clock(left(v.countdown.ms)), teams: evening() };
     }
     const playing = m.phase !== 'done';
     /** The game's end: who won (or the draw) with the final score, from the server's result (modes.mjs finish). */
@@ -450,7 +450,7 @@
     }
     if (m.kind === 'teams') {
       return {
-        title: t('teams'), sub: playing ? t('goal', { n: num(m.goal) }) : result('house', 'bungalow'), clock: playing ? clock(left(m.ms)) : '',
+        title: t(m.open ? 'teamvteam' : 'teams'), sub: playing ? t('goal', { n: num(m.goal) }) : result('house', 'bungalow'), clock: playing ? clock(left(m.ms)) : '',
         teams: ['house', 'bungalow'].map((team) => ({ id: sideName(team, m), colour: colour(m.colors?.[team], COLOURS[team]), score: num(m.score?.[team]) })),
       };
     }

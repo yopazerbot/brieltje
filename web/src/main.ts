@@ -1796,6 +1796,9 @@ document.querySelectorAll<HTMLButtonElement>('[data-game]').forEach((b) =>
     if (b.dataset.game !== 'free') net.send({ t: 'mode', kind: b.dataset.game, ...(b.dataset.game === 'zombies' ? { place: ($('zombies-place-admin') as HTMLSelectElement).value } : b.dataset.field ? { place: b.dataset.field } : {}) });
   }),
 );
+// "Blue starts here" (or red): the teams game's start where the server has the admin (server/host.mjs mark); the message
+// names only the team, and the server's answer comes as a line in the chat.
+document.querySelectorAll<HTMLButtonElement>('[data-teamstart]').forEach((b) => b.addEventListener('click', () => net.send({ t: 'teamstart', team: b.dataset.teamstart })));
 $('stop-yes').addEventListener('click', () => {
   stopAsk.classList.add('hidden');
   net.send({ t: 'mode', kind: 'free' });
@@ -2933,7 +2936,7 @@ function followGame(view: ModeView): void {
   zombieWaveControl.update(view, net.connected && me?.role === 'admin');
   for (const name of online.keys()) avatars.setRole(name, games.roleOf(name));
   const teams = games.view.kind === 'teams' && games.view.phase === 'playing';
-  combat.setTeams(teams ? { goal: games.view.goal ?? 25, score: { house: games.view.score?.house ?? 0, bungalow: games.view.score?.bungalow ?? 0 } } : null);
+  combat.setTeams(teams ? { goal: games.view.goal ?? 25, score: { house: games.view.score?.house ?? 0, bungalow: games.view.score?.bungalow ?? 0 }, names: { house: games.sideLabel('house'), bungalow: games.sideLabel('bungalow') } } : null);
   // Steal the flag (world/flags.ts, ui/flagHud.ts): its flags, its parked bikes, its longer wait when down, its heading.
   const flag = games.view.kind === 'flag' ? games.view.flag ?? null : null;
   flagWorld.set(flag);
@@ -3813,7 +3816,7 @@ renderer.setAnimationLoop((now: number) => {
   // The edge of the game: round the two houses while a game in the house runs (the map shows it at
   // once). Caught outside it (the game began while you were away), you get out of the car or off the
   // horse, and walking puts you in.
-  const fence = games.flagOn ? flagEdge(games.view.flag?.field) : games.fenced ? (games.view.kind === 'zombies' ? edgeOf(games.view.zombies?.place) : edges.party) : edges.map;
+  const fence = games.flagOn ? flagEdge(games.view.flag?.field) : games.fenced && !games.teamsOn ? (games.view.kind === 'zombies' ? edgeOf(games.view.zombies?.place) : edges.party) : edges.map; // the teams game: the open map (its starts may be anywhere)
   if (world.bounds !== fence) {
     world.bounds = fence;
     bigMap.setEdge(fence.ring);
@@ -4079,7 +4082,7 @@ renderer.setAnimationLoop((now: number) => {
     // The helicopter (src/heliPilot.ts): E or Triangle beside it gets you in (together the server says which seat), outside a game; out on a floor.
     // On the way to the others (an account, a join pending, the welcome not come yet) nobody boards.
     const nearHeli = !inCar && !onHorse && !dead && !nearCar && nearHorse < 0 && !nearBike && !target && (helis.together || !(me || joinPending() || net.connected)) ? helis.near(player.x, player.z, player.feet, (m) => !vehicleWear.out('heli', m.spec.id)) : null;
-    const heliWhy = games.carrying ? 'prompt.flagHeli' : helis.why(games.fenced || games.zombies || games.flagNoHeli, rules.heli === false);
+    const heliWhy = games.carrying ? 'prompt.flagHeli' : helis.why((games.fenced && !games.teamsOn) || games.zombies || games.flagNoHeli, rules.heli === false); // the teams game flies, as Steal the flag
     // Attack and defend: Use at a crate or vehicle of your side takes what it gives (the id only; the server checks the
     // rest). Getting in wins: by a car or a helicopter Use takes the seat, a step back it takes the ammo.
     const supply = action && !watching && !dead && !inCar && !onHorse && !onBike && !tagWho && !downed && !target && !ball && net.connected ? supplyAim(nearCar || !!nearHeli) : null;
@@ -4286,7 +4289,7 @@ renderer.setAnimationLoop((now: number) => {
     edgeHint -= dt;
     // Zombies away from home: the edge is round its place, not the house.
     const away = games.view.kind === 'zombies' && arenaOf(games.view.zombies?.place).id !== 'house';
-    if (edgeHint > 0) hud.setPrompt(t(games.fenced ? (away ? 'prompt.edgeHere' : 'prompt.edgeGame') : 'prompt.edge'));
+    if (edgeHint > 0) hud.setPrompt(t(games.fenced && !games.teamsOn ? (away ? 'prompt.edgeHere' : 'prompt.edgeGame') : 'prompt.edge'));
     calmHint = wasCalm ? calmHint - dt : 0;
     if (player.chute !== null) hud.setPrompt(dropPrompt(mode));
     else if (calmHint > 0) hud.setPrompt(t('prompt.noShoot'));

@@ -32,7 +32,7 @@ export class Combat {
   alive = true;
   me = '';
   private limit = 10;
-  private teams: { goal: number; score: { house: number; bungalow: number } } | null = null;
+  private teams: { goal: number; score: { house: number; bungalow: number }; names: { house: string; bungalow: string } } | null = null;
   private scores: Score[] = [];
   private active = false;
   private held = false;
@@ -274,8 +274,8 @@ export class Combat {
     this.drawHealth();
   }
 
-  /** The teams game (its goal and the teams' score) for the scoreboard's heading, or null outside it. */
-  setTeams(teams: { goal: number; score: { house: number; bungalow: number } } | null): void {
+  /** The teams game (its goal, the teams' score and the names they play under) for the scoreboard's heading, or null outside it. */
+  setTeams(teams: { goal: number; score: { house: number; bungalow: number }; names: { house: string; bungalow: string } } | null): void {
     this.teams = teams;
     this.drawBoard();
   }
@@ -294,7 +294,7 @@ export class Combat {
     if (this.zombies) return this.drawZombies(this.zombies);
     const tm = this.teams;
     $('score-goal').textContent = this.flag ? t('flag.boardGoal', this.flag) : tm
-      ? t(paintball.on ? 'paint.teamsGoal' : 'combat.teamsGoal', { n: tm.goal, h: tm.score.house, b: tm.score.bungalow })
+      ? t(paintball.on ? 'paint.teamsGoal' : 'combat.teamsGoal', { n: tm.goal, h: tm.score.house, b: tm.score.bungalow, ta: tm.names.house, tb: tm.names.bungalow })
       : t(paintball.on ? 'paint.goal' : 'combat.goal', { n: this.limit });
     const head = document.createElement('tr');
     const titles = paintball.on ? (['combat.player', 'paint.tags', 'paint.taggedCol', 'combat.points'] as const) : (['combat.player', 'combat.kills', 'combat.deaths', 'combat.points'] as const);
