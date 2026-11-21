@@ -2937,6 +2937,7 @@ function followGame(view: ModeView): void {
   const before = games.view;
   games.set(view);
   resultsPanel.set(games.view, games.me, !watching); // a team game's results moment (ui/results.ts); none in a watch view
+  combat.setCalm(games.view.kind === 'free' && games.view.calm === true); // a hosted evening's free play: the heading names no round
   homeLocks.setClosed(view.kind === 'hide' || view.kind === 'tag'); // no hiding inside a home (server/homeGate.mjs shut)
   // Together too, the hint where they come out of a wood (the Sparrenhof), once as the game starts.
   if (view.kind === 'zombies' && before.kind !== 'zombies' && arenaOf(view.zombies?.place).woods) chat.system(() => t('z.woods'));

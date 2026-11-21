@@ -309,11 +309,20 @@ export class Combat {
     this.drawBoard();
   }
 
+  private calm = false;
+  /** Free play on a hosted evening (server/host.mjs calm): no round of "first to 10", so the heading names none. */
+  setCalm(calm: boolean): void {
+    if (calm === this.calm) return;
+    this.calm = calm;
+    this.drawBoard();
+  }
+
   private drawBoard(): void {
     if (this.zombies) return this.drawZombies(this.zombies);
     const tm = this.teams;
     $('score-goal').textContent = this.flag ? t('flag.boardGoal', this.flag) : tm
       ? t(paintball.on ? 'paint.teamsGoal' : 'combat.teamsGoal', { n: tm.goal, h: tm.score.house, b: tm.score.bungalow, ta: tm.names.house, tb: tm.names.bungalow })
+      : this.calm ? t('combat.calmGoal')
       : t(paintball.on ? 'paint.goal' : 'combat.goal', { n: this.limit });
     const head = document.createElement('tr');
     const titles = paintball.on ? (['combat.player', 'paint.tags', 'paint.taggedCol', 'combat.points'] as const) : (['combat.player', 'combat.kills', 'combat.deaths', 'combat.points'] as const);

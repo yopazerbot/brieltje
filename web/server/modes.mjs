@@ -316,7 +316,8 @@ export class Modes {
    */
   view(now = Date.now(), admin = false) {
     const s = this.state;
-    if (s.kind === 'free') return { kind: 'free' };
+    // `calm`: a hosted evening's free play (server/host.mjs calm), no "first to 10 kills" round: the scoreboard's heading says none.
+    if (s.kind === 'free') return this.game.host?.calm?.() ? { kind: 'free', calm: true } : { kind: 'free' };
     return {
       kind: s.kind, phase: s.phase, ms: Math.max(0, s.until - now), title: s.f?.assault ? ASSAULT_TITLE : s.kind === 'teams' && s.open ? TEAMS_TITLE : KINDS[s.kind],
       // The teams game: the names its sides play under (the evening's blue and red), whether the host chose its starts

@@ -83,6 +83,8 @@ export interface ModeView {
   flag?: FlagGameView;
   /** The host's look for this game (server/modes.mjs LOOKS) */
   look?: 'paint' | 'real';
+  /** Free play on a hosted evening (server/host.mjs calm): no "first to 10 kills" round */
+  calm?: boolean;
 }
 
 // Coins as big as a hand (0.35 m), turning and bobbing at chest height, each with a glint that keeps

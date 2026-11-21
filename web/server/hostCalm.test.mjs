@@ -84,3 +84,22 @@ test('a round won before the evening went calm still ends with its new round, as
   assert.ok(s.out.some((m) => m.t === 'newround'), 'its banner ended with the new round line');
   assert.equal(s.game.roundOver, null);
 });
+
+test('the scoreboard\'s heading: free play tells every page whether the evening is calm, again when the programme or a reset changes it', () => {
+  const s = setup();
+  assert.deepEqual(s.game.modes.view(), { kind: 'free' }, 'an ordinary day: free play as before');
+  const modes = () => s.out.filter((m) => m.t === 'mode').map((m) => m.mode);
+  s.out.length = 0;
+  s.game.host.act('host', { op: 'programme', list: [{ kind: 'flag', minutes: 1 }] });
+  assert.deepEqual(modes(), [{ kind: 'free', calm: true }], 'a programme with a game to come: calm, told at once');
+  s.out.length = 0;
+  s.game.host.act('host', { op: 'programme', list: [{ kind: 'flag', minutes: 2 }] });
+  assert.deepEqual(modes(), [], 'still calm: nothing told');
+  s.game.host.act('host', { op: 'rewind', index: 1 });
+  assert.deepEqual(modes(), [{ kind: 'free' }], 'nothing left to come: no longer calm');
+  s.game.host.act('host', { op: 'rewind', index: 0 });
+  s.game.modes.start('flag', 'admin', 'compact', { minutes: 1 });
+  s.out.length = 0;
+  s.game.host.act('host', { op: 'reset' });
+  assert.deepEqual(modes(), [], 'during a game: no free-play view sent');
+});

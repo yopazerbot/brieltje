@@ -113,6 +113,11 @@ export class Host {
     return this.hosted || this.nextIndex < this.programme.length;
   }
 
+  /** After a change of the programme or the evening: every page told when free play's calm changed (its `calm`). */
+  calmChanged(was) {
+    if (was !== this.calm() && !this.game.modes.active) this.game.modes.send();
+  }
+
   // ------------------------------------------------------------------ the game asks
 
   /** A newcomer is kept outside: the doors are locked, they aren't the admin, weren't let in and haven't played tonight. */
@@ -485,8 +490,10 @@ export class Host {
       case 'programme': {
         const list = Array.isArray(b.list) ? b.list.slice(0, 20).map((e) => this.entry(e)).filter(Boolean) : null;
         if (!list) return { error: 'Out of range', code: 'badValue' };
+        const was = this.calm();
         this.programme = list;
         this.nextIndex = Math.min(this.nextIndex, list.length);
+        this.calmChanged(was);
         return { ok: true };
       }
       case 'next': {
@@ -522,17 +529,23 @@ export class Host {
         return this.mark(by, b.team);
       case 'swap': // Steal the flag's sides, only at the host's request (server/modes.mjs swapSides: its game, its clock)
         return g.modes.swapSides(now);
-      case 'rewind':
+      case 'rewind': {
+        const was = this.calm();
         this.nextIndex = Math.max(0, Math.min(this.programme.length, int(b.index, 0, 20) ?? 0));
+        this.calmChanged(was);
         return { ok: true };
-      case 'reset':
+      }
+      case 'reset': {
+        const was = this.calm();
         this.scores = table();
         this.teamPoints = [0, 0, 0, 0];
         this.history = [];
         this.awards = [];
         this.hosted = false; // a new evening: calm again once the host starts a game (or while the programme has one to come)
         this.game.goals?.resetTonight();
+        this.calmChanged(was);
         return { ok: true };
+      }
       case 'guards': // Steal the flag's guards, a test tool: { team, count, skill }, each checked there (server/flagGuards.mjs set)
         return g.flagGuards?.set(b, now) ?? { error: 'Out of range', code: 'badValue' };
       default:

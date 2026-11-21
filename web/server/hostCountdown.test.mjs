@@ -41,6 +41,7 @@ function setup(t) {
   const cleared = () => out.filter((m) => m.t === 'announce' && m.ms === 0 && m.text === '' && !m.code);
   const counting = () => out.filter((m) => m.t === 'announce' && m.code === 'nextGame');
   host.act('admin', { op: 'programme', list: [{ kind: 'tag', minutes: 5 }, { kind: 'flag', place: 'compact', minutes: 5 }] });
+  out.length = 0; // the programme makes free play calm (server/host.mjs calmChanged): that free-play view is not what is counted
   return { game, host, act, menu, wait, out, cleared, counting };
 }
 
