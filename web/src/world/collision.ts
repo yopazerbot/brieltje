@@ -77,11 +77,18 @@ export interface Ground {
 
 /** Even-odd test across the outline and its holes. */
 function inside(x: number, z: number, rings: Ring[]): boolean {
+  // Plain index loops, no destructuring: asked for every metre under every roof at the start, an iterator or a small
+  // array per point made hundreds of megabytes of garbage there.
   let hit = false;
-  for (const ring of rings) {
+  for (let r = 0; r < rings.length; r++) {
+    const ring = rings[r];
     for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-      const [xi, zi] = ring[i];
-      const [xj, zj] = ring[j];
+      const pi = ring[i];
+      const pj = ring[j];
+      const xi = pi[0];
+      const zi = pi[1];
+      const xj = pj[0];
+      const zj = pj[1];
       if (zi > z !== zj > z && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) hit = !hit;
     }
   }

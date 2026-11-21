@@ -117,11 +117,18 @@ function random(seed: number): () => number {
 
 /** Even-odd test across the rings (an outline and its holes). */
 export function insideRings(x: number, z: number, rings: Ring[]): boolean {
+  // Plain index loops, no destructuring: asked for every place along every shore against every lawn, an iterator or a
+  // small array per point made gigabytes of garbage over the start (a phone's start ran out of memory).
   let odd = false;
-  for (const ring of rings) {
+  for (let r = 0; r < rings.length; r++) {
+    const ring = rings[r];
     for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-      const [xi, zi] = ring[i];
-      const [xj, zj] = ring[j];
+      const pi = ring[i];
+      const pj = ring[j];
+      const xi = pi[0];
+      const zi = pi[1];
+      const xj = pj[0];
+      const zj = pj[1];
       if (zi > z !== zj > z && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) odd = !odd;
     }
   }

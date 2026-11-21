@@ -249,7 +249,19 @@ export class BankPlants {
    */
   addBodies(dips: DipSpec[], world: World, lawns?: { p: Ring[] }[]): void {
     this.world = world;
-    const garden = (x: number, z: number) => !!lawns?.some((l) => insideRings(x, z, l.p));
+    // Each lawn's box first: only the few lawns round a place are tested ring by ring (the same answer, far less work).
+    const boxes = (lawns ?? []).map((l) => {
+      let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+      for (const ring of l.p) for (const p of ring) { x0 = Math.min(x0, p[0]); z0 = Math.min(z0, p[1]); x1 = Math.max(x1, p[0]); z1 = Math.max(z1, p[1]); }
+      return [x0, z0, x1, z1];
+    });
+    const garden = (x: number, z: number) => {
+      for (let i = 0; i < boxes.length; i++) {
+        const b = boxes[i];
+        if (x >= b[0] && x <= b[2] && z >= b[1] && z <= b[3] && insideRings(x, z, lawns![i].p)) return true;
+      }
+      return false;
+    };
     for (const d of dips) {
       if (!d.water) {
         this.dry.push(d.rim);
