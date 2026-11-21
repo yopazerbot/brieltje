@@ -251,6 +251,26 @@ test('mending: after five minutes with nobody near; with someone near only after
   void player; void send;
 });
 
+test('a young tree snaps once: reported by the driver going at it, then no more', () => {
+  const { game, driver, pieces, send, smashes, refusals, state } = setup();
+  const id = pieces.findIndex((p) => p.kind === 'sapling' && p.cx > 300 && game.fence().inside(p.cx + 20, p.cz));
+  const tree = pieces[id];
+  const anna = driver('anna');
+  const car = game.cars.tesla;
+  // Put the car 20 m east of the tree, then drive at it along -x at 30 km/h.
+  Object.assign(car, { x: tree.cx + 20, z: tree.cz, yaw: Math.PI / 2 });
+  Object.assign(anna.state, { x: car.x, z: car.z });
+  for (let i = 0; i < 30; i++) state('anna', anna, car.x, car.z);
+  for (let x = car.x; x > tree.cx + 2.4; x -= (30 / 3.6) * 0.033) state('anna', anna, x, tree.cz);
+  send('anna', anna, { t: 'smash', id, s: 3, w: 9 });
+  assert.equal(refusals('anna').length, 0);
+  assert.deepEqual([smashes().at(-1).id, smashes().at(-1).s, smashes().at(-1).w], [id, 0, 0], 'held to the tree: no spot along it, no width');
+  wait(SMASH.rate);
+  send('anna', anna, { t: 'smash', id, s: 0, w: 0 });
+  assert.equal(smashes().length, 1);
+  assert.equal(refusals('anna').length, 1);
+});
+
 test('the parts that stand of a piece with a gap: cut straight across it, the gap clear', () => {
   const piece = PAGE_PIECES.find((p) => p.kind === 'hedge' && p.half > 5);
   const ring = [...HOUSE.surroundings.prisms, ...VILLAGE.prisms].find((p) => pieceKey(p) === piece.key).p[0];
