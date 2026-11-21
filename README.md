@@ -23,6 +23,10 @@ The whole project was made with AI. Yoshi Parlevliet, a cybersecurity consultant
 ## Recent updates — 21 November 2026
 
 - **Every gun built again.** The pistol, carbine, shotgun, sniper rifle, bazooka and grenade launcher are new models made in Blender from the published sizes of their kind: real parts, edges that catch the light, no brand. Aiming looks down the gun as big shooters frame it. Other players' guns are light copies, so a crowd stays cheap to draw.
+- **A results moment with awards.** After every team game the hall's screen shows the winner, how it was decided and up to four friendly awards, such as Most flags in, Flag saver and Best helper. Every player sees their own best act. Short sounds play through the hall's speakers.
+- **Friend or foe at a glance.** In a team game each team wears its own look: a suit in the team's colour with bands on the helmet and arms, readable for colour-blind players too.
+- **Steal the flag without long draws.** A level game ends on which team carried the other flag furthest. A flag held too long puts a beacon over its carrier. Guarding, saving the flag and helping at a capture all count.
+- **Movement with a bit of weight.** You build up to a run, sprint only forwards, and the view moves a little with your steps. A setting turns the camera movement down or off.
 - **Team games for a full hall.** Team against team with start places the host chooses. In Steal the flag and Attack and defend every player starts on a spot of their own, is told their task on the countdown, gets a marker to the flag, and hears flag news from their own side: a fanfare for good news, an alarm for bad.
 - **Riders sit in the saddle.** On a horse a player sits with their feet in the stirrups and their hands on the reins, and moves with the walk, the trot, the gallop and a jump.
 - **As many players as the host allows.** The number of players is the host's own setting, with no ceiling in the code. Tested comfortable up to 60 on one PC.
