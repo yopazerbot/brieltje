@@ -200,9 +200,12 @@ function noiseTexture(): THREE.DataTexture {
  * you aim; cut there, each showed its hollow inside. Kept, you see their outsides pass by, as with a real gun
  * at your cheek. Only the depth changes, never where a point is drawn. Down to a third of the near edge's
  * distance and no closer: what is right beside the eye (your forearm towards the elbow) is still left out, or
- * it filled a corner of the view as a grey lump.
+ * it filled a corner of the view as a grey lump. Kept in their order: the nearer a point, the nearer the depth it is
+ * given (in the last 0.0004 of the depth range, all of it in front of what lies past the edge), so the firing hand on a
+ * stock's wrist close to your eye is drawn over the wood instead of flickering through it.
  */
-const NEAR_KEPT = '#include <project_vertex>\nif (gl_Position.z > -4.7 * gl_Position.w) gl_Position.z = max(gl_Position.z, -gl_Position.w * 0.9995);';
+const NEAR_KEPT =
+  '#include <project_vertex>\nif (gl_Position.z > -4.7 * gl_Position.w && gl_Position.z < -gl_Position.w * 0.9995) gl_Position.z = -gl_Position.w * (0.9995 + 0.0004 * (1.0 - 2.0 / (1.0 - gl_Position.z / gl_Position.w)));';
 
 /** Keep the camera from cutting this material's shapes open close to the eye (the gloves and sleeves; the guns get it with their surface). */
 export function noNearCut(m: THREE.Material): void {
