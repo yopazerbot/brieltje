@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { snowOn } from './snowCover';
 import { halfSize, loadFile } from './textureFiles';
 import { wallDusk } from './wallDusk';
+import { sunOnWalls } from './wallSun';
 
 /**
  * Baked light and wear on our own building models (tools/bake/: the light worked out in Blender's Cycles from
@@ -240,6 +241,24 @@ async function page(file: string, colour: boolean, renderer: THREE.WebGLRenderer
   return texture;
 }
 
+/** A model's walls, roofs and what sits on them, by their meshes' names (not its glass, paving, gravel, hedges or leaves). */
+const STANDING = /(brick\d*|render|roof|trim|clad|stone|soldier|plinth|concrete|planks|timber|frames_small|metal_small|wood_small|doors)$/;
+
+/**
+ * A model with no light layout at all gets the sun's shadow beyond the real-time maps from the heights round it
+ * (world/wallSun.ts), as the village's generated houses do. The town round the church square is one: tools/town/town.py
+ * built it again three times since its bake (web/public/baked/town.json), without the light layout
+ * (tools/bake/lightmap_uv.py town), so its bake no longer fits and its houses had no sun shadow at all. So are the
+ * hand-made houses among the generated ones (world/villageHouses.ts), which were never baked.
+ */
+function unbakedSun(root: THREE.Object3D): void {
+  root.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    const m = mesh.material as THREE.MeshStandardMaterial;
+    if (mesh.isMesh && m?.isMeshStandardMaterial && !m.transparent && STANDING.test(mesh.name)) sunOnWalls(m);
+  });
+}
+
 /**
  * Put the baked light on a loaded model's surfaces that have a light layout. Resolves once done (or when there
  * is no bake for it, or it doesn't match: those surfaces keep the real-time light). `until` (performance.now()
@@ -258,6 +277,7 @@ export async function bakeLight(root: THREE.Object3D, renderer: THREE.WebGLRende
     if (!(mesh.material as THREE.MeshStandardMaterial).isMeshStandardMaterial) return;
     byModel.set(u.lmModel, [...(byModel.get(u.lmModel) ?? []), mesh]);
   });
+  if (!byModel.size) unbakedSun(root);
   await Promise.all(
     [...byModel].map(async ([model, meshes]) => {
       try {
