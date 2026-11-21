@@ -3393,6 +3393,7 @@ net.onMessage = (m: ServerMsg) => {
       break;
     case 'respawn':
       clearPaint(m.name); // a fresh figure is clean
+      parachutes.stow(m.name === me?.username ? '' : m.name); // a drop cut short: no canopy folding up round the new place
       if (m.name === me?.username) {
         respawnAt(m.spawn, m);
         if (m.drop) beginDrop(undefined, m); // the server chose open ground, by parachute (and where it starts)

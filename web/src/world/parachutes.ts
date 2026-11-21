@@ -274,6 +274,15 @@ export class Parachutes {
     }
   }
 
+  /**
+   * A drop cut short by the server moving the player (a respawn, a game's start): their parachute goes at once. Left
+   * to `fly`, it would fold up round their new place for a few seconds, its lines over their own eyes.
+   */
+  stow(key: string): void {
+    const f = this.flights.get(key);
+    if (f) this.remove(key, f);
+  }
+
   private remove(key: string, f: Flight): void {
     f.mixer.stopAllAction();
     f.mixer.uncacheRoot(f.rig);
