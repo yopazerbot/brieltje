@@ -72,9 +72,36 @@ test('never faster than the larger of where you were and where the keys go (so n
     const want = rnd() * SPRINT;
     const was = Math.hypot(v.x, v.z);
     const dt = [1 / 144, 1 / 60, 1 / 30, 0.25][n % 4];
-    footStep(v, Math.cos(a) * want, Math.sin(a) * want, dt, 1);
+    footStep(v, Math.cos(a) * want, Math.sin(a) * want, dt, 1, n % 3 === 0);
     assert.ok(Math.hypot(v.x, v.z) <= Math.max(want, was) + 1e-9);
   }
+});
+
+test('in the air: the speed kept, a quarter of the steering, a standing jump still nudged onto a ledge', () => {
+  const dt = 1 / 60;
+  const AIRTIME = 0.633; // s in a jump of 0.5 m (player.ts JUMP_HEIGHT)
+  const frames = Math.round(AIRTIME / dt);
+  // No keys: the speed you left the ground with, all the way.
+  const v = { x: SPRINT, z: 0 };
+  for (let i = 0; i < frames; i++) footStep(v, 0, 0, dt, 1, true);
+  assert.deepEqual(v, { x: SPRINT, z: 0 });
+  // A running jump, the view turned a quarter round at once: the way you go turns far less than the view.
+  const turn = { x: SPRINT, z: 0 };
+  for (let i = 0; i < frames; i++) footStep(turn, 0, SPRINT, dt, 1, true);
+  const turned = (Math.atan2(turn.z, turn.x) * 180) / Math.PI;
+  assert.ok(turned > 30 && turned < 60, `a running jump turned ${turned.toFixed(1)} degrees of 90`);
+  // On the ground the same turn is done in that time.
+  const ground = { x: SPRINT, z: 0 };
+  for (let i = 0; i < frames; i++) footStep(ground, 0, SPRINT, dt, 1, false);
+  assert.ok(ground.x === 0 && ground.z > 0.95 * SPRINT);
+  // A standing jump with the walk key down: forward far enough to land on a ledge in front of you.
+  const stand = { x: 0, z: 0 };
+  let d = 0;
+  for (let i = 0; i < frames; i++) {
+    footStep(stand, WALK, 0, dt, 1, true);
+    d += stand.x * dt;
+  }
+  assert.ok(d > 0.25 && d < 0.6, `a standing jump goes ${d.toFixed(3)} m forward`);
 });
 
 test('the full sprint only within 45 degrees of ahead, 70 % of it sideways and backwards, smooth on a stick', () => {

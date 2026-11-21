@@ -9,6 +9,9 @@
  * - Turning: the part of your speed across where the keys now go stops as a stop does, while the part along them
  *   builds up (going the other way you push off as you stop): at walking pace a turn is as crisp as before, at a
  *   sprint it takes a few tenths of a second.
+ * - In the air (a jump or a fall) the same with a quarter of the rates (`AIR`; Unreal's own air control is a share of
+ *   the ground's), and with no keys you keep the speed you left the ground with: a running jump goes where you were
+ *   going, a standing jump can still be nudged forward onto a ledge.
  * - Never faster than the larger of where you were and where the keys go: never past today's top speed.
  * - The full sprint only forward (the tactical sprint in recent Call of Duty games; Warzone cut its sideways and
  *   backwards sprint): within 45 degrees of straight ahead, eased over the next 45 down to 70 % of it (`sprintShare`).
@@ -19,6 +22,8 @@ export const START = { a: 5.68, k: 2.03 };
 export const STOP = { a: 7.57, k: 2.7 };
 /** The pace the rates are for (m/s): walking. */
 export const PACE = 1.4;
+/** In a jump or a fall: this share of the control on the ground. */
+export const AIR = 0.25;
 /**
  * Sideways and backwards: this share of the sprint's extra over walking. 0.5: 70 % of the full sprint, 2.45 m/s. A
  * walker zombie (shared/zombies.mjs) goes 0.65 m/s in the first wave and 0.06 more each wave up to 2.3, each 10 %
@@ -46,11 +51,13 @@ function close(gap: number, a: number, k: number, dt: number): number {
 
 /**
  * Your speed `v` (m/s across the ground, changed in place) after `dt` s, going for `tx, tz`. `scale`: how many times
- * walking pace the rates are for (walking speed and the admin's turbo).
+ * walking pace the rates are for (walking speed and the admin's turbo); `air`: in a jump or a fall.
  */
-export function footStep(v: { x: number; z: number }, tx: number, tz: number, dt: number, scale: number): void {
+export function footStep(v: { x: number; z: number }, tx: number, tz: number, dt: number, scale: number, air = false): void {
   const want = Math.hypot(tx, tz);
   const was = Math.hypot(v.x, v.z);
+  if (air && want < 1e-9) return; // no keys in the air: you keep the speed you have
+  const t = air ? dt * AIR : dt; // a quarter of the control: every change takes four times as long
   const ux = want > 1e-9 ? tx / want : 0;
   const uz = want > 1e-9 ? tz / want : 0;
   let along = v.x * ux + v.z * uz;
@@ -58,12 +65,12 @@ export function footStep(v: { x: number; z: number }, tx: number, tz: number, dt
   const pz = v.z - along * uz;
   // Across the way you want to go: stopped as a stop is.
   const across = Math.hypot(px, pz);
-  const keep = across > 1e-9 ? close(across, STOP.a * scale, STOP.k, dt) / across : 0;
+  const keep = across > 1e-9 ? close(across, STOP.a * scale, STOP.k, t) / across : 0;
   // Along it: built up to the pace, or slowed to it (going the other way, slowed to nought first, pushing off as you
   // stop: a stop's and a start's rate together).
-  if (along < 0) along = -close(-along, (STOP.a + START.a) * scale, STOP.k, dt);
-  else if (along < want) along = want - close(want - along, START.a * scale, START.k, dt);
-  else along = want + close(along - want, STOP.a * scale, STOP.k, dt);
+  if (along < 0) along = -close(-along, (STOP.a + START.a) * scale, STOP.k, t);
+  else if (along < want) along = want - close(want - along, START.a * scale, START.k, t);
+  else along = want + close(along - want, STOP.a * scale, STOP.k, t);
   v.x = px * keep + along * ux;
   v.z = pz * keep + along * uz;
   const top = Math.max(want, was);

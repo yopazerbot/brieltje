@@ -105,6 +105,8 @@ export class Player {
   towerHint: 'climb' | 'ladder' | null = null;
   onRung: () => void = () => {};
   private glide = 0;
+  /** Dropped off the ladder, until your feet are down: the speed across as it always was there (not footMove.ts). */
+  private offLadder = false;
   private rideLook = false;
   private rideAgain = 0;
   private stooped = false;
@@ -156,7 +158,7 @@ export class Player {
 
   /** Put the player somewhere directly, camera included (used by the dev test hook). */
   place(x: number, z: number, feet: number, yaw: number, pitch: number): void {
-    Object.assign(this, { x, z, feet, yaw, pitch, vx: 0, vz: 0, vy: 0, eyeY: feet + EYE, flying: false, chute: null, canopy: null, openAfter: undefined, openSoon: undefined, dip: -1, stumble: 0, water: null, wetHere: null, ride: null, towerHint: null, glide: 0, jumpFrom: null });
+    Object.assign(this, { x, z, feet, yaw, pitch, vx: 0, vz: 0, vy: 0, eyeY: feet + EYE, flying: false, chute: null, canopy: null, openAfter: undefined, openSoon: undefined, dip: -1, stumble: 0, water: null, wetHere: null, ride: null, towerHint: null, glide: 0, offLadder: false, jumpFrom: null });
   }
 
   /** Going down the play tower's slide: how fast (m/s along it); 0 off it. */
@@ -241,13 +243,15 @@ export class Player {
       // On your feet the speed builds up and stops as a body's does (footMove.ts). Flying, swimming and just off the
       // slide keep their own; so does a speed past any pace on foot (just out of a drop): it dies away as it did.
       const top = this.walkSpeed * SPRINT_FACTOR * this.turbo;
-      if (this.glide > 0 || this.flying || w?.swimming || Math.hypot(this.vx, this.vz) > top + 0.01) {
+      const air = this.feet > this.ground.y + 0.01; // feet off the ground as the last frame left them: a jump or a fall
+      if (!air) this.offLadder = false;
+      if (this.glide > 0 || this.offLadder || this.flying || w?.swimming || Math.hypot(this.vx, this.vz) > top + 0.01) {
         const blend = 1 - Math.exp(-(this.glide > 0 ? 3 : 12) * dt); // just off the slide: its speed dies away slowly
         this.vx += (tx - this.vx) * blend;
         this.vz += (tz - this.vz) * blend;
       } else {
         Object.assign(VEL, { x: this.vx, z: this.vz });
-        footStep(VEL, tx, tz, dt, (this.walkSpeed * this.turbo) / PACE);
+        footStep(VEL, tx, tz, dt, (this.walkSpeed * this.turbo) / PACE, air); // in the air a quarter of the control, the speed kept
         this.vx = VEL.x;
         this.vz = VEL.z;
       }
@@ -403,7 +407,10 @@ export class Player {
     let roll = 0;
     if (input.jumpPressed) {
       // Let go: off the ladder you drop, a little away from it; off the slide a hop with its speed, to the side you steer.
-      if (r.kind === 'ladder') [this.vx, this.vz, this.vy] = [-w[0], -w[1], 0];
+      if (r.kind === 'ladder') {
+        [this.vx, this.vz, this.vy] = [-w[0], -w[1], 0];
+        this.offLadder = true;
+      }
       else {
         const s = r.speed * Math.cos(tw.slidePose(r).slope);
         [this.vx, this.vz, this.vy] = [w[0] * s + v[0] * input.moveX * 1.5, w[1] * s + v[1] * input.moveX * 1.5, Math.sqrt(2 * GRAVITY * JUMP_HEIGHT)];
