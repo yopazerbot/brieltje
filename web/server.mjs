@@ -44,7 +44,7 @@ import { Stats } from './server/stats.mjs';
 import { monitor } from './server/monitor.mjs';
 import { metrics, startMetrics } from './server/metrics.mjs';
 import { links } from './server/linkQuality.mjs';
-import { decodePath } from './server/paths.mjs';
+import { decodePath, namesFile } from './server/paths.mjs';
 
 const DIST = resolve(import.meta.dirname, 'dist');
 const PORT = Number(process.env.PORT) || 8080;
@@ -552,7 +552,9 @@ async function serveFile(req, res, url) {
     if (pageInfo) [file, info] = [page, pageInfo];
   }
   if (!info || info.isDirectory()) {
-    file = join(DIST, 'index.html'); // single-page app: unknown paths get the app
+    // A file that is not there: 404, kept by nobody (server/paths.mjs namesFile). Never the app's page in its place.
+    if (namesFile(path)) return send(res, 404, 'Not found', { 'Cache-Control': 'no-store' });
+    file = join(DIST, 'index.html'); // single-page app: unknown pages get the app
     info = await stat(file).catch(() => null);
     if (!info) return send(res, 404, 'Not found');
   }
