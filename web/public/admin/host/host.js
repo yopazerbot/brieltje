@@ -11,7 +11,9 @@
 // browser (localStorage, keys briel.host.*), a convenience only.
 (() => {
   const $ = (id) => document.getElementById(id);
-  const KINDS = { hide: 'Hide and seek', tag: 'Tag', treasure: 'Treasure hunt', teams: 'House against bungalow', zombies: 'Zombies', duel: 'Zombies duel', flag: 'Steal the flag', assault: 'Attack and defend' };
+  const KINDS = { hide: 'Hide and seek', tag: 'Tag', treasure: 'Treasure hunt', teams: 'Team against team', zombies: 'Zombies', duel: 'Zombies duel', flag: 'Steal the flag', assault: 'Attack and defend' };
+  // Where a team of the teams game can start (server/teamStarts.mjs START_PLACES: the portals' places), besides your own spots.
+  const START_NAMES = { house: 'the house', bungalow: 'the bungalow', church: 'the church square', school: 'the school', molenhoek: 'Molenhoek', molenhoek_mid: 'the middle of Molenhoek', molenhoek_end: 'the end of Molenhoek', sparrenhof: 'the Sparrenhof', football: 'the football ground' };
   // Steal the flag's fields (shared/flagFields.mjs): blue always at the church.
   const FIELDS = { compact: 'Compact: church and Molenhoek', village: 'Village: church and Sparrenhof' };
   const PLACES = { house: 'The house', bungalow: 'The bungalow', church: 'The church square', molenhoek: 'Molenhoek', molenhoek_mid: 'Molenhoek, middle', molenhoek_end: 'Molenhoek, end', sparrenhof: 'Sparrenhof' };
@@ -215,7 +217,8 @@
     if (v.countdown) now.replaceChildren(el('b', { text: `${KINDS[v.countdown.kind]} starts in ${Math.ceil(v.countdown.ms / 1000)} s` }));
     else if (m.kind === 'free') now.replaceChildren(el('b', { text: 'Free play' }), el('span', { class: 'muted', text: ` · first to 10 kills wins a round${v.rooms ? ` · players in ${v.rooms} Zombies room${v.rooms === 1 ? '' : 's'} (Stop brings them here)` : ''}` }));
     else {
-      const extra = m.flag?.assault ? assaultLine(m.flag.assault) : m.kind === 'teams' && m.score ? ` · House ${m.score.house} – ${m.score.bungalow} Bungalow (to ${m.goal})` : m.kind === 'zombies' && m.zombies ? ` · wave ${m.zombies.wave ?? ''}` : m.kind === 'flag' && m.score ? ` · Blue ${m.score.blue} – ${m.score.red} Red${m.flag?.sudden ? ' · sudden death' : ''}` : '';
+      const side = (k) => (m.names?.[k] ? TEAM_NAMES[m.names[k]] : k === 'house' ? 'House' : 'Bungalow'); // the evening's names when its teams play it
+      const extra = m.flag?.assault ? assaultLine(m.flag.assault) : m.kind === 'teams' && m.score ? ` · ${side('house')} ${m.score.house} – ${m.score.bungalow} ${side('bungalow')} (to ${m.goal})${m.open && m.starts ? ` · ${side('house')} from ${startName(m.starts.house.spot ? `near.${m.starts.house.place}` : m.starts.house.place)}, ${side('bungalow')} from ${startName(m.starts.bungalow.spot ? `near.${m.starts.bungalow.place}` : m.starts.bungalow.place)}` : ''}` : m.kind === 'zombies' && m.zombies ? ` · wave ${m.zombies.wave ?? ''}` : m.kind === 'flag' && m.score ? ` · Blue ${m.score.blue} – ${m.score.red} Red${m.flag?.sudden ? ' · sudden death' : ''}` : '';
       now.replaceChildren(el('b', { text: title ?? m.kind }), el('span', { text: `${m.phase === 'done' ? ' · over' : ''}${m.ms ? ` · ${clock(m.ms)} left` : ''}${extra}${m.look ? ` · ${LOOKS[m.look] ?? m.look}` : ''}` }), m.result ? el('p', { class: 'muted', text: m.result }) : null);
     }
     // The Zombies duel (server/duel.mjs): both rooms' waves; Stop ends both at once.
@@ -241,6 +244,7 @@
           el('button', { class: 'btn ghost small danger', type: 'button', title: 'Remove', 'aria-label': 'Remove', text: '×', on: { click: () => setProgramme(v.programme.filter((_, k) => k !== i)) } }),
         ))) : [el('li', { class: 'empty', text: 'Nothing planned yet. Add games below.' })]));
     }
+    drawStarts();
     const nxt = v.programme[v.next];
     $('next').textContent = nxt ? `▶ Next: ${describe(nxt)}${nxt.look ? ` · ${LOOKS[nxt.look]}` : ''}` : v.programme.length ? 'Programme done' : 'Plan the evening below';
     $('next').disabled = !nxt || !!v.countdown;
@@ -258,6 +262,45 @@
 
     drawServer(worst);
   }
+
+  /**
+   * The teams game's starts in the form: tonight's for blue and red (the server's), every place and your own spots, the
+   * metres between the two and a plain warning when they are close or far (it warns, it never refuses).
+   */
+  function drawStarts() {
+    const st = v.starts;
+    if (!st) return;
+    const options = [...st.places.map((p) => [p.id, startName(p.id)]), ...st.marks.map((mk) => [mk.id, startName(mk.id)])];
+    for (const team of ['blue', 'red']) {
+      const sel = $(`g-${team}`);
+      if (!stale(`g-${team}-box`, [options, st.now[team]])) continue;
+      sel.replaceChildren(...options.map(([id, name]) => el('option', { value: id, selected: id === st.now[team], text: name })));
+    }
+    const [text, warn] = startsHint(st.now.blue, st.now.red);
+    $('g-starts-hint').textContent = text;
+    $('g-starts-hint').classList.toggle('warn', warn);
+  }
+  /** A start's name: a place, or your spot (`m3`, or `near.church` for the game's own copy) near one. */
+  const startName = (id) => {
+    if (typeof id === 'string' && id.startsWith('near.')) return `your spot near ${START_NAMES[id.slice(5)] ?? id.slice(5)}`;
+    const mk = v?.starts?.marks.find((x) => x.id === id);
+    return mk ? `your spot ${mk.id.slice(1)}, near ${START_NAMES[mk.near] ?? mk.near}` : START_NAMES[id] ?? id;
+  };
+  const centreOf = (id) => v?.starts?.marks.find((x) => x.id === id) ?? v?.starts?.places.find((p) => p.id === id) ?? null;
+  /** The metres between two starts, or null. */
+  const apart = (a, b) => {
+    const p = centreOf(a);
+    const q = centreOf(b);
+    return p && q ? Math.round(Math.hypot(p.x - q.x, p.z - q.z)) : null;
+  };
+  /** The line under the two pickers: [text, a warning]. */
+  const startsHint = (a, b) => {
+    const d = apart(a, b);
+    if (d === null) return ['', false];
+    if (d < v.starts.near) return [`⚠ ${d} m apart: close. The teams would shoot each other as they start.`, true];
+    if (d > v.starts.far) return [`⚠ ${d} m apart: far. The teams would hardly meet.`, true];
+    return [`${d} m apart.`, false];
+  };
 
   /** The people: found by what is typed, sorted as chosen, each with their team and one menu of actions. */
   function drawPeople() {
@@ -485,7 +528,14 @@
     const now = a.phase === 'break' ? 'break before round 2' : `round ${a.round} of 2, ${TEAM_NAMES[a.def]} defends ${where}, flag ${a.best}% of the way`;
     return ` · ${[now, ...done].join(' · ')}`;
   };
-  const describe = (e) => `${KINDS[e.kind]}${e.kind === 'assault' ? `, ${TEAM_NAMES[e.defend] ?? 'Blue'} defends the church first` : ''}${e.kind === 'duel' ? (e.duel === 'final' ? ', final' : ', warm-up') : ''}${e.kind === 'zombies' ? ` at ${PLACES[e.place] ?? e.place}` : ''}${e.kind === 'flag' ? `, ${FIELDS[e.place] ?? e.place}` : ''}${e.minutes ? `, ${e.minutes} min` : ''}${e.goal ? `, to ${e.goal}` : ''}`;
+  /** The teams game in the programme: its name, where each team starts and how far apart, a warning when close or far. */
+  const teamsPart = (e) => {
+    if ((e.blue ?? 'house') === 'house' && (e.red ?? 'bungalow') === 'bungalow') return 'House against bungalow';
+    const d = apart(e.blue, e.red);
+    const [hint, warn] = startsHint(e.blue, e.red);
+    return `Team against team, blue at ${startName(e.blue)}, red at ${startName(e.red)}${d === null ? '' : `, ${warn ? hint.replace(/: .*/, '') : `${d} m apart`}`}`;
+  };
+  const describe = (e) => `${e.kind === 'teams' ? teamsPart(e) : KINDS[e.kind]}${e.kind === 'assault' ? `, ${TEAM_NAMES[e.defend] ?? 'Blue'} defends the church first` : ''}${e.kind === 'duel' ? (e.duel === 'final' ? ', final' : ', warm-up') : ''}${e.kind === 'zombies' ? ` at ${PLACES[e.place] ?? e.place}` : ''}${e.kind === 'flag' ? `, ${FIELDS[e.place] ?? e.place}` : ''}${e.minutes ? `, ${e.minutes} min` : ''}${e.goal ? `, to ${e.goal}` : ''}`;
   const setProgramme = (list) => act({ op: 'programme', list });
   const moveEntry = (i, d) => {
     const list = [...v.programme];
@@ -498,7 +548,8 @@
     const goal = kind === 'teams' ? Number($('g-goal').value) || undefined : undefined;
     const duel = kind === 'duel' ? $('g-duel').value : undefined;
     const defend = kind === 'assault' ? $('g-defend').value : undefined; // Attack and defend: who defends the church in round 1
-    return { kind, place: kind === 'zombies' ? $('g-place').value : kind === 'flag' ? $('g-field').value : kind === 'assault' ? 'assault' : 'house', minutes: kind === 'zombies' || duel === 'final' ? undefined : minutes, goal, look: $('g-look').value || null, duel, defend };
+    const starts = kind === 'teams' ? { blue: $('g-blue').value || undefined, red: $('g-red').value || undefined } : {}; // the teams game: where each team starts
+    return { kind, place: kind === 'zombies' ? $('g-place').value : kind === 'flag' ? $('g-field').value : kind === 'assault' ? 'assault' : 'house', minutes: kind === 'zombies' || duel === 'final' ? undefined : minutes, goal, look: $('g-look').value || null, duel, defend, ...starts };
   };
   const showFields = () => {
     const kind = $('g-kind').value;
@@ -507,6 +558,7 @@
     $('g-defend-label').hidden = kind !== 'assault';
     $('g-minutes').max = kind === 'assault' ? '15' : '30'; // Attack and defend: each round's minutes
     $('g-goal-label').hidden = kind !== 'teams';
+    for (const id of ['g-blue-box', 'g-red-box', 'g-starts-hint']) $(id).hidden = kind !== 'teams';
     $('g-minutes').disabled = kind === 'zombies' || (kind === 'duel' && $('g-duel').value === 'final');
     $('g-duel-label').hidden = kind !== 'duel';
   };
@@ -521,6 +573,13 @@
   $('g-look').replaceChildren(...Object.entries(LOOKS).map(([k, n]) => el('option', { value: k, text: n })));
   $('g-field').replaceChildren(...Object.entries(FIELDS).map(([k, n]) => el('option', { value: k, text: n })));
   $('g-kind').addEventListener('change', showFields);
+  // The teams game's starts: a place picked is tonight's start for that team at once; "Where I stand" makes the spot where
+  // the server has you in the game that team's start (the page sends only the team: server/host.mjs mark).
+  const setStarts = () => act({ op: 'starts', blue: $('g-blue').value, red: $('g-red').value }, `Blue starts at ${startName($('g-blue').value)}, red at ${startName($('g-red').value)}`);
+  $('g-blue').addEventListener('change', setStarts);
+  $('g-red').addEventListener('change', setStarts);
+  $('g-blue-here').addEventListener('click', () => act({ op: 'mark', team: 'blue' }, 'Blue starts where you stand'));
+  $('g-red-here').addEventListener('click', () => act({ op: 'mark', team: 'red' }, 'Red starts where you stand'));
   $('g-duel').addEventListener('change', showFields);
   showFields();
 

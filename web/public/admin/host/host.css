@@ -153,6 +153,12 @@
 .game-form label { display: flex; flex-direction: column; gap: 4px; font-family: var(--display); font-size: 14px; font-weight: 600; color: var(--soft); }
 .game-form .row { grid-column: 1 / -1; }
 .game-form [hidden] { display: none; }
+/* The teams game's starts: each team's place, its button for the host's own spot, the distance between them. */
+.game-form .start-pick { display: flex; flex-direction: column; gap: 4px; font-family: var(--display); font-size: 14px; font-weight: 600; color: var(--soft); }
+.game-form .start-pick .pick { display: flex; gap: 6px; align-items: stretch; }
+.game-form .start-pick select { flex: 1; min-width: 0; }
+.game-form .start-hint { grid-column: 1 / -1; margin: 0; font-size: 14px; color: var(--soft); }
+.game-form .start-hint.warn { color: var(--sun); font-weight: 600; }
 
 /* Programme and scoreboard. */
 .programme { margin: 0 0 8px; padding: 0; list-style: none; counter-reset: game; display: flex; flex-direction: column; gap: 6px; }

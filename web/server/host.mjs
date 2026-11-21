@@ -27,10 +27,11 @@
 //   is what its players scored while on it. Kept in memory: a restart begins a new evening.
 
 import { words } from './words.mjs';
-import { ASSAULT_TITLE, KINDS, LOOKS, shuffled } from './modes.mjs';
+import { ASSAULT_TITLE, KINDS, LOOKS, shuffled, TEAMS_TITLE } from './modes.mjs';
 import { ARENAS } from '../shared/arenas.mjs';
 import { DUEL_KINDS, SIDES as DUEL_SIDES } from './duel.mjs';
 import { FIELDS } from '../shared/flagFields.mjs';
+import { DEFAULT_STARTS, FAR_M, NEAR_M, START_PLACES, nearestPlace } from './teamStarts.mjs';
 
 // The first two are the evening's blue and red (Yoshi, 16 Nov 2026: "team blue vs team red").
 export const EVENING_TEAMS = [
@@ -56,6 +57,8 @@ const ASSAULT_WON = new Set(['assaultTime', 'assaultOnly', 'assaultFar', 'assaul
 const DEFENDERS = ['blue', 'red'];
 /** Attack and defend's rounds last 1 to this many minutes each (two rounds and a break: an evening's slot). */
 export const ASSAULT_MINUTES = 15;
+/** The host's own spots for the teams game's starts kept tonight at most (mark): the oldest unused one makes room. */
+const MARKS = 12;
 
 const str = (v, max) => (typeof v === 'string' ? v.replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, max) : '');
 const int = (v, lo, hi) => (Number.isInteger(v) && v >= lo && v <= hi ? v : null);
@@ -90,6 +93,9 @@ export class Host {
     this.history = []; // { kind, at, winners }
     this.actions = []; // when the host's last actions came (a flood guard)
     this.bringing = new Map(); // name -> { by, until }: brought out of a room, put by the host when they come in (fetch)
+    this.starts = { ...DEFAULT_STARTS }; // the teams game's starts tonight: blue's and red's, each a place's id or a spot's
+    this.marks = []; // the host's own spots tonight (mark): { id, x, y, z, near, team }
+    this.markN = 0;
   }
 
   // ------------------------------------------------------------------ the game asks
@@ -149,6 +155,77 @@ export class Host {
     return { house: EVENING_TEAMS[0].color, bungalow: EVENING_TEAMS[1].color };
   }
 
+  // ------------------------------------------------------------------ the teams game's starts (server/teamStarts.mjs)
+
+  /** A start a call may name: a known place's id, or one of tonight's spots; else null. */
+  startRef(v) {
+    return typeof v === 'string' && (START_PLACES.has(v) || this.marks.some((m) => m.id === v)) ? v : null;
+  }
+
+  /** The middle of start `ref` ({ x, z }), or null. */
+  centre(ref) {
+    return this.marks.find((m) => m.id === ref) ?? START_PLACES.get(ref) ?? null;
+  }
+
+  /**
+   * The teams game's starts as it begins (server/modes.mjs): `refs` the game's own (the programme's entry), else
+   * tonight's. Each side's places round its start (server/teamStarts.mjs), facing open ground; `open` when it is not
+   * the two houses; `view` what every page is told (each start's place, or the place a spot is near, and the metres
+   * between them). Null without the starts' module (a test's game).
+   */
+  teamStarts(refs) {
+    const ts = this.game.teamStarts;
+    if (!ts) return null;
+    const blue = this.startRef(refs?.blue) ?? this.starts.blue;
+    const red = this.startRef(refs?.red) ?? this.starts.red;
+    const a = this.centre(blue);
+    const b = this.centre(red);
+    const one = (ref, toward) => {
+      const m = this.marks.find((q) => q.id === ref);
+      if (!m) {
+        const p = ts.place(ref, toward);
+        return { ref, place: ref, spot: false, x: p.x, z: p.z, spots: p.spots ?? [] };
+      }
+      // Checked when it was marked; a car parked on it since only takes those places.
+      const spots = ts.spread(m.x, m.y, m.z, toward);
+      return { ref, place: m.near, spot: true, x: m.x, z: m.z, spots: spots.length ? spots : [{ x: m.x, y: m.y, z: m.z, face: ts.face(m.x, m.z, toward) }] };
+    };
+    const house = one(blue, b);
+    const bungalow = one(red, a);
+    if (!house.spots.length || !bungalow.spots.length) return null; // never: every place has room (teamStarts.test.mjs)
+    const shown = (s) => ({ place: s.place, ...(s.spot ? { spot: true } : {}), x: s.x, z: s.z });
+    return {
+      open: !(blue === DEFAULT_STARTS.blue && red === DEFAULT_STARTS.red), starts: { house, bungalow },
+      view: { house: shown(house), bungalow: shown(bungalow), m: Math.round(Math.hypot(a.x - b.x, a.z - b.z)) },
+    };
+  }
+
+  /**
+   * "Blue starts here" (or red): the admin's own spot, as the server has it (never a position from the page: a forged
+   * one changes nothing), becomes that team's start tonight, once the starts' checks pass (server/teamStarts.mjs check:
+   * on the ground in the map, out of every locked home and its garden, not indoors or in the water, with room for a
+   * team). { ok, mark } or { error, code }. Only through act (the admin's session; game.mjs the admin's own socket).
+   */
+  mark(by, team) {
+    if (team !== 'blue' && team !== 'red') return { error: 'Out of range', code: 'badValue' };
+    const p = this.game.players.get(by);
+    const st = p?.state;
+    if (!st) return { error: 'Join the game yourself first: stand where the team should start', code: 'notInGame' };
+    if (!p.alive || st.flying || this.game.dropping?.(p, Date.now()) || this.game.helis?.of(by)) return { error: 'Stand on the ground: not on a roof or in the air.', code: 'startGround' };
+    const r = this.game.teamStarts?.check(st.x, st.y, st.z, this.centre(this.starts[team === 'blue' ? 'red' : 'blue'])) ?? { error: 'No room', code: 'startCramped' };
+    if (r.error) return r;
+    if (this.marks.length >= MARKS) {
+      const used = new Set([this.starts.blue, this.starts.red, ...this.programme.flatMap((e) => [e.blue, e.red])]);
+      const i = this.marks.findIndex((m) => !used.has(m.id));
+      if (i < 0) return { error: 'Too many spots tonight: give a game in the programme a place first', code: 'tooManySpots' };
+      this.marks.splice(i, 1);
+    }
+    const mark = { id: `m${++this.markN}`, x: Math.round(st.x * 100) / 100, y: r.y, z: Math.round(st.z * 100) / 100, near: nearestPlace(st.x, st.z), team };
+    this.marks.push(mark);
+    this.starts[team] = mark.id;
+    return { ok: true, mark: { id: mark.id, near: mark.near, x: mark.x, z: mark.z } };
+  }
+
   // ------------------------------------------------------------------ the evening's scores
 
   award(names, winners, extra = 0) {
@@ -178,7 +255,7 @@ export class Host {
     else if (code === 'foundAll') winners = [...(state.seekers ?? [])];
     else if (code === 'seekerLeft') winners = here.filter((n) => !state.seekers?.has(n));
     else if (code === 'tagWon') winners = [args.name];
-    else if (code === 'teamWon' || code === 'teamsTime' || code === 'flagWon' || code === 'flagTagsWon' || ASSAULT_WON.has(code)) winners = Object.keys(state.teams ?? {}).filter((n) => state.teams[n] === args.team);
+    else if (code === 'teamWon' || code === 'teamsTime' || code === 'flagWon' || code === 'flagTagsWon' || ASSAULT_WON.has(code)) winners = Object.keys(state.teams ?? {}).filter((n) => state.teams[n] === (args.side ?? args.team)); // the teams game: `side` its own, `team` the name it played under
     else if (code === 'zOver' || code === 'zOverBest') extra = this.wavePoints(args.n);
     winners = winners.filter((n) => typeof n === 'string' && present.has(n));
     this.award(here, winners, extra);
@@ -249,12 +326,15 @@ export class Host {
       players, away, max: this.game.rules.maxPlayers, most: this.game.most, locked: this.locked, knocking: [...this.knocking.keys()],
       frozen: this.frozen, chatOff: this.chatOff, words: words.list(),
       teams: { count: this.teamCount, list: EVENING_TEAMS },
-      programme: this.programme, next: this.nextIndex, countdown: this.countdown ? { kind: this.countdown.kind, ms: Math.max(0, this.countdown.until - now) } : null,
+      programme: this.programme, next: this.nextIndex, countdown: this.countdown ? { kind: this.countdown.kind, ms: Math.max(0, this.countdown.until - now), ...(this.countdown.open ? { open: true } : {}) } : null,
       mode: this.game.modes.view(now), board: this.board(), kinds: KINDS, places: [...PLACES],
       duel: this.game.hub?.duel?.view(now) ?? null, // the Zombies duel (server/duel.mjs)
       inDuel: this.inDuel(), // who plays in its rooms: the hall screen follows them there (admin/watch)
       rooms: [...(this.game.hub?.rooms?.values() ?? [])].filter((r) => r.game.players.size).length, // players' rooms with someone in them: Stop brings them back
       guards: this.game.flagGuards?.view() ?? null, // Steal the flag's guards, per team (server/flagGuards.mjs)
+      // The teams game's starts: tonight's (blue's, red's), the places there are, the host's spots, and the distances under
+      // and over which the page warns (server/teamStarts.mjs).
+      starts: { now: this.starts, places: [...START_PLACES.values()], marks: this.marks.map(({ id, x, z, near, team }) => ({ id, x, z, near, team })), near: NEAR_M, far: FAR_M },
     };
   }
 
@@ -399,6 +479,15 @@ export class Host {
         g.hub?.closeRooms?.(by, 'roomsHostStop', 'The host stopped the games. Everyone is back in the house.'); // the players' rooms: everyone to free play here
         this.corked(() => g.modes.start('free', by));
         return { ok: true };
+      case 'starts': { // the teams game's starts tonight: blue's and red's, each a known place or one of tonight's spots
+        const blue = this.startRef(b.blue);
+        const red = this.startRef(b.red);
+        if (!blue || !red) return { error: 'Unknown place', code: 'badValue' };
+        this.starts = { blue, red };
+        return { ok: true };
+      }
+      case 'mark': // "Blue starts here": where the server has the host (mark), never a position from the page
+        return this.mark(by, b.team);
       case 'swap': // Steal the flag's sides, only at the host's request (server/modes.mjs swapSides: its game, its clock)
         return g.modes.swapSides(now);
       case 'rewind':
@@ -453,7 +542,12 @@ export class Host {
     // The Zombies duel (server/duel.mjs): its warm-up (with its minutes) or its final, always at Sparrenhof.
     if (e.kind === 'duel') return DUEL_KINDS.includes(e.duel) ? { kind: 'duel', duel: e.duel, place: 'sparrenhof', minutes: e.duel === 'warmup' ? int(e.minutes, 1, 30) : null, goal: null, look: none ? null : e.look } : null;
     const place = e.kind === 'flag' ? (Object.hasOwn(FIELDS, e.place) && !FIELDS[e.place].assault ? e.place : 'compact') : typeof e.place === 'string' && PLACES.has(e.place) ? e.place : 'house'; // Steal the flag: its field
-    return { kind: e.kind, place, minutes: int(e.minutes, 1, 30), goal: e.kind === 'teams' ? int(e.goal, 5, 100) : null, look: none ? null : e.look };
+    // The teams game: where blue and red start (a known place or one of tonight's spots; none said: tonight's starts as
+    // they are now). Anything else refuses the game.
+    const start = (v, now) => (v === undefined || v === null || v === '' ? now : this.startRef(v));
+    const starts = e.kind === 'teams' ? { blue: start(e.blue, this.starts.blue), red: start(e.red, this.starts.red) } : null;
+    if (starts && (!starts.blue || !starts.red)) return null;
+    return { kind: e.kind, place, minutes: int(e.minutes, 1, 30), goal: e.kind === 'teams' ? int(e.goal, 5, 100) : null, look: none ? null : e.look, ...(starts ?? {}) };
   }
 
   /** The game starts in ten seconds: everyone sees the countdown. */
@@ -468,23 +562,24 @@ export class Host {
     const timer = setTimeout(() => {
       if (this.countdown?.timer !== timer) return; // called off or replaced meanwhile: never a stale start
       this.countdown = null;
-      if (!duel) return this.corked(() => this.game.modes.start(e.kind === 'assault' ? 'flag' : e.kind, by, e.place, { minutes: e.minutes, goal: e.goal, look: e.look, defend: e.defend })); // Attack and defend: a flag game of its own
+      if (!duel) return this.corked(() => this.game.modes.start(e.kind === 'assault' ? 'flag' : e.kind, by, e.place, { minutes: e.minutes, goal: e.goal, look: e.look, defend: e.defend, starts: e.kind === 'teams' ? { blue: e.blue, red: e.red } : undefined })); // Attack and defend: a flag game of its own
       const r = duel.start(e, by);
       if (r.error) this.game.broadcast({ t: 'system', text: `The Zombies duel could not start: ${r.error}`, code: r.code, args: r.args }); // its reason, in the page's language
     }, COUNTDOWN_MS);
     timer.unref?.();
     const pull = setTimeout(() => this.countdown?.timer === timer && this.gather(by, !!duel), COUNTDOWN_MS - GATHER_MS);
     pull.unref?.();
-    this.countdown = { kind: e.kind, until, timer, pull, place: e.kind === 'flag' ? e.place : undefined, defend: e.kind === 'assault' ? e.defend : undefined };
+    // `open`: the teams game from starts the host chose, "Team against team" in the countdown's line.
+    this.countdown = { kind: e.kind, until, timer, pull, place: e.kind === 'flag' ? e.place : undefined, defend: e.kind === 'assault' ? e.defend : undefined, open: e.kind === 'teams' && !(e.blue === DEFAULT_STARTS.blue && e.red === DEFAULT_STARTS.red) };
     this.everywhere(this.countdownMsg(Date.now())); // the open world and every room: the same small line (Yoshi: no card over the game)
     return { ok: true };
   }
 
   /** The countdown's line, its time left from `now` (a page that comes in during it gets the rest: tellCountdown). */
   countdownMsg(now) {
-    const k = this.countdown.kind;
+    const k = this.countdown.open ? 'teamvteam' : this.countdown.kind;
     // `place` (Steal the flag's field) and `defend` (Attack and defend's first defenders): each page's task line on the card
-    return { t: 'announce', code: 'nextGame', args: { kind: k, ...(this.countdown.place ? { place: this.countdown.place } : {}), ...(this.countdown.defend ? { defend: this.countdown.defend } : {}) }, text: `Next: ${KINDS[k] ?? (k === 'assault' ? ASSAULT_TITLE : 'Zombies duel')}`, ms: Math.max(0, this.countdown.until - now), count: true };
+    return { t: 'announce', code: 'nextGame', args: { kind: k, ...(this.countdown.place ? { place: this.countdown.place } : {}), ...(this.countdown.defend ? { defend: this.countdown.defend } : {}) }, text: `Next: ${k === 'teamvteam' ? TEAMS_TITLE : KINDS[k] ?? (k === 'assault' ? ASSAULT_TITLE : 'Zombies duel')}`, ms: Math.max(0, this.countdown.until - now), count: true };
   }
 
   /**
@@ -605,6 +700,7 @@ export class Host {
     if (s.kind === 'teams' && s.phase === 'playing' && this.teamCount === 2) {
       for (const n of names) if (n in this.teams) s.teams[n] = this.teams[n] === 0 ? 'house' : 'bungalow';
       s.colors = this.sideColors(); // played by the host's teams from now on: blue and red
+      s.names = { house: 'blue', bungalow: 'red' }; // and called so (server/modes.mjs sideName)
       this.game.teamsChanged(names);
       this.game.modes.send();
     }

@@ -24,7 +24,7 @@ const ID = DATA.machines[0].id;
 const PARK = DATA.machines[0].park;
 const HOUSE_GROUND = -0.1; // shared house data's ground (HOUSE.ground), checked against the server's floor below
 /** Messages the page may send from a seat (as game.mjs HELI_REFUSED's comment lists them): every other type Game.handle reads must be refused aboard. */
-const ALLOWED = ['state', 'heli', 'chat', 'pong', 'rally', 'team', 'mode', 'rules', 'mood', 'moodskip', 'moodspeed', 'newround', 'zwave', 'kick', 'repair', 'travel'];
+const ALLOWED = ['state', 'heli', 'chat', 'pong', 'rally', 'team', 'mode', 'rules', 'mood', 'moodskip', 'moodspeed', 'newround', 'zwave', 'kick', 'repair', 'travel', 'teamstart']; // teamstart: the admin's, refused aboard by its own check (host.mjs mark)
 
 function setup() {
   let clock = 1_800_000_000_000;

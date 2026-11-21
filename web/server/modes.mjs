@@ -1,5 +1,5 @@
 // Games the admin starts from the menu: hide and seek, tag, a treasure hunt, two teams (the house
-// against the bungalow) and Zombies (everyone one team against waves of zombies, server/zombies.mjs).
+// against the bungalow, or from the starts the host chose: server/teamStarts.mjs) and Zombies (everyone one team against waves of zombies, server/zombies.mjs).
 // The server keeps the game: who seeks or is "it", the clock, the coins, the teams and their score,
 // the zombies, and it checks every tag and every coin against where the players really are. No
 // fighting during the party games; in the teams game only between the teams, in Zombies only at the
@@ -10,6 +10,7 @@ import { DONE_MS as ZOMBIES_DONE_MS, RECONNECT_MS as ZOMBIES_RECONNECT_MS, Zombi
 import { arenaOf, portalOf } from '../shared/arenas.mjs';
 import { BACK_MS, FIELDS, FLAG_COLORS, FLAG_MS, FLAG_TEAMS, FlagGame, SAFE_MS, SUDDEN_MS } from './flags.mjs';
 import { AssaultGame } from './assault.mjs';
+import { placeName } from './teamStarts.mjs';
 
 const HIDE_MS = 30_000; // the seeker counts with eyes shut
 const SEEK_MS = 180_000;
@@ -27,6 +28,10 @@ export const TEAM_GOAL = 25; // kills of the other team that win the teams game
 export const TEAM_NAMES = { house: 'House', bungalow: 'Bungalow' };
 export const TEAM_COLORS = { house: '#4fa3e0', bungalow: '#ff9f43' };
 export const KINDS = { hide: 'Hide and seek', tag: 'Tag', treasure: 'Treasure hunt', teams: 'House against bungalow', zombies: 'Zombies', flag: 'Steal the flag' };
+/** The teams game's name when the host chose its starts (server/teamStarts.mjs): not the two houses. */
+export const TEAMS_TITLE = 'Team against team';
+/** A team of the teams game in the chat's English: its side, or the evening's name it plays under (blue, red). */
+const SIDE_NAMES = { ...TEAM_NAMES, blue: 'Blue', red: 'Red' };
 /** Steal the flag's teams in the chat's English (server/flags.mjs). */
 const FLAG_NAMES = { blue: 'Blue', red: 'Red' };
 /** Attack and defend's name in the chat's English (server/assault.mjs: kind 'flag', place 'assault'). */
@@ -255,7 +260,9 @@ export class Modes {
     const team = s.teams[killer];
     if (!team || team === s.teams[victim]) return;
     s.score[team]++;
-    if (s.score[team] >= (s.goal ?? TEAM_GOAL)) this.finish(`Team ${TEAM_NAMES[team]} wins, ${s.score.house} to ${s.score.bungalow}`, 'teamWon', { team, ...s.score });
+    // `team` the name it plays under (the page's words for it), `side` the game's own (the host's points: host.mjs gameOver).
+    const shown = this.sideName(team);
+    if (s.score[team] >= (s.goal ?? TEAM_GOAL)) this.finish(`Team ${SIDE_NAMES[shown]} wins, ${s.score.house} to ${s.score.bungalow}`, 'teamWon', { team: shown, side: team, ...s.score });
     else this.send();
   }
 
@@ -264,7 +271,10 @@ export class Modes {
     const s = this.state;
     if (s.kind === 'free') return { kind: 'free' };
     return {
-      kind: s.kind, phase: s.phase, ms: Math.max(0, s.until - now), title: s.f?.assault ? ASSAULT_TITLE : KINDS[s.kind],
+      kind: s.kind, phase: s.phase, ms: Math.max(0, s.until - now), title: s.f?.assault ? ASSAULT_TITLE : s.kind === 'teams' && s.open ? TEAMS_TITLE : KINDS[s.kind],
+      // The teams game: the names its sides play under (the evening's blue and red), whether the host chose its starts
+      // (`open`: "Team against team"), and where each starts (a place's id, or `near` one for the host's own spot).
+      ...(s.kind === 'teams' ? { names: s.names ?? undefined, open: s.open || undefined, starts: s.startsView ?? undefined } : {}),
       seekers: s.seekers ? [...s.seekers].filter((n) => this.game.players.has(n)) : undefined, it: s.it, times: s.times, coins: s.coins, counts: s.counts,
       result: s.result, resultCode: s.resultCode, resultArgs: s.resultArgs,
       teams: s.teams && this.here(s.teams), score: s.score, goal: s.kind === 'teams' ? s.goal ?? TEAM_GOAL : undefined,
@@ -359,8 +369,21 @@ export class Modes {
       const teams = sides ? byName(names.map((n) => [n, sides[n]])) : deal(names, ['house', 'bungalow']);
       if (!sides) this.game.host?.adopt?.(teams, ['house', 'bungalow']);
       const goal = opts.goal ?? TEAM_GOAL;
-      this.state = { kind, phase: 'playing', until: now + ms(TEAMS_MS), teams, score: { house: 0, bungalow: 0 }, goal, colors: this.game.host ? this.game.host.sideColors() : null };
-      this.say(`${by} started House against bungalow: first team to ${goal} kills. The host sets the teams.`, 'teamsStarted', { name: by, n: goal });
+      // Where each side starts (server/host.mjs teamStarts, server/teamStarts.mjs): the host's choice, else the two houses;
+      // `open` when it is not the two houses. Played by the host's two teams, the sides go by the evening's names.
+      const chosen = this.game.host?.teamStarts?.(opts.starts) ?? null;
+      const sideNames = this.game.host?.teamCount === 2 ? { house: 'blue', bungalow: 'red' } : null;
+      this.state = {
+        kind, phase: 'playing', until: now + ms(TEAMS_MS), teams, score: { house: 0, bungalow: 0 }, goal, colors: this.game.host ? this.game.host.sideColors() : null,
+        starts: chosen?.starts ?? null, startsView: chosen?.view ?? null, open: !!chosen?.open, names: sideNames,
+      };
+      if (chosen?.open) {
+        const { house, bungalow } = chosen.view;
+        const at = (v) => (v.spot ? `the host's spot near ${placeName(v.place)}` : placeName(v.place));
+        this.say(`${by} started Team against team: first team to ${goal} kills. ${SIDE_NAMES[this.sideName('house')]} starts at ${at(house)}, ${SIDE_NAMES[this.sideName('bungalow')]} at ${at(bungalow)}.`, 'teamvteamStarted', {
+          name: by, n: goal, team: this.sideName('house'), place: `${house.spot ? 'near.' : ''}${house.place}`, team2: this.sideName('bungalow'), place2: `${bungalow.spot ? 'near.' : ''}${bungalow.place}`,
+        });
+      } else this.say(`${by} started House against bungalow: first team to ${goal} kills. The host sets the teams.`, 'teamsStarted', { name: by, n: goal });
       this.game.roundOver = null; // the teams' score counts now
       this.game.teamsChanged(names);
     } else if (kind === 'flag') {
@@ -684,7 +707,8 @@ export class Modes {
       const { house, bungalow } = s.score;
       if (house === bungalow) return this.finish(`Time's up: a draw, ${house} to ${bungalow}`, 'teamsDraw', { house, bungalow });
       const team = house > bungalow ? 'house' : 'bungalow';
-      return this.finish(`Time's up: team ${TEAM_NAMES[team]} wins, ${house} to ${bungalow}`, 'teamsTime', { team, house, bungalow });
+      const shown = this.sideName(team);
+      return this.finish(`Time's up: team ${SIDE_NAMES[shown]} wins, ${house} to ${bungalow}`, 'teamsTime', { team: shown, side: team, house, bungalow });
     }
     if (s.kind === 'hide' && s.phase === 'hiding') {
       s.phase = 'seeking';

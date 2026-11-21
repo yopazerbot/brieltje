@@ -72,6 +72,7 @@ import { VehicleDamage } from './vehicleDamage.mjs';
 import { Host } from './host.mjs';
 import { clientIp } from './auth.mjs';
 import { FlagGuards } from './flagGuards.mjs';
+import { TeamStarts } from './teamStarts.mjs';
 import { truckSpec } from '../shared/assaultFields.mjs';
 import { monitor } from './monitor.mjs';
 import { words } from './words.mjs';
@@ -509,6 +510,7 @@ export class Game {
       ground: (x, z) => HOUSE.ground + TERRAIN.height(x, z), area: AREA, map: BOUNDS.map, carSpec, mono,
       inside: indoorBlocks([...HOUSE.prisms, ...(HOUSE.surroundings?.prisms ?? [])], HOUSE.rooms.map((r) => r.name)),
     });
+    this.teamStarts = new TeamStarts(this, { map: BOUNDS.map, indoors: INDOORS, dips: [...(HOUSE.dips ?? []), ...(VILLAGE.dips ?? [])] }); // the teams game's starts (server/teamStarts.mjs)
     this.carSmash = new CarSmash(this, { carSpec, pieces: SMASH_PIECES }); // a parked car run into is dented; hedges, fences and young trees broken (server/carSmash.mjs)
     // Horses: on their walks until someone rides one; left where they are got off (until a restart).
     this.horses = HORSES.herd.map((_, i) => ({ i, x: 0, z: 0, yaw: 0, speed: 0, rider: null, parked: false }));
@@ -1425,6 +1427,12 @@ export class Game {
       // calls off the host's countdown (server/host.mjs callOff): it would replace it ten seconds later.
       if (m.kind === 'free' || Object.hasOwn(KINDS, m.kind)) this.host?.callOff();
       this.modes.start(m.kind, name, typeof m.place === 'string' ? m.place.slice(0, 30) : 'house');
+    } else if (m.t === 'teamstart' && !this.room && player.role === 'admin' && this.host) {
+      // The admin's in-game menu: "Blue starts here" (or red) for the teams game. Where the server has the admin, never a
+      // place from the page (the message carries only the team); every check is the host's (server/host.mjs mark), its
+      // flood guard too. The admin's page alone is told how it went.
+      const r = this.host.act(name, { op: 'mark', team: m.team });
+      this.send(player.ws, r.error ? { t: 'system', text: r.error, code: r.code } : { t: 'system', text: `${m.team === 'blue' ? 'Blue' : 'Red'} starts here now.`, code: 'teamStartHere', args: { team: m.team, place: `near.${r.mark.near}` } });
     } else if (m.t === 'zwave' && player.role === 'admin') {
       const zombies = this.modes.zombies;
       if (!zombies || now < (player.nextWave || 0) || !Number.isInteger(m.wave) || m.wave < 1 || m.wave > MAX_ADMIN_WAVE) return;
@@ -2770,9 +2778,10 @@ export class Game {
     p.protectedUntil = now + (this.modes.safeMs ?? PROTECT_MS);
     p.backAt = now; // out of the fight before it: holstering counts at once (state)
     p.thrown = []; // and its grenades still in the air with it: they neither hold the holster nor go off for the one back
-    // Steal the flag: always at the player's own base, on the ground (server/flags.mjs).
+    // Steal the flag: always at the player's own base, on the ground (server/flags.mjs). The teams game: at their team's
+    // start (server/modes.mjs teamSpot), by parachute after a death when the rule says so, as before.
     const base = at ? null : this.modes.baseSpot?.(name);
-    if (base) [at, drop] = [base, false];
+    if (base) [at, drop] = [base, drop && !!base.drop];
     let spawn = at?.spawn;
     if (!at) {
       // At the player's team's house in the teams game, else round the house; away from the others.

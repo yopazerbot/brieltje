@@ -39,6 +39,7 @@ export const SEAT_REFUSED = new Set([
 export const SEAT_ALLOWED = [
   'state', 'car', 'dent', 'smash', 'horse', 'bike', 'heli', 'bell', 'chat', 'pong', 'rally', 'travel', 'spawn', 'chute', 'unstuck',
   'repair', 'furn', 'tesla', 'clown', 'mode', 'zwave', 'team', 'newround', 'rules', 'mood', 'moodskip', 'moodspeed', 'kick',
+  'teamstart', // the admin's "Blue starts here" (server/host.mjs mark: where the server has the admin, a car's place too)
 ];
 
 export class CarSeats {

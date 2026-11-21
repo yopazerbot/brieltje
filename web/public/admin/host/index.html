@@ -119,6 +119,16 @@
             <label id="g-defend-label" title="Attack and defend: two rounds. This team defends the church in round 1, the other the Sparrenhof in round 2. Minutes: each round's (1 to 15, usual 10).">Defends first <select id="g-defend"><option value="blue">Blue</option><option value="red">Red</option></select></label>
             <label>Minutes <input type="number" id="g-minutes" min="1" max="30" placeholder="usual" /></label>
             <label id="g-goal-label">Kills to win <input type="number" id="g-goal" min="5" max="100" placeholder="25" /></label>
+            <!-- The teams game: where blue and red start (server/teamStarts.mjs). A place, or the spot where you stand in the game. -->
+            <div class="start-pick" id="g-blue-box">
+              <label for="g-blue">Blue starts at</label>
+              <span class="pick"><select id="g-blue"></select><button class="btn ghost small" type="button" id="g-blue-here" title="Walk or fly to the spot in the game, then press this: blue starts where you stand">📍 Where I stand</button></span>
+            </div>
+            <div class="start-pick" id="g-red-box">
+              <label for="g-red">Red starts at</label>
+              <span class="pick"><select id="g-red"></select><button class="btn ghost small" type="button" id="g-red-here" title="Walk or fly to the spot in the game, then press this: red starts where you stand">📍 Where I stand</button></span>
+            </div>
+            <p class="start-hint" id="g-starts-hint" role="status"></p>
             <label id="g-duel-label" title="Blue and red each in a room at Sparrenhof, the same waves. Warm-up: its minutes, the down come back, the highest wave wins. Final: nobody comes back, the last team must pass the other's wave.">Round <select id="g-duel"><option value="warmup">Warm-up</option><option value="final">Final</option></select></label>
             <label title="Paint: child-friendly for everyone while it runs. Real: the house rule's child-friendly off, a player's own Paintball kept. Back to the house rule when the game ends.">Look <select id="g-look"></select></label>
             <div class="row">
@@ -127,7 +137,7 @@
             </div>
           </form>
         </details>
-        <p class="muted small">With two teams for the evening, House against bungalow is played by them: blue at the house, red at the bungalow. A game's look holds while it runs; then the house rule is back.</p>
+        <p class="muted small">With two teams for the evening, the teams game is played by them. Blue starts at the house and red at the bungalow unless you choose other starts: then it is called Team against team. A game's look holds while it runs; then the house rule is back.</p>
       </section>
 
       <!-- Tonight and the server -->
