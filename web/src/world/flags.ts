@@ -96,14 +96,39 @@ const droppedCoreGeo = columnGeo(COLUMN_DROPPED, 0.06);
 // view is inside it: gone for them).
 const BEACON_FOOT = 2.1; // m over the carrier's feet
 const beaconGeo = columnGeo(COLUMN, 0.2);
-const beaconCoreGeo = columnGeo(COLUMN, 0.08);
+const beaconCoreGeo = columnGeo(COLUMN, 0.07);
+/**
+ * A dark sleeve round the colour (21 Nov 2026: a blue beacon on a blue sky was faint past 200 m, its white core about 3
+ * pixels): a navy edge each side, so either colour reads against a bright sky, light walls or haze; against trees, roofs
+ * and the night the colour and the core carry it. Seen only from outside (its back faces are not drawn).
+ */
+const beaconEdgeGeo = columnGeo(COLUMN, 0.34);
+const BEACON_EDGE = 0.5;
+/** The colour's opacity close by and far off (from BEACON_THIN_M to BEACON_FAR_M m): stronger far, where it is thin. */
 const BEACON_OPACITY = 0.6;
+const BEACON_OPACITY_FAR = 0.9;
+const BEACON_FAR_M = 220;
 /** Its white core brighter than a stand's (blue on a blue sky shows by the core) and a slow pulse that catches the eye. */
 const BEACON_CORE = 0.85;
 const BEACON_PULSE = 0.25;
 /** m: as thin as made up to this far from the eye, wider beyond it (at most BEACON_WIDEST times): a few pixels across. */
-const BEACON_THIN_M = 35;
-const BEACON_WIDEST = 8;
+const BEACON_THIN_M = 25;
+const BEACON_WIDEST = 12;
+/** The beacon's own fade up its height: gentler than the stands' (it stays strong to two thirds up, a tall mark far off). */
+function beaconFadeTexture(): THREE.Texture {
+  const c = document.createElement('canvas');
+  c.width = 4;
+  c.height = 64;
+  const g = c.getContext('2d')!;
+  const grad = g.createLinearGradient(0, 64, 0, 0);
+  grad.addColorStop(0, 'rgba(255,255,255,1)');
+  grad.addColorStop(0.6, 'rgba(255,255,255,0.8)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 4, 64);
+  return new THREE.CanvasTexture(c);
+}
+const beaconFade = beaconFadeTexture();
 const coreMat = () => new THREE.MeshBasicMaterial({ color: '#ffffff', alphaMap: fade, transparent: true, opacity: CORE_OPACITY, depthWrite: false });
 /** Each team's stand materials, made once and shared by every field's stands (a field change makes no new ones). */
 const teamMats = (color: string) => ({
@@ -119,8 +144,10 @@ class Flag {
   readonly root = new THREE.Group();
   readonly cloth: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshStandardMaterial>;
   readonly column: THREE.Mesh;
-  /** The beacon over its carrier (view `seen`), in the carrying team's colour */
+  /** The beacon over its carrier (view `seen`), in the carrying team's colour; its white core and its dark edge */
   readonly beacon: THREE.Mesh;
+  private readonly beaconCore: THREE.Mesh;
+  private readonly beaconEdge: THREE.Mesh;
   private rest: Float32Array;
 
   constructor(readonly team: FlagTeam) {
@@ -136,15 +163,27 @@ class Flag {
     this.column.add(core);
     this.column.visible = false;
     const carrier = FLAG_COLORS[team === 'blue' ? 'red' : 'blue']; // the other team carries it
-    this.beacon = new THREE.Mesh(beaconGeo, new THREE.MeshBasicMaterial({ color: carrier, alphaMap: fade, transparent: true, opacity: BEACON_OPACITY, depthWrite: false, side: THREE.DoubleSide }));
-    const beaconCore = new THREE.Mesh(beaconCoreGeo, coreMat());
-    this.beacon.add(beaconCore);
+    // No fog on the beacon: far off the haze took its colour (fog: false); drawn edge, colour, core in that order.
+    this.beacon = new THREE.Mesh(beaconGeo, new THREE.MeshBasicMaterial({ color: carrier, alphaMap: beaconFade, transparent: true, opacity: BEACON_OPACITY, depthWrite: false, side: THREE.DoubleSide, fog: false }));
+    this.beaconCore = new THREE.Mesh(beaconCoreGeo, new THREE.MeshBasicMaterial({ color: '#ffffff', alphaMap: beaconFade, transparent: true, opacity: BEACON_CORE, depthWrite: false, fog: false }));
+    this.beaconEdge = new THREE.Mesh(beaconEdgeGeo, new THREE.MeshBasicMaterial({ color: '#0b1129', alphaMap: beaconFade, transparent: true, opacity: BEACON_EDGE, depthWrite: false, fog: false }));
+    this.beaconEdge.renderOrder = 1;
+    this.beacon.renderOrder = 2;
+    this.beaconCore.renderOrder = 3;
+    this.beacon.add(this.beaconCore, this.beaconEdge);
     this.beacon.visible = false;
     this.root.add(staff, knob, this.cloth);
-    for (const m of [staff, knob, this.cloth, this.column, core, this.beacon, beaconCore]) {
+    for (const m of [staff, knob, this.cloth, this.column, core, this.beacon, this.beaconCore, this.beaconEdge]) {
       m.userData.ignoreRay = true; // shots go through
       m.raycast = () => {};
     }
+  }
+
+  /** The beacon's opacities: its colour, its white core, its dark edge. */
+  setBeacon(colour: number, core: number, edge: number): void {
+    (this.beacon.material as THREE.MeshBasicMaterial).opacity = colour;
+    (this.beaconCore.material as THREE.MeshBasicMaterial).opacity = core;
+    (this.beaconEdge.material as THREE.MeshBasicMaterial).opacity = edge;
   }
 
   /** The cloth waves from the staff out, more at its free end; `speed` (m/s) makes it stream. */
@@ -287,12 +326,14 @@ export class FlagWorld {
         if (f.seen) {
           // The beacon: every page draws it over the carrier, where it draws them (server/flags.mjs BEACON_MS).
           const k = nearFade(eye, at.x, at.z) * (1 - BEACON_PULSE + BEACON_PULSE * Math.sin(this.time * 4));
-          // Wider with distance (a few pixels across however far: 0.4 m wide was a pixel at 200 m), thin up close.
-          const wide = eye ? Math.min(BEACON_WIDEST, Math.max(1, Math.hypot(eye.x - at.x, eye.z - at.z) / BEACON_THIN_M)) : 1;
+          // Wider with distance (a few pixels across however far: 0.4 m wide was a pixel at 200 m), thin up close; the colour
+          // stronger far off.
+          const d = eye ? Math.hypot(eye.x - at.x, eye.z - at.z) : 0;
+          const wide = Math.min(BEACON_WIDEST, Math.max(1, d / BEACON_THIN_M));
+          const far = Math.min(1, Math.max(0, (d - BEACON_THIN_M) / (BEACON_FAR_M - BEACON_THIN_M)));
           flag.beacon.scale.set(wide, 1, wide);
           flag.beacon.position.set(at.x, at.y + BEACON_FOOT, at.z);
-          (flag.beacon.material as THREE.MeshBasicMaterial).opacity = BEACON_OPACITY * k;
-          ((flag.beacon.children[0] as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = BEACON_CORE * k;
+          flag.setBeacon((BEACON_OPACITY + (BEACON_OPACITY_FAR - BEACON_OPACITY) * far) * k, BEACON_CORE * k, BEACON_EDGE * (0.25 + 0.75 * far) * k); // the edge for far off
           flag.beacon.visible = k > 0;
         }
         const prev = this.last.get(team);
