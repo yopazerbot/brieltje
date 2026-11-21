@@ -2857,7 +2857,8 @@ export class Game {
           const x = s.x + r * Math.sin((k / n) * Math.PI * 2);
           const z = s.z + r * Math.cos((k / n) * Math.PI * 2);
           const y = portal ? HOUSE.ground + TERRAIN.height(x, z) : s.y;
-          if (this.free(x, z) && fence.inside(x, z) && cars.every((c) => Math.hypot(x - c.x, z - c.z) > 3.5)) spots.push({ spawn: s.i, x: +x.toFixed(2), y, z: +z.toFixed(2), ...(s.face ? { face: s.face } : {}) });
+          // Never inside a home (the main house's walls are 3 m from a start place): those spots are left out for everyone.
+          if (this.free(x, z) && fence.inside(x, z) && !homeAt(x, z, y) && cars.every((c) => Math.hypot(x - c.x, z - c.z) > 3.5)) spots.push({ spawn: s.i, x: +x.toFixed(2), y, z: +z.toFixed(2), ...(s.face ? { face: s.face } : {}) });
         }
       }
     }
@@ -2977,7 +2978,11 @@ export class Game {
       this.scores.set(name, p.score);
     }
     this.broadcast({ t: 'newround', text, code, args });
-    if (!this.modes.peaceful) for (const [name, p] of this.players) if (p.state?.armed || !p.alive) this.respawn(name, p, now);
+    // Spread round the house's outside start places (gather), each on a spot of their own: the respawn's pick of the three
+    // start places stacked thirty players after a team game on three spots, inside each other. In a room as before.
+    const back = this.modes.peaceful ? [] : [...this.players].filter(([, p]) => p.state?.armed || !p.alive).map(([name]) => name);
+    if (this.room) for (const name of back) this.respawn(name, this.players.get(name), now);
+    else if (back.length) this.gather(back);
     this.broadcast({ t: 'scores', list: this.scoreList() });
   }
 
