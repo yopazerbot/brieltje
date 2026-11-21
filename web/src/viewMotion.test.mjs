@@ -4,6 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { MOTION, ViewMotion, gaitAt, gaitMix, motionStrength, strideSide, strideUp } from './viewMotion.ts';
+import { footStep } from './footMove.ts';
 
 const DEG = Math.PI / 180;
 const range = (n, f) => Array.from({ length: n }, (_, i) => f(i / n));
@@ -96,12 +97,12 @@ test('sprinting widens the view by 4 degrees at 72, in over about 0.3 s, never p
 });
 
 test('a start leans in and a sidestep rolls into it, on springs with no wobble', () => {
-  // The player's own velocity eases in at a rate of 12 per second (player.ts): from standing to a sprint.
+  // The player's own speed builds up as it does on foot (footMove.ts): from standing to a sprint.
   const m = new ViewMotion();
-  let v = 0;
+  const v = { x: 0, z: 0 };
   const pitch = run(m, 120, () => {
-    v += (3.5 - v) * (1 - Math.exp(-12 / 60));
-    return { phase: 0, speed: 0, ahead: v, right: 0, grounded: true, sprint: false };
+    footStep(v, 3.5, 0, 1 / 60, 1);
+    return { phase: 0, speed: 0, ahead: v.x, right: 0, grounded: true, sprint: false };
   }).map((o) => o.pitch);
   const most = Math.min(...pitch);
   assert.ok(most < -0.3 * DEG && most > -0.8 * DEG, `the lean at a sprint's start: ${most / DEG} degrees`);

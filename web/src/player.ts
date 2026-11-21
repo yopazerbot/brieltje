@@ -5,6 +5,7 @@ import { DROP, dropStep } from '../shared/parachute.mjs';
 import { FLOAT, wetGround, type Wet } from './world/water';
 import type { PlayTower, Ride } from './world/playground';
 import { ViewMotion } from './viewMotion';
+import { PACE, footStep } from './footMove';
 
 const EYE = 1.65;          // m, eye height above the floor
 export const HEIGHT = 1.8;        // m, body height for head clearance
@@ -16,6 +17,7 @@ const JUMP_HEIGHT = 0.5;   // m
 const RISE = 4;            // m/s: lifted out of a roof that came in round you
 const LIFT_MAX = 0.3;      // m: up onto a drawn roof at most this in one frame, however you got there
 const CUT = { x: 0, z: 0 }; // World.roofStep's answer, reused
+const VEL = { x: 0, z: 0 }; // the speed on foot for footMove.ts, reused
 const STUMBLE = 0.7;       // s a hard landing shakes you
 
 /**
@@ -234,10 +236,20 @@ export class Player {
       const cos = Math.cos(this.yaw);
       const tx = (-sin * input.moveY + cos * input.moveX) * speed;
       const tz = (-cos * input.moveY - sin * input.moveX) * speed;
-      const blend = 1 - Math.exp(-(this.glide > 0 ? 3 : 12) * dt); // just off the slide: its speed dies away slowly
+      // On your feet the speed builds up and stops as a body's does (footMove.ts). Flying, swimming and just off the
+      // slide keep their own; so does a speed past any pace on foot (just out of a drop): it dies away as it did.
+      const top = this.walkSpeed * SPRINT_FACTOR * this.turbo;
+      if (this.glide > 0 || this.flying || w?.swimming || Math.hypot(this.vx, this.vz) > top + 0.01) {
+        const blend = 1 - Math.exp(-(this.glide > 0 ? 3 : 12) * dt); // just off the slide: its speed dies away slowly
+        this.vx += (tx - this.vx) * blend;
+        this.vz += (tz - this.vz) * blend;
+      } else {
+        Object.assign(VEL, { x: this.vx, z: this.vz });
+        footStep(VEL, tx, tz, dt, (this.walkSpeed * this.turbo) / PACE);
+        this.vx = VEL.x;
+        this.vz = VEL.z;
+      }
       this.glide = Math.max(0, this.glide - dt);
-      this.vx += (tx - this.vx) * blend;
-      this.vz += (tz - this.vz) * blend;
     }
 
     // Move in small steps so fast movement can't skip through thin glass. The edge of the game
