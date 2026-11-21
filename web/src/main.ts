@@ -118,6 +118,7 @@ import { Nursery } from './world/nursery';
 import { BankPlants } from './world/bankPlants';
 import { GrassTufts } from './world/grassTufts';
 import { HostNotice } from './ui/hostNotice';
+import { Objective } from './ui/objective';
 import { GroundShade } from './world/groundShade';
 import { castLayers, SunShadow } from './world/sunShadow';
 import { groundPiece, groundPieceCoarse, groundPieces, groundSkirt, pieceOf, PIECE, terrain, type GroundCuts } from './world/terrain';
@@ -847,6 +848,8 @@ input.touch = touch;
 const hud = new Hud();
 // The LAN night host's announcements and freeze (server/host.mjs, ui/hostNotice.ts).
 const hostNotice = new HostNotice();
+// Steal the flag's task line on the countdown card and its flag markers in the first seconds (ui/objective.ts).
+const objective = new Objective(document.getElementById('host-bar'));
 // A view of the admin's watch page (src/watch.ts): the camera follows a player; their kills for its tag.
 const watchView = watch ? new WatchView() : null;
 let watching = false;
@@ -3151,7 +3154,8 @@ net.onMessage = (m: ServerMsg) => {
       breakage.mend(m.all ? null : (m.list ?? []));
       break;
     case 'flag': // Steal the flag: taken, dropped, returned or captured (server/flags.mjs): a line and a sound
-      games.flagHud?.event(m, me?.username ?? '', games.team === 'blue' || games.team === 'red' ? games.team : null);
+      games.flagHud?.event(m, me?.username ?? '', games.team === 'blue' || games.team === 'red' ? games.team : null, !!games.assault);
+      if ((m.ev as string) === 'swapped') objective.remind(); // (server/flags.mjs swap; net/client.ts lists the others) // the markers again: your base is the other one now
       break;
     case 'fbz': // Steal the flag's bazooka (server/flagBazooka.mjs): your team's taken from its rack (a line, a sound), your rockets left
       if (m.ev === 'left') weapon.rocketsLeft = m.n;
@@ -3468,6 +3472,7 @@ net.onMessage = (m: ServerMsg) => {
     case 'announce': // the host's announcement, or the next game's countdown (server/host.mjs)
       hostNotice.announce(typeof m.text === 'string' ? m.text : '', typeof m.ms === 'number' ? m.ms : 0,
         m.code === 'nextGame' ? gameName((m.args as { kind?: unknown } | undefined)?.kind) : undefined, !!m.count);
+      objective.countdown(m.code === 'nextGame' && m.ms ? (m.args as { kind?: unknown } | undefined)?.kind : null, m.args);
       break;
     case 'freeze':
       hostNotice.freeze(!!m.on, typeof m.text === 'string' ? m.text : '');
@@ -3475,6 +3480,7 @@ net.onMessage = (m: ServerMsg) => {
     case 'eveningteams': { // the host's teams for the evening: told when yours changes
       const got = m.count && combat.me && m.teams && typeof m.teams === 'object' ? m.teams[combat.me] : null;
       const mine = typeof got === 'string' && Object.hasOwn(EVENING_TEAMS, got) ? (got as keyof typeof EVENING_TEAMS) : null;
+      objective.setEvening(m.count, mine);
       if (mine !== eveningTeam) {
         if (mine) chat.system(() => t('host.yourTeam', { team: t(EVENING_TEAMS[mine]) }));
         else if (eveningTeam) chat.system(() => t('host.teamsOff'));
@@ -4052,6 +4058,7 @@ renderer.setAnimationLoop((now: number) => {
     flagRacks.update(dt);
     assaultCamp.update();
     games.flagHud?.update(games.flagOn ? games.view.flag ?? null : null, me?.username ?? '');
+    objective.update(games.flagOn ? games.view.flag ?? null : null, flagTeam(), combat.alive, camera, { x: player.x, y: player.feet, z: player.z }, flagCarrier, me?.username ?? '');
     // The cars: E or Triangle next to one gets you in (unless two are in it already), and out again.
     // A wreck or one gone in a team match (world/vehicleWear.ts) is none: no "get in", and the bike's and horse's prompts free.
     const carAway = (c: Car) => (vehicleWear.out('car', c.id) ? Infinity : c.distanceTo(player.x, player.z));
