@@ -1493,6 +1493,7 @@ export class Game {
       this.send(p.ws, { t: 'system', text: 'No travelling during Steal the flag: go on foot, by bike or by car.', code: 'flagNoTravel' });
       return no();
     }
+    if (this.modes.teamsOn) return no(); // the teams game put them at their team's start
     if (now - p.joinTime > 90_000 || !p.alive || this.carOf(name) || this.horseOf(name) || this.bikeOf(name) || this.helis.of(name) || (!this.rules.portals && p.role !== 'admin')) return no();
     if (Math.hypot(st.x - p.joinedAt.x, st.z - p.joinedAt.z) > 30) return no();
     const [x, z, yaw] = to.out;
@@ -1555,7 +1556,7 @@ export class Game {
     if (p.spawned || !st) return;
     p.spawned = true;
     const { x, z, yaw } = HOME_DROP;
-    if (!this.rules.parachute || this.modes.zombies || this.modes.flag || now - p.joinTime > 90_000 || !p.alive || this.carOf(name) || this.horseOf(name) || this.bikeOf(name) || this.helis.of(name)) return;
+    if (!this.rules.parachute || this.modes.zombies || this.modes.flag || this.modes.teamsOn || now - p.joinTime > 90_000 || !p.alive || this.carOf(name) || this.horseOf(name) || this.bikeOf(name) || this.helis.of(name)) return;
     if (this.inFight(p, now)) return; // back in a fight by a reconnect (join): no drop, where nobody can be hurt
     if (Math.hypot(st.x - x, st.z - z) > 30 || !this.fence().inside(x, z)) return;
     const from = this.dropFrom(x, z, yaw); // behind the start, along the lane: without steering it lands there
@@ -1573,7 +1574,7 @@ export class Game {
     // The refusal's English text, and its code for a page in another language (src/i18n.ts).
     const no = (text = '', code = undefined) => this.send(p.ws, { t: 'travel', name, to: id, ok: false, text, code });
     if (!to || !st || !p.alive || now < (p.nextTravel || 0) || (to.street && !chat)) return no();
-    if (this.fenced()) return no("You can't travel during the game.", 'travelGame'); // everyone stays near the house (see fence)
+    if (this.fenced() || this.modes.teamsOn) return no("You can't travel during the game.", 'travelGame'); // everyone stays near the house (see fence); the teams game: no hop to the other team's start
     // Steal the flag (server/flags.mjs): no portal and no trip from the chat for anyone while it is played; the bases are
     // reached on foot, by bike or by car.
     if (this.modes.flag) return no('No travelling during Steal the flag: go on foot, by bike or by car.', 'flagNoTravel');
@@ -1781,7 +1782,7 @@ export class Game {
    */
   fenced() {
     if (this.room) return true; // a room always keeps its players at its place, between games too
-    return this.modes.active && this.modes.state.phase !== 'done' && !this.modes.flag; // Steal the flag has its field instead (fence)
+    return this.modes.active && this.modes.state.phase !== 'done' && !this.modes.flag && !this.modes.teamsOn; // Steal the flag has its field instead (fence); the teams game the open map
   }
 
   /**

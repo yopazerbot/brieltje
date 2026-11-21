@@ -122,9 +122,46 @@ export class Modes {
     return this.flag ? SAFE_MS : null;
   }
 
-  /** Where a player comes back in Steal the flag: at their base (game.mjs respawn), else null. */
+  /**
+   * The teams game being played (not once its result shows). It plays on the open map, as Steal the flag does, with no
+   * trip and no start place while it runs (game.mjs fenced, travel, spawn): its starts may be anywhere (teamStarts).
+   */
+  get teamsOn() {
+    return this.state.kind === 'teams' && this.state.phase === 'playing';
+  }
+
+  /**
+   * Where a player comes back: in Steal the flag at their base, in the teams game at their team's start (game.mjs
+   * respawn), else null.
+   */
   baseSpot(name) {
-    return this.flag?.baseSpot(name) ?? null;
+    return this.flag?.baseSpot(name) ?? this.teamSpot(name);
+  }
+
+  /**
+   * The teams game: a place of the player's team's start (server/teamStarts.mjs spread), a free one (nobody within a
+   * metre), the furthest from the other team's living players of a few (one of the best three, for variety). By
+   * parachute when the admin's rule says so and it is a respawn after a death (`drop`: game.mjs respawn). Null for a
+   * player on no team, or outside the teams game.
+   */
+  teamSpot(name) {
+    const s = this.state;
+    const team = this.teamsOn && s.starts ? s.teams[name] : null;
+    if (!team) return null;
+    const spots = s.starts[team].spots;
+    const live = [...this.game.players].filter(([n, o]) => n !== name && o.alive && o.state && !o.guard);
+    const foes = live.filter(([n]) => s.teams[n] && s.teams[n] !== team).map(([, o]) => o.state);
+    const taken = (q) => live.some(([, o]) => Math.hypot(o.state.x - q.x, o.state.z - q.z) < 1);
+    const free = spots.filter((q) => !taken(q));
+    const ranked = (free.length ? free : spots).map((q) => ({ q, d: foes.length ? Math.min(...foes.map((o) => Math.hypot(o.x - q.x, o.z - q.z))) : Math.random() }))
+      .sort((a, b) => b.d - a.d);
+    const { q } = ranked[Math.floor(Math.random() * Math.min(3, ranked.length))];
+    return { spawn: 0, x: q.x, y: q.y, z: q.z, face: q.face, drop: true };
+  }
+
+  /** The name a teams game's side plays under: the evening's (blue, red) when the host's two teams play it, else its own. */
+  sideName(team) {
+    return this.state.names?.[team] ?? team;
   }
 
   /** The team whose flag `name` carries in Steal the flag, or null: no portal, trip from the chat or helicopter seat then. */
@@ -459,6 +496,10 @@ export class Modes {
       const back = name in s.teams;
       if (!back) s.teams[name] = this.game.host?.sideOf(name) ?? this.smaller();
       this.game.teamsChanged([name], !back);
+      // Back (a reload, a new tab): where the server has them, as in Steal the flag below. Before, a reloaded page started
+      // in the lane by the house while the server had them at their start, and walked them over unseen.
+      const p = back ? this.game.players.get(name) : null;
+      if (p?.state) this.game.send(p.ws, { t: 'spawn', ok: false, x: p.state.x, z: p.state.z });
     }
     if (s.kind === 'flag' && s.phase === 'playing') {
       // Late: the host's side (blue for the house's, red for the bungalow's), else the smaller team (level: either at

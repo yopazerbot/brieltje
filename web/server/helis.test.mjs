@@ -586,8 +586,20 @@ test('flights home: empty on a start place after 20 s, in a field after 5 minute
   assert.equal(homes(), 2);
 });
 
-test('Zombies, the party games and the teams: no boarding, and a game starting empties every machine and sends it home', () => {
-  for (const kind of ['hide', 'tag', 'treasure', 'teams', 'zombies']) {
+test('the teams game: boarding as in free play (a team match on the open map, as Steal the flag; 21 Nov 2026)', () => {
+  const s = setup();
+  const { game, ask } = s;
+  crew(s, ['pia', 'bo']);
+  game.modes.start('teams', 'pia');
+  assert.equal(game.modes.state.kind, 'teams');
+  assert.equal(game.fenced(), false);
+  const eve = s.player('eve', s.local(1.5, -0.4));
+  ask('eve', eve, { t: 'heli', op: 'in', id: ID });
+  assert.ok(game.helis.of('eve'), 'eve is aboard');
+});
+
+test('Zombies and the party games: no boarding, and a game starting empties every machine and sends it home', () => {
+  for (const kind of ['hide', 'tag', 'treasure', 'zombies']) {
     const s = setup();
     const { game, h, put, now, ask, sent } = s;
     const [pia, bo] = crew(s, ['pia', 'bo']);
