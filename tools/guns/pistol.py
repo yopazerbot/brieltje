@@ -28,7 +28,8 @@ metres, the origin where the web of the right hand sits on the grip. pistol (an 
 (pivot as before), pistol_mag (extras "out"), pistol_muzzle (the crown), pistol_sight (the front sight's top),
 pistol_kit (Paintball's air cartridge, as before), pistol_hands with pistol_handR and pistol_handL (weapons.py's own
 poses: the grip, the trigger and the frame's lines are those of the pistol in weapons.py; the right palm turned so the
-web of the hand closes over the backstrap, as you see it when you aim: held()). The materials are
+web of the hand closes over the backstrap, as you see it when you aim: held(); the left hand wraps the right one,
+its heel on the grip's left rear panel, both thumbs forward along the left side). The materials are
 weapons.py's names (Steel, Dark, Polymer, Grip, Dot, Brass), so the game's finish and the paint look take them:
 the sights, the levers and the magazine's body Dark, the frame and the magazine's base Polymer, the barrel, the guide
 rod and the pins Steel, the stippling Grip; the slide has a name of its own, PistolSlide (a glossier black than Dark,
@@ -228,7 +229,7 @@ kit = [lathe("tank", [(0.06, 0), (0.062, 0.006), (0.066, 0.0095), (0.072, 0.0105
 # ---- The hands: tools/weapons.py's pistol hands, posed on the same grip ------------------------
 # The right forearm leaves further to the right than weapons.py's, so aimed the two arms come in from the corners.
 H = S.hands_kit()
-Wrap, hand = H["Wrap"], H["hand"]
+Wrap = H["Wrap"]
 gw = Wrap((0, -0.0005, -0.006), (0, -0.017, -0.092), (0, 1, 0), 0.0245, 0.0148)
 # The line the right palm faces: 5 cm left of the grip's axis and 3 cm ahead of it (see held).
 PALM = Wrap(Vector(gw.C) + Vector((-0.05, 0.03, 0)), (0, -0.017, -0.092), (0, 1, 0), 0.0245, 0.0148)
@@ -256,13 +257,20 @@ right = held("pistol_handR", gw,
              (0.012, -0.075, -0.042), (0.75, -0.5, -0.45),
              ([(-0.006, -0.026, -0.0), (-0.021, -0.008, 0.0015), (-0.0255, 0.016, 0.003), (-0.025, 0.040, 0.0035), (-0.023, 0.058, 0.004)], 0.0105),
              ([gw.at(0.012, 60, 0.01), (0.021, 0.028, -0.011), (0.017, 0.044, -0.015), (0.009, 0.0475, -0.019), (0.004, 0.045, -0.022)], 0.0095))
-lw = Wrap((0, -0.0005, -0.006), (0, -0.017, -0.092), (0, 1, 0), 0.0245 + 0.016, 0.0148 + 0.017)
-left = hand("pistol_handL", lw,
-            [(0.028, -53, 1, 0.09, 0.0098, 0.0), (0.051, -54, 1, 0.085, 0.0096, 0.0), (0.071, -59, 1, 0.075, 0.009, 0.0), (0.091, -69, 1, 0.055, 0.0084, 0.0)],
-            [lw.at(0.03, -100, 0.0), lw.at(0.09, -105, 0.0), lw.at(0.03, -150, 0.0), lw.at(0.09, -150, 0.0),
-             lw.at(0.035, -110, 0.024), lw.at(0.085, -115, 0.024), (-0.05, -0.05, -0.02)],
-            (-0.045, -0.072, -0.068), (-0.5, -0.5, -0.7),
-            ([(-0.045, -0.02, -0.035), (-0.036, 0.0, -0.02), (-0.031, 0.022, -0.017), (-0.029, 0.045, -0.016), (-0.028, 0.062, -0.016)], 0.0108),
+# The left hand wraps the right one, as a trained shooter's support hand does: its fingers over the right hand's fingers
+# (lw: the grip and the right fingers' thickness, 19 mm), the index high under the trigger guard; its palm turned to
+# face a line right of and ahead of its knuckles (PALM_L, see held), so its heel comes in behind the right fingertips
+# and closes the grip's left rear panel up to the right hand's heel (aimed, no strip of grip between the hands); its
+# thumb forward along the left side, under and ahead of the right thumb; the wrist low, the forearm down and back.
+# The sculpt's palm is rigid: the right middle and ring fingertips, long enough to reach the grip's back edge, lie
+# under the left palm's thumb pad (as pressed fingertips do), out of every view.
+lw = Wrap((0, -0.0005, -0.006), (0, -0.017, -0.092), (0, 1, 0), 0.0245 + 0.019, 0.0148 + 0.019)
+PALM_L = Wrap(lw.at(0.064, -60, 0.009) + Vector((0.85, 0.5, 0)).normalized() * 0.05, (0, -0.017, -0.092), (0, 1, 0), 0.0245, 0.0148)
+left = held("pistol_handL", lw,
+            [(0.037, -60, 1, 0.085, 0.0098, 0.0), (0.056, -60, 1, 0.08, 0.0096, 0.0), (0.074, -62, 1, 0.07, 0.009, 0.0), (0.091, -66, 1, 0.055, 0.0084, 0.0)],
+            PALM_L,
+            (-0.035, -0.06, -0.10), (-0.45, -0.5, -0.75),
+            ([(-0.03, -0.012, -0.034), (-0.025, 0.012, -0.020), (-0.022, 0.035, -0.012), (-0.0215, 0.055, -0.008), (-0.0215, 0.072, -0.005)], 0.0108),
             side=-1)
 
 ROOT = finish("pistol", GRIP, body, {"slide": (slide, (0, 0.06, B)), "mag": (mag, (0, -0.012, -0.004), {"out": ax})},
