@@ -86,6 +86,10 @@ const RAGGED: [number, number, number][] = [[0, 0.18, 0.78], [0.18, 0.34, 0.52],
 /** The colour of a hedge's snapped stems (beech and privet bark, the wood showing) */
 const STEM = new THREE.MeshStandardMaterial({ color: '#5b4733', roughness: 0.95 });
 const SPLINTER = new THREE.MeshStandardMaterial({ color: '#a8875c', roughness: 0.9 });
+/** A hedge's stems and their broken ends in one draw: the colours per box */
+const WOOD = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.93 });
+const BARK = new THREE.Color('#5b4733');
+const PALE = new THREE.Color('#a8875c');
 /** A fence's concrete posts, as world/surroundings.ts draws them */
 const POST = new THREE.MeshStandardMaterial({ color: '#cfccc4', roughness: 0.9 });
 const box = new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0);
@@ -628,10 +632,17 @@ export class Breakage implements Breaker {
     look.group.add(mesh);
   }
 
-  /** Boxes (each a matrix of the unit box standing on its foot) in one material. */
-  private addBoxes(look: Look, matrices: THREE.Matrix4[], material: THREE.Material, tag: string): void {
+  /** Boxes (each a matrix of the unit box standing on its foot) in one material; `colors`: each its own (one draw). */
+  private addBoxes(look: Look, matrices: THREE.Matrix4[], material: THREE.Material, tag: string, colors?: THREE.Color[]): void {
     if (!matrices.length) return;
-    const g = mergeGeometries(matrices.map((m) => box.clone().applyMatrix4(m)));
+    const g = mergeGeometries(matrices.map((m, i) => {
+      const b = box.clone().applyMatrix4(m);
+      if (colors) {
+        const c = colors[i];
+        b.setAttribute('color', new THREE.Float32BufferAttribute(new Array(b.attributes.position.count).fill([c.r, c.g, c.b]).flat(), 3));
+      }
+      return b;
+    }));
     const mesh = new THREE.Mesh(g, material);
     mesh.castShadow = false;
     mesh.receiveShadow = true;
@@ -700,8 +711,7 @@ export class Breakage implements Breaker {
       }
     }
     this.addLike(look, geos);
-    this.addBoxes(look, stems, STEM, 'wood');
-    this.addBoxes(look, splinters, SPLINTER, 'wood');
+    this.addBoxes(look, [...stems, ...splinters], WOOD, 'wood', [...stems.map(() => BARK), ...splinters.map(() => PALE)]);
     // The leaf sprigs (Medium and up) in the gaps.
     this.hideInstances(h, look, isSprigs, p.thick / 2 + 0.7);
   }
