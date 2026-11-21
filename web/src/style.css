@@ -181,6 +181,10 @@ button, input, select, textarea { font-family: inherit; }
 #chat-input.show { display: block; }
 
 #online { position: absolute; top: 208px; right: 24px; font-size: 13px; text-align: right; opacity: 0.9; }
+/* A short window (a 1280 x 720 laptop's, with the browser's bars): the list ran into the guns over the ammo. The count
+   and you only; lower still the count only (the menu's Together tab lists everyone). */
+@media (max-height: 640px) { body:not(.touch) #online > div:nth-child(n+3) { display: none; } }
+@media (max-height: 560px) { body:not(.touch) #online > div:nth-child(n+2) { display: none; } }
 
 /* Multiplayer fighting */
 #damage {
