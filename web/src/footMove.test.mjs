@@ -2,7 +2,7 @@
 // the pace the keys ask for (the server's bound on running, server/game.mjs RUN_SPEED, is never in reach).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { footStep } from './footMove.ts';
+import { SIDE, footStep, sprintShare } from './footMove.ts';
 
 const WALK = 1.4;
 const SPRINT = 3.5;
@@ -75,6 +75,25 @@ test('never faster than the larger of where you were and where the keys go (so n
     footStep(v, Math.cos(a) * want, Math.sin(a) * want, dt, 1);
     assert.ok(Math.hypot(v.x, v.z) <= Math.max(want, was) + 1e-9);
   }
+});
+
+test('the full sprint only within 45 degrees of ahead, 70 % of it sideways and backwards, smooth on a stick', () => {
+  const pace = (x, y) => 1.4 * (1 + 1.5 * sprintShare(x, y));
+  assert.equal(pace(0, 1), SPRINT);
+  assert.equal(pace(1, 1), SPRINT, 'forward and right on the keys: a full sprint');
+  assert.equal(pace(-0.7, 0.7), SPRINT);
+  for (const [x, y] of [[1, 0], [-1, 0], [0, -1], [0.7, -0.7], [-0.3, -1]]) assert.ok(Math.abs(pace(x, y) - 0.7 * SPRINT) < 1e-9, `${x}, ${y}`);
+  // The stick's tilt doesn't change the share (half tilt is half of the pace that way); no step anywhere round it.
+  assert.equal(sprintShare(0.2, 0.2), sprintShare(1, 1));
+  let last = sprintShare(0, 1);
+  for (let a = 0; a <= Math.PI; a += 0.001) {
+    const s = sprintShare(Math.sin(a), Math.cos(a));
+    assert.ok(s <= last + 1e-12 && last - s < 0.002, `smooth and never more further round (${a.toFixed(3)} rad)`);
+    last = s;
+  }
+  // Mid-way round (67.5 degrees) half of the way down.
+  assert.ok(Math.abs(sprintShare(Math.sin((3 * Math.PI) / 8), Math.cos((3 * Math.PI) / 8)) - (1 + SIDE) / 2) < 1e-6);
+  assert.equal(sprintShare(0, 0), 1);
 });
 
 test('the rates follow the walking speed and the admin\'s turbo: the same times at any pace', () => {

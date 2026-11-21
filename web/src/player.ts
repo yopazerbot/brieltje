@@ -5,7 +5,7 @@ import { DROP, dropStep } from '../shared/parachute.mjs';
 import { FLOAT, wetGround, type Wet } from './world/water';
 import type { PlayTower, Ride } from './world/playground';
 import { ViewMotion } from './viewMotion';
-import { PACE, footStep } from './footMove';
+import { PACE, footStep, sprintShare } from './footMove';
 
 const EYE = 1.65;          // m, eye height above the floor
 export const HEIGHT = 1.8;        // m, body height for head clearance
@@ -214,7 +214,9 @@ export class Player {
     this.stooped = !this.flying && !!this.tower?.underRoof(this.x, this.z, this.feet); // under the play tower's little roof
     this.crouching = !this.flying && (input.downHeld || this.stooped) && !w?.swimming;
     this.crouchT += ((this.crouching ? 1 : 0) - this.crouchT) * (1 - Math.exp(-dt * 12));
-    const sprint = !w ? SPRINT_FACTOR : w.swimming ? 1.4 : 1 + (SPRINT_FACTOR - 1) * Math.max(0, 1 - w.depth / 0.6);
+    // The full sprint only forward; sideways and backwards 70 % of it (footMove.ts sprintShare).
+    const share = w?.swimming ? 1 : sprintShare(input.moveX, input.moveY);
+    const sprint = !w ? 1 + (SPRINT_FACTOR - 1) * share : w.swimming ? 1.4 : 1 + (SPRINT_FACTOR - 1) * share * Math.max(0, 1 - w.depth / 0.6);
     const wade = !w ? 1 : w.swimming ? SWIM : 1 / (1 + 1.1 * w.depth);
     // Just after a hard landing: slowed for a moment while you find your feet.
     const shaken = this.stumble > 0 && this.stumbleT < STUMBLE ? 1 - 0.6 * this.stumble * (1 - this.stumbleT / STUMBLE) : 1;
