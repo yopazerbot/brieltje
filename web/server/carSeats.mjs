@@ -30,14 +30,14 @@ export const SEAT_REFUSED = new Set([
 
 /**
  * Let through from a seat, each to its own checks: moving and the vehicles (state; car out; dent, a car's look from its
- * driver only; horse, bike and helicopter,
+ * driver only; smash, a hedge, fence or young tree its car broke, from its driver only; horse, bike and helicopter,
  * whose getting on refuses anyone in a car; bell, only a bike's rider), talking (chat, pong, rally), trips and start
  * places (travel: only the driver takes the car through; spawn, chute, unstuck refuse a seat and answer), the admin's
  * powers and the building tools (repair, furn, tesla, clown, mode, zwave, team, newround, rules, mood, moodskip,
  * moodspeed, kick).
  */
 export const SEAT_ALLOWED = [
-  'state', 'car', 'dent', 'horse', 'bike', 'heli', 'bell', 'chat', 'pong', 'rally', 'travel', 'spawn', 'chute', 'unstuck',
+  'state', 'car', 'dent', 'smash', 'horse', 'bike', 'heli', 'bell', 'chat', 'pong', 'rally', 'travel', 'spawn', 'chute', 'unstuck',
   'repair', 'furn', 'tesla', 'clown', 'mode', 'zwave', 'team', 'newround', 'rules', 'mood', 'moodskip', 'moodspeed', 'kick',
 ];
 

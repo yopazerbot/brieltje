@@ -10,7 +10,27 @@
 // - flooding: no new message; this runs in the state handler (30 a second at most), and the knocks of one crash within
 //   PARK.again ms count as one hit (only what goes beyond the hardest so far), as on the page (world/carDamage.ts hit).
 // The look goes out as the car's usual message through broadcastThing (nothing leaks from a private home).
+//
+// A hedge, a light fence or a young tree a car breaks (shared/smash.mjs) is a thing of the whole game: a gap changes
+// where cars and walkers go. The driver's page reports it (`smash`: the piece's number, where along it, how wide),
+// because only the page has the car's exact box against the piece at that frame; the server keeps the list of broken
+// pieces (which, where, when), tells every page and every late joiner, and mends them. Its checks on the report:
+// - state forgery (a gap where no car was): only the driver of a car; the piece must be in the shared list and of a kind
+//   that breaks (not a wall, a gate, a post, a grown tree, nothing by a code-locked home); the server's own car, some
+//   time in the last second, within SMASH.reach of the broken spot; the spot held to the piece and the width to the
+//   kind's; the heading is the server's own record of the car, never the page's;
+// - griefing by flattening the village from afar or from a standstill: the same reach, and the car's speed by the
+//   server's clock (speedOf, as for a parked car's dent) at the kind's breaking speed a moment ago (80 % of it, for the
+//   server's coarser view);
+// - flooding: one report every SMASH.rate ms per player and SMASH.burst in SMASH.burstMs, at most SMASH.perPiece gaps
+//   in one piece and SMASH.cap in the game; a refused report is answered to its page alone (it closes the gap it made
+//   ahead), a malformed one not at all.
+// The broken pieces mend after SMASH.mend when nobody is within SMASH.clear m of them (out of everyone's sight, as the big
+// open-world games put broken things back), after SMASH.late anyway, all at once when a game starts and when the last
+// player leaves. Nothing here changes the Zombies game's walking grids (server/navCache.mjs): zombies keep the hedges
+// and fences whole, and no shot or hit reads the list.
 import { boxesOverlap as overlap } from '../shared/parking.mjs';
+import { gapPoint, SMASH } from '../shared/smash.mjs';
 
 /** The page's numbers (src/world/carDamage.ts): zones round a car, steps of a zone's look, a hit's speeds (m/s). */
 const ZONES = 8;
@@ -29,14 +49,98 @@ export const PARK = { gap: 0.3, window: 300, gain: 3, top: 56, again: 600, heigh
 const KEEP = 1500;
 
 export class CarSmash {
-  /** `game`: the server/game.mjs Game (its cars, broadcastThing). `env`: `carSpec(car)` (length, width, height). */
+  /**
+   * `game`: the server/game.mjs Game (its cars, players, modes, broadcastThing, broadcast, send). `env`: `carSpec(car)`
+   * (length, width, height) and `pieces` (shared/smash.mjs smashPieces).
+   */
   constructor(game, env) {
     this.game = game;
     this.env = env;
+    this.pieces = env.pieces ?? [];
     /** car id -> { driver, points: [{ t, x, z }] }: where the server had it, by its own clock */
     this.trails = new Map();
     /** parked car id -> { at, d }: its last hit (one crash's knocks are one hit) */
     this.hits = new Map();
+    /** The broken pieces: [{ id, s, w, a, at }] (piece number, m along it, m wide, the car's heading, when) */
+    this.gaps = [];
+    /** A game on at the last tick (one starting mends everything) */
+    this.wasOn = false;
+    this.nextLook = 0;
+  }
+
+  /** The broken pieces as a page takes them (welcome, `smashed`): [id, s, w, a] each. */
+  list() {
+    return this.gaps.map((g) => [g.id, g.s, g.w, g.a]);
+  }
+
+  /**
+   * `name`'s page reports that the car it drives broke piece `m.id` at `m.s` m along it, `m.w` m wide (shared/smash.mjs
+   * gapWidth). Checked as the header says; told to everyone, or refused to that page alone.
+   */
+  smash(name, player, m, now) {
+    const g = this.game;
+    const car = g.carOf(name);
+    if (!car || car.driver !== name) return;
+    if (!Number.isInteger(m.id) || m.id < 0 || m.id >= this.pieces.length) return;
+    const piece = this.pieces[m.id];
+    const kind = piece.kind && SMASH[piece.kind];
+    if (!kind) return;
+    if (typeof m.s !== 'number' || typeof m.w !== 'number' || !Number.isFinite(m.s) || !Number.isFinite(m.w)) return;
+    const s = Math.round(Math.max(-piece.half, Math.min(piece.half, m.s)) * 100) / 100;
+    const w = piece.kind === 'sapling' ? 0 : Math.round(Math.max(kind.width, Math.min(kind.most, m.w)) * 100) / 100;
+    const no = () => g.send(player.ws, { t: 'smash', id: m.id, s: m.s, w: m.w, no: true });
+    // At most one report every SMASH.rate ms, SMASH.burst in SMASH.burstMs.
+    if (now < (player.nextSmash ?? 0)) return no();
+    player.nextSmash = now + SMASH.rate;
+    player.smashes = (player.smashes ?? []).filter((t) => now - t < SMASH.burstMs && now >= t);
+    if (player.smashes.length >= SMASH.burst) return no();
+    player.smashes.push(now);
+    // The server's car near the spot some time in the last second, and fast enough a moment ago.
+    const [px, pz] = gapPoint(piece, s);
+    const trail = this.trails.get(car.id);
+    const recent = [{ x: car.x, z: car.z }, ...(trail?.driver === name ? trail.points.filter((p) => p.t >= now - 1000 && p.t <= now) : [])];
+    if (!recent.some((p) => Math.hypot(p.x - px, p.z - pz) <= SMASH.reach)) return no();
+    let v = 0;
+    for (const back of [0, 150, 300, 450]) v = Math.max(v, this.speedOf(car, now - back).v);
+    if (v < kind.min * 0.8) return no();
+    // Already broken there (another car a moment before): that gap stands, this page closes its own. A piece gone too
+    // often, or the game's list full: refused.
+    const mine = this.gaps.filter((q) => q.id === m.id);
+    if (piece.kind === 'sapling' ? mine.length : mine.some((q) => Math.abs(q.s - s) < (q.w + w) * 0.375)) return no();
+    if (mine.length >= SMASH.perPiece || this.gaps.length >= SMASH.cap) return no();
+    const gap = { id: m.id, s, w, a: Math.round((car.yaw ?? 0) * 100) / 100, at: now };
+    this.gaps.push(gap);
+    g.broadcast({ t: 'smash', id: gap.id, s: gap.s, w: gap.w, a: gap.a, by: name });
+  }
+
+  /**
+   * Every tick: a game starting, or nobody left, mends everything; a piece broken SMASH.mend ago with nobody within
+   * SMASH.clear m of it mends, one broken SMASH.late ago mends anyway. Told to every page.
+   */
+  tick(now) {
+    const g = this.game;
+    const on = !!g.modes?.active;
+    const starting = on && !this.wasOn;
+    this.wasOn = on;
+    if (!this.gaps.length) return;
+    if (starting || !g.players.size) {
+      this.gaps = [];
+      g.broadcast({ t: 'mend', all: true });
+      return;
+    }
+    if (now < this.nextLook) return;
+    this.nextLook = now + 2000;
+    const people = [...g.players.values()].map((p) => p.state).filter(Boolean);
+    const mended = this.gaps.filter((q) => {
+      const age = now - q.at;
+      if (age >= SMASH.late) return true;
+      if (age < SMASH.mend) return false;
+      const [x, z] = gapPoint(this.pieces[q.id], q.s);
+      return !people.some((p) => Math.hypot(p.x - x, p.z - z) < SMASH.clear);
+    });
+    if (!mended.length) return;
+    this.gaps = this.gaps.filter((q) => !mended.includes(q));
+    g.broadcast({ t: 'mend', list: mended.map((q) => [q.id, q.s]) });
   }
 
   /**

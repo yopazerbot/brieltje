@@ -63,6 +63,7 @@ import { BikeHits } from './bikeHits.mjs';
 import { BrookSpirit } from './brookSpirit.mjs';
 import { CarSeats, SEAT_REFUSED } from './carSeats.mjs';
 import { CarSmash } from './carSmash.mjs';
+import { smashPieces } from '../shared/smash.mjs';
 import { Football } from './football.mjs';
 import { GoalTracker, readGoals } from './goals.mjs';
 import { blastPoint } from './grenade.mjs';
@@ -132,6 +133,8 @@ const PACKS = housePacks();
 const HOUSE = mergeHouse(houseData('house_shell.json'), PACKS);
 for (const p of PACKS) registerDoors(p.id, p.doors.map((d) => d.id));
 const VILLAGE = houseData('village.json');
+/** What a car breaks at speed, by number (shared/smash.mjs): the ring's hedges, fences and young trees, then the village's. */
+const SMASH_PIECES = smashPieces([{ prisms: HOUSE.surroundings?.prisms, trees: HOUSE.surroundings?.trees }, { prisms: VILLAGE.prisms, trees: VILLAGE.trees }]);
 /** The café at the church (shared/keet.mjs): public, no home. Only its door ids and pane numbers matter here. */
 const KEET = makeKeet(houseData('keet_shell.json'), houseData('keet_rooms.json'));
 const CHURCH_DATA = shared('church.json');
@@ -405,7 +408,7 @@ const ROOM_REFUSED = new Set(['furn', 'tesla', 'clown', 'rules', 'mood', 'moodsk
  * when a type Game.handle reads is in neither list.
  */
 export const HELI_REFUSED = new Set(['hit', 'rocket', 'nade', 'boom', 'shot', 'crack', 'vil', 'cat', 'clownhit', 'zhit', 'zitem', 'zbuy', 'revive', 'pickup', 'coin', 'tag', 'kickball',
-  'glass', 'door', 'furn', 'tesla', 'clown', 'claymore', 'turret', 'stakes', 'placement', 'car', 'dent', 'horse', 'bike', 'bell', 'spawn', 'chute', 'unstuck', 'vhit', 'asup', 'sphit', 'gl']);
+  'glass', 'door', 'furn', 'tesla', 'clown', 'claymore', 'turret', 'stakes', 'placement', 'car', 'dent', 'smash', 'horse', 'bike', 'bell', 'spawn', 'chute', 'unstuck', 'vhit', 'asup', 'sphit', 'gl']);
 
 /** The ids a `door` message may carry: the house data's and the end house's door ids (letters, digits, dots and dashes), at most 40 characters. */
 export const DOOR_ID = /^[A-Za-z0-9.-]{1,40}$/;
@@ -505,7 +508,7 @@ export class Game {
       ground: (x, z) => HOUSE.ground + TERRAIN.height(x, z), area: AREA, map: BOUNDS.map, carSpec, mono,
       inside: indoorBlocks([...HOUSE.prisms, ...(HOUSE.surroundings?.prisms ?? [])], HOUSE.rooms.map((r) => r.name)),
     });
-    this.carSmash = new CarSmash(this, { carSpec }); // a parked car a driven one runs into is dented (server/carSmash.mjs)
+    this.carSmash = new CarSmash(this, { carSpec, pieces: SMASH_PIECES }); // a parked car run into is dented; hedges, fences and young trees broken (server/carSmash.mjs)
     // Horses: on their walks until someone rides one; left where they are got off (until a restart).
     this.horses = HORSES.herd.map((_, i) => ({ i, x: 0, z: 0, yaw: 0, speed: 0, rider: null, parked: false }));
     this.horseHomes = new Map(); // a parked horse's index: the home it was left in (homeOf)
@@ -718,7 +721,7 @@ export class Game {
       time: now, cats: this.catsDown.map((until) => Math.max(0, until - now)), ...this.villagersView(now), clowns: this.clownList(now, player), furniture: this.furnitureFor(player), rules: this.shownRules(),
       scores: this.scoreList(), limit: KILL_LIMIT, items: this.items.map((it) => now >= it.until), round: this.roundOver ? { winner: this.roundOver.winner, ms: this.roundOver.until - now } : null,
       cars: Object.values(this.cars).filter((c) => this.seenBy(player, 'car', c)), horses: this.horses.filter((h) => this.seenBy(player, 'horse', h)), bikes: Object.values(this.bikes).filter((k) => this.seenBy(player, 'bike', k)), helis: this.helis.view().filter((e) => this.seenBy(player, 'heli', e)), mode: this.modeFor(player, now), mood: this.mood, moodCycle: this.moodView(now),
-      room: this.roomView(), vdmg: this.vehicleDamage.view(player), spirit: this.spirit?.view(now),
+      room: this.roomView(), vdmg: this.vehicleDamage.view(player), spirit: this.spirit?.view(now), smashed: this.carSmash.list(),
     };
   }
 
@@ -1353,6 +1356,8 @@ export class Game {
       if (car.dm && car.dm.every((v, i) => v === m.dm[i])) return;
       car.dm = m.dm.slice();
       this.broadcastThing({ t: 'car', car }, 'car', car);
+    } else if (m.t === 'smash') {
+      this.carSmash.smash(name, player, m, now); // a hedge, a fence or a young tree the driver's car broke (server/carSmash.mjs checks it all)
     } else if (m.t === 'tesla') {
       this.placeCar(name, player, m, now).catch((e) => console.error('tesla failed', String(e)));
     } else if (m.t === 'horse') {
@@ -2976,6 +2981,7 @@ export class Game {
     this.modes.tick(now, TICK_MS);
     this.flagGuards?.tick(now); // Steal the flag's guards walk, look and shoot (server/flagGuards.mjs)
     this.bikeHits.home(); // a knocked bike left lying goes back to its spot
+    this.carSmash.tick(now); // broken hedges, fences and young trees mend (server/carSmash.mjs)
     this.vehicleDamage.tick(now); // a burning vehicle burns down, a wreck goes and comes back (server/vehicleDamage.mjs)
     this.helis.tick(now); // a game or the rule off empties the helicopters; one left without a pilot goes home (server/helis.mjs)
     this.pings(); // the watch views too, when nobody plays (they would fall silent)
