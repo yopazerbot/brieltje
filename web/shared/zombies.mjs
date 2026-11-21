@@ -669,10 +669,32 @@ function labelRegions(region, queue, N, n, isOpen, open, OFF, seamOf, seams, ena
  * only their fixed halves (together a zombie shoves a closed door open: Horde).
  *
  * The squares are the grid's nodes: those outdoors numbered as squares, the houses' after them.
+ *
+ * Made in two parts: what never changes for a place (navBase: the ground, the blocks, the houses' floors and their
+ * links, everything but the cars), and on it the grid of one game (navOn: the cars where they stand, and what can be
+ * walked and reached with them there). The same grid, square for square, as made in one go.
  */
-export function makeNav({ prisms, height, base = 0, edge, boxes = [], areas = [], doors = [], shut = true, panes = 0 }) {
+export function makeNav(opts) {
+  return navOn(navBase(opts), opts.boxes ?? []);
+}
+
+/** The part of a place's grid that never changes (makeNav without `boxes`), made in one go. */
+export function navBase(opts) {
+  const steps = navBaseSteps(opts);
+  for (;;) {
+    const r = steps.next();
+    if (r.done) return r.value;
+  }
+}
+
+/**
+ * The part of a place's grid that never changes (makeNav's arguments but `boxes`), in parts: a generator that yields
+ * between them (each a few ms for a place in the village or at home), so a server can spread it over its ticks, and
+ * returns the part made. Nothing in it is written after: every grid made on it (navOn) copies what it changes, so one
+ * part serves any number of games at once.
+ */
+export function* navBaseSteps({ prisms, height, base = 0, edge, areas = [], doors = [], shut = true, panes = 0 }) {
   const C = ZOMBIE.cell;
-  const F = ZOMBIE.fine;
   const x0 = Math.floor(edge.minX) - 1;
   const z0 = Math.floor(edge.minZ) - 1;
   const nx = Math.ceil((edge.maxX + 1 - x0) / C) + 1;
@@ -680,30 +702,24 @@ export function makeNav({ prisms, height, base = 0, edge, boxes = [], areas = []
   const n = nx * nz;
   const block = new Uint8Array(n);
   const tall = new Uint8Array(n);
-  const near = new Uint8Array(n); // next to a closed square: a step costs more, so the way keeps off walls
   const boxed = new Uint8Array(n); // in a house's grid instead
   const cellAt = (x, z) => {
     const i = Math.floor((x - x0) / C);
     const j = Math.floor((z - z0) / C);
     return i < 1 || j < 1 || i >= nx - 1 || j >= nz - 1 ? -1 : i * nz + j;
   };
-  const cx = (k) => x0 + (Math.floor(k / nz) + 0.5) * C;
-  const cz = (k) => z0 + ((k % nz) + 0.5) * C;
   const ground = (x, z) => base + height(x, z);
   const g = { x0, z0, nx, nz, block, tall };
 
   // The houses' grids, on the outdoor grid's lines (a square outdoors is in one whole or not at all).
   const H = new HouseGrid(areas, x0, z0, nx, nz);
   for (const A of H.areas) for (let i = A.i0; i < A.i1; i++) for (let j = A.j0; j < A.j1; j++) boxed[i * nz + j] = 1;
-  const colAt = (x, z) => H.colAt(x, z);
-  const colX = (c) => H.colX(c);
-  const colZ = (c) => H.colZ(c);
-  const areaAt = (x, z) => H.areaAt(x, z);
 
   // Open only inside the edge (and never on the grid's own rim): its outline row by row, or square by square.
   block.fill(1);
   if (edge.ring) scan([edge.ring], x0, z0, C, 1, nx - 2, 1, nz - 2, (i, j) => (block[i * nz + j] = 0));
   else for (let i = 1; i < nx - 1; i++) for (let j = 1; j < nz - 1; j++) if (edge.inside(x0 + (i + 0.5) * C, z0 + (j + 0.5) * C)) block[i * nz + j] = 0;
+  yield;
   const bb = boxesOf(prisms);
   const glassy = new Uint8Array(prisms.length); // glass is seen through
   const housed = new Uint8Array(prisms.length); // wholly in a house's grid: walked round there
@@ -712,24 +728,26 @@ export function makeNav({ prisms, height, base = 0, edge, boxes = [], areas = []
     if (H.holds(bb[pi * 6], bb[pi * 6 + 1], bb[pi * 6 + 2], bb[pi * 6 + 3])) housed[pi] = 1;
   }
   markOutdoors(prisms, bb, glassy, housed, height, g);
-  markCars(boxes, g);
-  markNear(block, boxed, near, nx, nz);
-  for (let k = 0; k < n; k++) if (boxed[k]) block[k] = 1; // walked in the house's grid, not here
+  yield;
+  // The houses' squares closed here (walked in the house's grid, not here). The squares next to a closed one (navOn
+  // markNear) leave the houses' own out, so it makes no difference to them that these are closed first.
+  for (let k = 0; k < n; k++) if (boxed[k]) block[k] = 1;
 
   // The houses' floors and their links.
-  const ivs = houseColumns(prisms, bb, glassy, panes, doors, shut, H, height);
+  let ivs = houseColumns(prisms, bb, glassy, panes, doors, shut, H, height);
+  yield;
   const fl = houseFloors(ivs, H, ground, glassy, (c) => {
-    const k = cellAt(colX(c), colZ(c));
+    const k = cellAt(H.colX(c), H.colZ(c));
     if (k >= 0) tall[k] = 1;
   });
-  ivs.length = 0;
-  const { FY, FCOL, fblk, colStart, colPrStart, COLPR } = fl;
+  ivs = null;
+  yield;
+  const { FY, FCOL, fblk } = fl;
   const m = FY.length;
-  const N = n + m;
   // An indoor grid is rectangular; a church arena is round. Its corner floors must not
   // open a way outside the actual game's edge (or onto the neighbouring school grounds).
   const inEdge = new Uint8Array(m);
-  for (let v = 0; v < m; v++) inEdge[v] = +edge.inside(colX(FCOL[v]), colZ(FCOL[v]));
+  for (let v = 0; v < m; v++) inEdge[v] = +edge.inside(H.colX(FCOL[v]), H.colZ(FCOL[v]));
   const enabled = inEdge.slice();
   const paned = []; // floors a pane closes
   for (let v = 0; v < m; v++) {
@@ -737,9 +755,8 @@ export function makeNav({ prisms, height, base = 0, edge, boxes = [], areas = []
     enabled[v] = 0;
     paned.push(v);
   }
-  const { adjStart, ADJ, ACOST, fnear, seams } = houseLinks(fl, H, n, g, ground);
-  const seamOf = new Uint8Array(n);
-  for (const k of seams.keys()) seamOf[k] = 1;
+  // Their links with no car anywhere: a game's grid drops those onto a square one of its cars closes (navOn carLinks).
+  const links = houseLinks(fl, H, n, g, ground);
   const blkStart = new Int32Array(m + 1);
   const blkPane = [];
   for (let v = 0; v < m; v++) {
@@ -747,7 +764,81 @@ export function makeNav({ prisms, height, base = 0, edge, boxes = [], areas = []
     for (const q of fblk[v]) blkPane.push(q);
   }
   blkStart[m] = blkPane.length;
-  fblk.length = 0;
+  return Object.freeze({
+    prisms, height, base, panes, x0, z0, nx, nz, n, m, H, block, tall, boxed,
+    FY, FCOL, colStart: fl.colStart, colPrStart: fl.colPrStart, COLPR: fl.COLPR, inEdge, enabled, paned, blkStart, blkPane, links,
+  });
+}
+
+/**
+ * The houses' links of a place (navBaseSteps: made with no car) for a game whose cars close the outdoor squares in
+ * `block`: those onto such a square dropped (its floor then next to a wall, as houseLinks has it). The same links in
+ * the same order as houseLinks makes with the cars there. No car on a seam (nearly always): the place's own, shared and
+ * never written.
+ */
+function carLinks(links, block, n) {
+  let cut = false;
+  for (const k of links.seams.keys()) {
+    if (block[k]) {
+      cut = true;
+      break;
+    }
+  }
+  if (!cut) return links;
+  const { adjStart, ADJ, ACOST } = links;
+  const m = adjStart.length - 1;
+  const out = { adjStart: new Int32Array(m + 1), ADJ: new Int32Array(ADJ.length), ACOST: new Uint8Array(ACOST.length), fnear: links.fnear.slice(), seams: new Map() };
+  let ne = 0;
+  for (let v = 0; v < m; v++) {
+    out.adjStart[v] = ne;
+    for (let e = adjStart[v]; e < adjStart[v + 1]; e++) {
+      const q = ADJ[e];
+      if (q < n && block[q]) {
+        out.fnear[v] = 1;
+        continue;
+      }
+      out.ADJ[ne] = q;
+      out.ACOST[ne++] = ACOST[e];
+      if (q < n) {
+        if (!out.seams.has(q)) out.seams.set(q, []);
+        out.seams.get(q).push(n + v);
+      }
+    }
+  }
+  out.adjStart[m] = ne;
+  return out;
+}
+
+/**
+ * One game's grid (makeNav) on the part of its place that never changes (`nb`: navBase), with the cars of `boxes`
+ * ({ x, z, yaw, halfL, halfW }) where they stand. What it changes (the closed squares, those next to them, which
+ * floors are open, the panes) is its own; `nb` is only read.
+ */
+export function navOn(nb, boxes = []) {
+  const { prisms, height, panes, x0, z0, nx, nz, n, m, H, tall, boxed, FY, FCOL, colStart, colPrStart, COLPR, inEdge, paned, blkStart, blkPane } = nb;
+  const C = ZOMBIE.cell;
+  const F = ZOMBIE.fine;
+  const block = nb.block.slice();
+  const near = new Uint8Array(n); // next to a closed square: a step costs more, so the way keeps off walls
+  const cellAt = (x, z) => {
+    const i = Math.floor((x - x0) / C);
+    const j = Math.floor((z - z0) / C);
+    return i < 1 || j < 1 || i >= nx - 1 || j >= nz - 1 ? -1 : i * nz + j;
+  };
+  const cx = (k) => x0 + (Math.floor(k / nz) + 0.5) * C;
+  const cz = (k) => z0 + ((k % nz) + 0.5) * C;
+  const ground = (x, z) => nb.base + height(x, z);
+  const colAt = (x, z) => H.colAt(x, z);
+  const colX = (c) => H.colX(c);
+  const colZ = (c) => H.colZ(c);
+  const areaAt = (x, z) => H.areaAt(x, z);
+  markCars(boxes, { x0, z0, nx, nz, block });
+  markNear(block, boxed, near, nx, nz);
+  const N = n + m;
+  const enabled = nb.enabled.slice();
+  const { adjStart, ADJ, ACOST, fnear, seams } = carLinks(nb.links, block, n);
+  const seamOf = new Uint8Array(n);
+  for (const k of seams.keys()) seamOf[k] = 1;
   let broken = new Set();
 
   // The outdoor steps: their offset in the grid and cost (a square 4, a diagonal 6); a diagonal only

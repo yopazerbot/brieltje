@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import { performance } from 'node:perf_hooks';
 import test from 'node:test';
-import { Game } from './game.mjs';
+import { Game, ZOMBIE_NAVS } from './game.mjs';
 import { READY_AT, READY_MS } from './modes.mjs';
-import { arenaOf } from '../shared/arenas.mjs';
+import { ARENAS, arenaOf } from '../shared/arenas.mjs';
+import { makeNav } from '../shared/zombies.mjs';
 
 // A game's start holds the server no longer than a moment, with a game night's 30 players (server/modes.mjs prepare).
 // Attack and defend's start made both its rounds' zombie grids (shared/zombies.mjs makeNav, for its traps and turrets)
@@ -110,10 +111,11 @@ test('Attack and defend from the countdown: both grids made in it, one per timer
 
 test('the countdown\'s grid is the grid the start made before: the same ground, the same places to stand and to come out', (t) => {
   const s = setup(t);
-  for (const id of ['church', 'sparrenhof']) {
+  // Attack and defend's two, then every Zombies place's (shared/arenas.mjs ARENAS).
+  for (const [kind, id] of [['assault', 'church'], ['assault', 'sparrenhof'], ...ARENAS.map((a) => ['zombies', a.id])]) {
     const arena = arenaOf(id);
-    s.game.modes.prepare('assault', 'assault');
-    s.wait(READY_AT[1]); // both made
+    s.game.modes.prepare(kind, kind === 'assault' ? 'assault' : id);
+    s.wait(READY_AT[1]); // all made
     const ready = s.game.modes.readyGround(arena);
     assert.ok(ready, `${id}: made in the countdown`);
     const fresh = s.game.zombieGround(arena); // nothing ready now: made as the start made it
@@ -252,20 +254,27 @@ test('a start, the round change, round 2, the end and a Stop tell every page wit
 
 test(`with ${PLAYERS} players a start, a round change and the end hold the server far less than making the grids`, (t) => {
   // A timing test, the least of three tries (the first warms the code, as a server's first game does). Measured against
-  // making the same grids here and now, so a busy computer (the whole suite runs at once) slows both alike. Before, a
-  // start held the server as long as its grids took and more (Attack and defend some 40 ms here, 0.15 to 0.2 s on a
-  // server with 30 sockets); now a small part of it. The times themselves: the diagnostic line, and on a server
-  // tools/dev/gamenight_ws_check.mjs --stall.
+  // making the same grids whole here and now (shared/zombies.mjs makeNav, as every start did before the places' parts
+  // were kept), so a busy computer (the whole suite runs at once) slows both alike. Before, a start held the server as
+  // long as its grids took and more (Attack and defend some 40 ms here, 0.15 to 0.2 s on a server with 30 sockets); now
+  // a small part of it, and a grid on its place's kept part (server/navCache.mjs) too. The times themselves: the
+  // diagnostic line, and on a server tools/dev/gamenight_ws_check.mjs --stall.
   const s = setup(t);
-  const best = { start: Infinity, grid: Infinity, break: Infinity, round2: Infinity, end: Infinity, zombies: Infinity, zgrid: Infinity, both: Infinity, house: Infinity };
+  const best = { start: Infinity, grid: Infinity, break: Infinity, round2: Infinity, end: Infinity, zombies: Infinity, zgrid: Infinity, kept: Infinity, both: Infinity, house: Infinity };
   const making = (ids) => {
     const a = performance.now();
-    for (const id of ids) s.game.zombieGround(arenaOf(id)); // nothing made in a countdown now: made as a start made them
+    for (const id of ids) makeNav({ ...ZOMBIE_NAVS.optsOf(arenaOf(id)), boxes: [] }); // made whole, as a start made them before
+    return performance.now() - a;
+  };
+  const kept = (ids) => {
+    const a = performance.now();
+    for (const id of ids) s.game.zombieGround(arenaOf(id)); // nothing made in a countdown now: as a start makes them
     return performance.now() - a;
   };
   for (let k = 0; k < 3; k++) {
     best.both = Math.min(best.both, making(['church', 'sparrenhof']));
     best.house = Math.min(best.house, making(['house']));
+    best.kept = Math.min(best.kept, kept(['church', 'sparrenhof']));
     const a = countdown(s, { kind: 'assault', minutes: 1 });
     assert.equal(s.game.modes.state.f?.assault, true);
     best.start = Math.min(best.start, a.start);
@@ -285,4 +294,5 @@ test(`with ${PLAYERS} players a start, a round change and the end hold the serve
   for (const part of ['start', 'break', 'round2', 'end']) assert.ok(best[part] < best.both / 3, `${part}: ${best[part].toFixed(1)} ms, the grids ${best.both.toFixed(1)}`);
   assert.ok(best.zombies < best.house / 2, `Zombies' start: ${best.zombies.toFixed(1)} ms, its grid ${best.house.toFixed(1)}`);
   assert.ok(best.grid < best.both, 'the countdown makes one grid at a time, never both at once');
+  assert.ok(best.kept < best.both / 2, `both grids on their places' kept parts: ${best.kept.toFixed(1)} ms, made whole ${best.both.toFixed(1)}`);
 });

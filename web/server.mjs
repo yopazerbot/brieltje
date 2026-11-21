@@ -28,7 +28,7 @@ import { Rooms } from './server/rooms.mjs';
 import { Pairing } from './server/pairing.mjs';
 import { ARENAS } from './shared/arenas.mjs';
 import { Feedback } from './server/feedback.mjs';
-import { Game } from './server/game.mjs';
+import { Game, warmZombieGrounds } from './server/game.mjs';
 import { Boards } from './server/boards.mjs';
 import { readGoals } from './server/goals.mjs';
 import { bestKey } from './shared/goals.mjs';
@@ -631,4 +631,5 @@ server.on('upgrade', (req, socket, head) => {
 
 server.listen(PORT, () => {
   console.log(JSON.stringify({ event: 'started', port: PORT, admin: !!process.env.ADMIN_PASSWORD, database: !!process.env.DATABASE_URL }));
+  warmZombieGrounds(); // the Zombies places' grids made over the first second, a few ms at a time (server/navCache.mjs)
 });

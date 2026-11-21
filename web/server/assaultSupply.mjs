@@ -197,7 +197,7 @@ export class AssaultSupply {
     this.f = f;
     /** name -> { ammo, med, heavy, trap }: when each wait ends */
     this.waits = new Map();
-    for (const id of ROUND_FIELDS) this.nav(FIELDS[id].red); // both rounds' grids now, at the start
+    for (const id of ROUND_FIELDS) this.nav(FIELDS[id].red); // both rounds' grids taken now (see nav)
     this.round(Date.now());
   }
 
@@ -216,8 +216,9 @@ export class AssaultSupply {
 
   /**
    * The Zombies grid of the defenders' place `id` (the church's or the Sparrenhof's, shared/arenas.mjs): where a trap may
-   * stand and what a turret sees through. Made once per game: both places at its start (some 50 ms each), never in its
-   * break, when 30 players are moved at once already.
+   * stand and what a turret sees through. Taken once per game, both places as it starts, never in its break, when 30
+   * players are moved at once already: from the host's countdown when it came from one (server/modes.mjs prepare), else
+   * made then on the place's kept part (server/navCache.mjs: a few ms each).
    */
   nav(id) {
     this.navs ??= new Map();

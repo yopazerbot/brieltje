@@ -48,7 +48,8 @@ import { buildVillagers, villagerHittable, VILLAGER_DOWN_S, VILLAGER_HIT_MAX, VI
 import { boxesOverlap, boxPoints, clearOfPortals, indoorBlocks, makeIndoors, makeSolids } from '../shared/parking.mjs';
 import { bikeFields, bruteEntry, carFields, heliFields, horseFields, playerFields, PROTO, TICK_MS } from '../shared/wire.mjs';
 import { startingWeapons } from '../shared/loadout.mjs';
-import { houseAreas, makeNav, MAX_ADMIN_WAVE } from '../shared/zombies.mjs';
+import { houseAreas, MAX_ADMIN_WAVE } from '../shared/zombies.mjs';
+import { NavCache } from './navCache.mjs';
 import { zombieTrunks } from '../shared/trees.mjs';
 import { LOOT } from '../shared/loot.mjs';
 import { stallBox, stallSpot } from '../shared/stall.mjs';
@@ -234,6 +235,19 @@ const INDOORS = makeIndoors([...HOUSE.prisms, ...(HOUSE.surroundings?.prisms ?? 
  */
 const ZOMBIE_PRISMS = [...HOUSE.prisms, ...(HOUSE.surroundings?.prisms ?? []), ...Object.values(houseData('homestreet.json').clusters).flatMap((c) => c.blocks ?? [])];
 const HOUSE_AREAS = houseAreas(HOUSE.prisms);
+/** Each Zombies place's grid but the cars, kept (server/navCache.mjs): a game's start adds its cars (zombieGround). */
+const NAVS = new NavCache(ARENAS, (arena) => (arena.center ? arena.id : 'party'), (arena) => { // home and the bungalow: one, the party area's
+  const edge = arenaEdge(arena, BOUNDS);
+  const height = (x, z) => TERRAIN.height(x, z);
+  const village = arena.center ? villageGroundOf(arena, edge) : null; // the village's part, made once per place
+  return village
+    ? { prisms: village.prisms, height: village.relief(height, HOUSE.ground), base: HOUSE.ground, edge, areas: village.areas, doors: village.doors, shut: false, panes: 0 }
+    : { prisms: [...ZOMBIE_PRISMS, ...zombieTrunks(HOUSE.surroundings?.trees ?? [], edge)], height, base: HOUSE.ground, edge, areas: HOUSE_AREAS, doors: HOUSE.doors, shut: false, panes: HOUSE.prisms.length };
+}, (arena, spots) => arenaSpots(arena, spots, VILLAGE, CAFE));
+/** At the server's start (server.mjs): every place's kept part made over its first seconds, a few ms at a time. */
+export const warmZombieGrounds = (opts) => NAVS.warm(ARENAS, opts);
+/** For the checks: the kept parts, and the arguments each is made from. */
+export const ZOMBIE_NAVS = NAVS;
 /** Where the best wave at Zombies place `id` is kept (meta table): home's key from before the places, the others with their id. */
 const bestKey = (id) => (id === 'house' ? 'zombies_best' : 'zombies_best_' + id);
 /** The house data's doors: whether each stands open before anyone touched it (the page's default too). */
@@ -870,7 +884,7 @@ export class Game {
    * with the village's blocks, hedges and fences, the buildings shut but the café at the church (its rooms and
    * doors, shared/arenas.mjs villageGround: a shut one a zombie shoves open too). The cars where they stand now,
    * the places over the open ground where zombies come out, where they go when nobody fights, and the
-   * edge. About 40 ms at home, 5 in the village.
+   * edge. A few ms on the place's kept part (NAVS); 10 to 60 ms when it was made whole each time.
    */
   zombieGround(arena) {
     const ready = this.modes?.readyGround?.(arena); // made in the host's countdown (server/modes.mjs prepare)
@@ -882,15 +896,12 @@ export class Game {
     });
     const spot = stallSpot(arena.id); // the place's stall (shared/stall.mjs): zombies walk round it
     if (spot) boxes.push(stallBox(arena.id));
-    const height = (x, z) => TERRAIN.height(x, z);
     // The village's part never changes per place: made once (a start no longer walks all the blocks again).
     const village = arena.center ? villageGroundOf(arena, edge) : null;
-    const nav = village
-      ? makeNav({ prisms: village.prisms, height: village.relief(height, HOUSE.ground), base: HOUSE.ground, edge, boxes, areas: village.areas, doors: village.doors, shut: false, panes: 0 })
-      : makeNav({ prisms: [...ZOMBIE_PRISMS, ...zombieTrunks(HOUSE.surroundings?.trees ?? [], edge)], height, base: HOUSE.ground, edge, boxes, areas: HOUSE_AREAS, doors: HOUSE.doors, shut: false, panes: HOUSE.prisms.length });
+    const nav = NAVS.nav(arena, boxes); // the place's kept part (NAVS) with these cars: a game's own grid
     if (!arena.center) nav.setPanes(this.broken);
     return {
-      nav, edge, spots: arenaSpots(arena, nav.spawnSpots(), VILLAGE, CAFE), home: arenaHome(arena), doors: village ? village.doors : HOUSE.doors,
+      nav, edge, spots: NAVS.spots(arena, nav), home: arenaHome(arena), doors: village ? village.doors : HOUSE.doors,
       doorOpen: (id) => this.doors[id] ?? DOOR_OPEN[id] ?? true,
       stall: spot ? { x: spot.x, y: HOUSE.ground + TERRAIN.height(spot.x, spot.z), z: spot.z } : null,
     };

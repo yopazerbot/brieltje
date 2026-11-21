@@ -285,9 +285,9 @@ export class Modes {
 
   /**
    * The host queued `kind` at `place` (server/host.mjs startIn, its countdown of ten seconds): the zombie grids its start
-   * would make are made now, one per timer (READY_AT), and handed to that start (readyGround). Each holds the server some
-   * 20 ms (up to 90 the first time after the server starts); all at the start held it 0.15 to 0.2 s with 30 players,
-   * and every player saw the hitch. The same
+   * would make are made now, one per timer (READY_AT), and handed to that start (readyGround). Each holds the server a
+   * few ms (on its place's kept part, server/navCache.mjs; before that 20 to 90 ms each); all at the start held it 0.15
+   * to 0.2 s with 30 players, and every player saw the hitch. The same
    * grids as the start made, from the cars as they stand a few seconds before it (those that stand there at a start
    * are as much where they happen to be). Queued again, called off (unprepare) or not taken in time (READY_MS): gone.
    */
