@@ -612,7 +612,7 @@ const AIM: Record<WeaponId, [number, number, number]> = {
   pistol: [-0.085, 0, 1.25],
   rifle: [-0.04, 0.07, 1.2],
   shotgun: [-0.04, 0.11, 1.3],
-  sniper: [-0.1, 0, 1],
+  sniper: [-0.065, 0.04, 1.2], // seen only while raising it: past an aim of 0.85 its scope's picture takes the view
   bazooka: [-0.09, 0.05, 1.3],
   launcher: [-0.035, 0.06, 1.1],
   laser: [-0.045, 0.05, 1.2],
