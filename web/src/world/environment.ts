@@ -36,6 +36,15 @@ export interface SkyLook {
 /** Luminance above which a pixel of a sky photo is its sun or moon, not sky (the photos' brightest clouds are about 20). */
 const SUN_SPOT = 100;
 
+/**
+ * A phone or tablet (a coarse pointer): its sky photos as half floats (every value is capped under 65504 below), and
+ * the sky's light maps made from the photo at 1024 pixels across instead of 2048 (768 x 1024 instead of 1536 x 2048,
+ * a quarter of the memory, each). On a canvas some 700 pixels wide nothing shows the difference; the background keeps
+ * the whole photo. An iPhone's start ran out of memory: some 56 MB less on its graphics chip, 20 MB less beside it.
+ */
+const PHONE = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+const PHONE_LIGHT_WIDTH = 1024;
+
 /** The sunny sky and the background drawn from it, once loaded (world/weather.ts swaps other skies in). */
 export const environment: { sunny: SkyLook | null; sky: Sky | null; sunDir: THREE.Vector3 | null } = { sunny: null, sky: null, sunDir: null };
 
@@ -111,12 +120,13 @@ export async function loadSky(renderer: THREE.WebGLRenderer, url: string, wanted
 
   // The light maps are made from the photo stretched to the sunny sky's size (see above); the background keeps the
   // small photo, which is all the graphics memory it takes.
-  const source = width && w < width ? stretch(hdr, width) : hdr;
+  const lightWidth = PHONE ? PHONE_LIGHT_WIDTH : width;
+  const source = lightWidth && w < lightWidth ? stretch(hdr, lightWidth) : PHONE && w > lightWidth ? shrink(hdr, lightWidth) : hdr;
   for (const t of new Set([hdr, source])) {
     // Older iPads (A12/A13 chips) can't filter 32-bit float textures smoothly, and WebGL then reads
     // the sky as black: the background and, through the light maps, every shaded surface with it.
-    // Half floats filter everywhere, and after the cap above every value fits in one.
-    if (!renderer.extensions.has('OES_texture_float_linear')) toHalf(t);
+    // Half floats filter everywhere, and after the cap above every value fits in one. Phones: always (PHONE).
+    if (!renderer.extensions.has('OES_texture_float_linear') || PHONE) toHalf(t);
     // Turned, the photo's left and right edges meet somewhere in view (world/sky.ts): they must join, set before its first use.
     t.wrapS = THREE.RepeatWrapping;
   }
@@ -134,6 +144,48 @@ function toHalf(t: THREE.DataTexture): void {
   for (let i = 0; i < data.length; i++) half[i] = THREE.DataUtils.toHalfFloat(data[i]);
   (t.image as { data: ArrayBufferView }).data = half;
   t.type = THREE.HalfFloatType;
+}
+
+/** A photo shrunk to `width` pixels across (and half that high), each pixel the mean of the block it covers. */
+function shrink(hdr: THREE.DataTexture, width: number): THREE.DataTexture {
+  const { data, width: w, height: h } = hdr.image as { data: Float32Array; width: number; height: number };
+  const W = width;
+  const H = width / 2;
+  const kx = w / W;
+  const ky = h / H;
+  const out = new Float32Array(W * H * 4);
+  for (let y = 0; y < H; y++) {
+    const y0 = Math.floor(y * ky);
+    const y1 = Math.max(y0 + 1, Math.floor((y + 1) * ky));
+    for (let x = 0; x < W; x++) {
+      const x0 = Math.floor(x * kx);
+      const x1 = Math.max(x0 + 1, Math.floor((x + 1) * kx));
+      const o = (y * W + x) * 4;
+      let r = 0, g = 0, b = 0, n = 0;
+      for (let sy = y0; sy < y1; sy++) {
+        for (let sx = x0; sx < x1; sx++) {
+          const i = (sy * w + sx) * 4;
+          r += data[i];
+          g += data[i + 1];
+          b += data[i + 2];
+          n++;
+        }
+      }
+      out[o] = r / n;
+      out[o + 1] = g / n;
+      out[o + 2] = b / n;
+      out[o + 3] = 1;
+    }
+  }
+  const t = new THREE.DataTexture(out, W, H, THREE.RGBAFormat, THREE.FloatType);
+  t.mapping = hdr.mapping;
+  t.colorSpace = hdr.colorSpace;
+  t.minFilter = hdr.minFilter;
+  t.magFilter = hdr.magFilter;
+  t.generateMipmaps = hdr.generateMipmaps;
+  t.flipY = hdr.flipY;
+  t.needsUpdate = true;
+  return t;
 }
 
 /** A photo stretched to `width` pixels across (and half that high), each pixel read between its four neighbours. */
@@ -180,7 +232,7 @@ export async function loadEnvironment(
   wantedSunDir: THREE.Vector3,
 ): Promise<void> {
   // The light maps' shaders compile while the photo (2048 pixels across) downloads (world/warmShaders.ts).
-  const warmed = warmSkyLight(renderer, 2048);
+  const warmed = warmSkyLight(renderer, PHONE ? PHONE_LIGHT_WIDTH : 2048);
   const look = await loadSky(renderer, '/env/sky_2k.hdr', wantedSunDir).finally(warmed);
   scene.environmentRotation.set(0, look.turn, 0);
   const sunDir = look.bright;
