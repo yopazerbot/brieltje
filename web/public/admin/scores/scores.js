@@ -27,6 +27,7 @@
       nobody: 'Nog niemand', foot: 'Het kerkplein te voet', bike: 'Dorpsronde met de fiets', car: 'Toertje Briel met de auto',
       bestRuns: 'Zombies: beste rondes', gnomesFound: 'Gevonden kabouters', carTonight: 'Telt alleen voor vanavond',
       accounts: 'Spelers met een account · bijgewerkt om {time}', offline: 'Nu even niet op te halen',
+      awardsTonight: 'Prijzen vanavond', gameN: 'spel {n}',
     },
     en: {
       free: 'Free play', hide: 'Hide and seek', tag: 'Tag', treasure: 'Treasure hunt', teams: 'House against bungalow', teamvteam: 'Team against team', flag: 'Steal the flag', assault: 'Attack and defend',
@@ -44,6 +45,7 @@
       nobody: 'Nobody yet', foot: 'Church square on foot', bike: 'Village loop by bike', car: 'Round Briel by car',
       bestRuns: 'Zombies: best runs', gnomesFound: 'Gnomes found', carTonight: 'Counts for tonight only',
       accounts: 'Players with an account · updated {time}', offline: "Can't be fetched just now",
+      awardsTonight: 'Awards tonight', gameN: 'game {n}',
     },
   };
   let lang = 'nl';
@@ -110,6 +112,7 @@
   function draw() {
     for (const b of document.querySelectorAll('.tools [data-set]')) b.setAttribute('aria-pressed', String(b.dataset.set === lang));
     document.documentElement.lang = lang;
+    window.BrielHall?.sound.mount(lang); // the sound chip, in this language (hall.js)
     $('full').textContent = t('full');
     $('join').replaceChildren(document.createTextNode(t('join')), el('b', '', location.host));
     const next = VIEWS[(VIEWS.indexOf(view) + 1) % VIEWS.length];
@@ -245,6 +248,8 @@
       }
       box.append(totals);
     }
+    const won = awardsRow(ev);
+    if (won) box.append(won);
     // The points on the left, tonight's route times and gnomes beside them (under them on a narrow screen).
     const split = el('div', 'split');
     if (!ev.players.length) {
@@ -269,6 +274,46 @@
     split.append(grid, extras(ev));
     box.append(split);
     return box;
+  }
+
+  /**
+   * Tonight's awards (server/host.mjs board `awards`, chosen by the server after each team game), in a row of their
+   * own: the newest first, as many as fit on one line; each its title, the name in its team's colour, the game.
+   * Only award ids this page knows are shown (hall.js), names and numbers checked, all as text.
+   */
+  function awardsRow(ev) {
+    const H = window.BrielHall;
+    const games = Array.isArray(ev.awards) ? ev.awards : [];
+    const chips = [];
+    for (const g of [...games].reverse()) {
+      const game = ['flag', 'assault', 'teams', 'teamvteam'].includes(g?.game) ? t(g.game) : '';
+      for (const a of Array.isArray(g?.list) ? g.list : []) {
+        const w = H?.award(lang, a?.id, whole(a?.n, 1, 9999) ?? 0);
+        const name = nameOf(a?.name);
+        if (!w || !name || !game) continue;
+        const c = el('div', 'won');
+        c.style.setProperty('--team', /^#[0-9a-f]{6}$/i.test(a?.color ?? '') ? a.color : TEAM_COLOURS[a?.team] ?? '#9aa5b1');
+        c.append(el('span', 'won-title', w.title), el('b', 'won-name', name), el('small', '', `${game} · ${t('gameN', { n: whole(g.n, 1, 999) ?? '' })}`));
+        chips.push(c);
+      }
+    }
+    if (!chips.length) return null;
+    const box = el('section', 'won-row');
+    box.append(el('h2', '', t('awardsTonight')));
+    const row = el('div', 'won-list');
+    row.append(...chips);
+    box.append(row);
+    return box;
+  }
+
+  /** A team game's results moment over the screen, in every view, and the hall's stings (hall.js). */
+  function hallMoment() {
+    const H = window.BrielHall;
+    if (!H || !board) return;
+    const m = board.mode;
+    const left = m && Number.isFinite(m.ms) ? Math.max(0, m.ms - (Date.now() - boardAt)) : 0;
+    H.moment(document.body, m, left, board.evening, lang);
+    H.hear(m ? { ...m, ms: left } : null);
   }
 
   // ---- the boards of the routes, the gnomes and the party games (server/goals.mjs, server/boards.mjs)
@@ -469,6 +514,7 @@
     $('clock').textContent = new Date().toLocaleTimeString(lang === 'nl' ? 'nl-BE' : 'en-GB', { hour: '2-digit', minute: '2-digit' });
     if (board && (board.round || board.mode.ms !== undefined)) draw();
   }, 1000);
+  setInterval(hallMoment, 250);
 
   for (const b of document.querySelectorAll('.tools [data-set]')) {
     b.addEventListener('click', () => {

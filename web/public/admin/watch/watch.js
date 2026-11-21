@@ -11,6 +11,8 @@
 //   once as it starts) and takes whom to follow, how, and where that player plays (the open world or a duel team's
 //   room) from this page with postMessage, to our own origin only; it hears only this page (src/watch.ts onWatch).
 // - Steered from the keyboard without the controls on the screen (KEYS below); the controls are hidden once started.
+// - After a team game, its results moment over everything for 20 s, and short stings through the hall's speakers once
+//   someone touched the page (hall.js, shared with the scoreboard).
 // - Names are what players typed: everything is put in with textContent. The choices are remembered in this browser
 //   (localStorage, keys briel.watch.*), a convenience only.
 (() => {
@@ -488,9 +490,23 @@
     return b;
   }
 
+  /**
+   * A team game's results moment over the views, and the hall's stings (hall.js), from the last read: its time left
+   * counted down here between two reads.
+   */
+  function results() {
+    const H = window.BrielHall;
+    if (!H) return;
+    const m = host?.mode;
+    const left = m && Number.isFinite(m.ms) ? Math.max(0, m.ms - (performance.now() - hostAt)) : 0;
+    H.moment(document.body, m, left, host?.board, lang);
+    H.hear(m ? { ...m, ms: left } : null);
+  }
+
   let drawn = '';
   /** The bar, made again only when what it shows changed (four times a second: the clock). */
   function hall() {
+    results();
     const s = state();
     const key = JSON.stringify(s) + lang;
     if (key === drawn) return;
@@ -532,6 +548,7 @@
     $('gate-text').replaceChildren(document.createTextNode(`${t('gate')} `), el('a', { href: '/admin/', text: t('gateLink') }), document.createTextNode(t('gateTail')));
     for (const f of frames) if (f.note.textContent) f.note.textContent = t('notAdmin');
     for (const f of frames) f.cardWord.textContent = t('inside');
+    window.BrielHall?.sound.mount(lang); // the sound chip, in this language (hall.js)
     drawn = '';
     controls();
     hall();
