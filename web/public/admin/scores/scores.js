@@ -203,10 +203,10 @@
     return box;
   }
 
-  // A LAN night has no ceiling on the players (server/game.mjs): a ranking of `n` in one column, two past 8, three past
-  // 32, four past 60, each in compact rows (tight past 16, tighter past 32). Readable on a beamer up to about 100.
-  const colsOf = (n) => (n > 60 ? 4 : n > 32 ? 3 : n > 8 ? 2 : 1);
-  const colsClass = (n) => ['', ' two', ' two three', ' two three four'][colsOf(n) - 1] + (n > 16 ? ' tight' : '') + (n > 32 ? ' tighter' : '');
+  // A LAN night has no ceiling on the players (server/game.mjs): a ranking of `n` in one column, two past 8, then
+  // columns of at most 20 compact rows (tight past 16, tighter past 32): five columns hold 100, more run off the screen.
+  const colsOf = (n) => (n > 32 ? Math.ceil(n / 20) : n > 8 ? 2 : 1);
+  const colsClass = (n) => (colsOf(n) > 1 ? ' two' : '') + (colsOf(n) > 2 ? ` many c${Math.min(5, colsOf(n))}` : '') + (n > 16 ? ' tight' : '') + (n > 32 ? ' tighter' : '');
   /** `list` cut into its columns, top to bottom, then left to right. */
   const columns = (list) => {
     const per = Math.ceil(list.length / colsOf(list.length));
@@ -258,6 +258,7 @@
     const shown = ev.players;
     const cols = columns(shown);
     const grid = el('div', `cols${colsClass(shown.length)}`);
+    if (colsOf(shown.length) > 2) split.classList.add('many'); // past 40: the whole width for the names, the route times and gnomes left out
     let rank = 0;
     for (const list of cols) {
       const col = el('div', 'rows');

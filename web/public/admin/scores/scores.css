@@ -138,16 +138,24 @@ main:has(.tonight) { justify-content: flex-start; }
 .tonight .cols.tight .rows { gap: 0.45vmin; }
 .tonight .cols.tight .row .dot { width: 1.8vmin; height: 1.8vmin; }
 .tonight .cols.two .row .bar { display: none; }
-/* Past 32 (scores.js colsOf): three columns, four past 60, rows tighter still and the numbers narrower. */
-.tonight .cols.three { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 2vmin; }
-.tonight .cols.four { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0 1.6vmin; }
-.tonight .cols.three .row { grid-template-columns: 3.4vmin 1.6vmin minmax(0, 1fr) repeat(3, 6.5vmin); gap: 1vmin; }
-.tonight .cols.tighter .row { padding: 0.15vmin 1.2vmin; }
-.tonight .cols.tighter .row .name, .tonight .cols.tighter .row:not(.head) .num { font-size: 1.8vmin; }
-.tonight .cols.tighter .row .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tonight .cols.tighter .row .rank { width: 2.5vmin; height: 2.5vmin; font-size: 1.4vmin; }
-.tonight .cols.tighter .rows { gap: 0.3vmin; }
-.tonight .cols.tighter .row .dot { width: 1.5vmin; height: 1.5vmin; }
+/* Past 32 (scores.js colsOf): columns of at most 20 rows, up to five; rows tighter still, the numbers narrower. Past 40
+   the ranking takes the whole width (.split.many): tonight's route times and gnomes are left out. */
+.tonight .cols.many { grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); gap: 0 2vmin; }
+.tonight .cols.c3 { --cols: 3; } .tonight .cols.c4 { --cols: 4; } .tonight .cols.c5 { --cols: 5; }
+.tonight .cols.many .row { grid-template-columns: 3vmin 1.6vmin minmax(0, 1fr) repeat(3, 6.5vmin); gap: 1vmin; }
+.tonight .cols.tighter .row { padding: 0.1vmin 1.2vmin; border-radius: 1vmin; }
+.tonight .cols.tighter .row .name, .tonight .cols.tighter .row:not(.head) .num { font-size: 1.7vmin; }
+.tonight .cols.tighter .row { line-height: 1.15; }
+.tonight .cols.tighter .row .name small { margin-left: 0.8vmin; font-size: 1.4vmin; }
+/* Four or five columns: the names first (the team is the dot's colour, out is the row's dimming), the numbers narrower. */
+.tonight .cols.c4 .row, .tonight .cols.c5 .row { grid-template-columns: 2.6vmin 1.4vmin minmax(0, 1fr) repeat(3, 5vmin); gap: 0.8vmin; }
+.tonight .cols.c4 .row .name small, .tonight .cols.c5 .row .name small { display: none; }
+.tonight .cols.c4 .row.head .num, .tonight .cols.c5 .row.head .num { font-size: 1.2vmin; letter-spacing: 0.02em; }
+.tonight .cols.tighter .row .rank { width: 2.2vmin; height: 2.2vmin; font-size: 1.3vmin; }
+.tonight .cols.tighter .rows { gap: 0.2vmin; }
+.tonight .cols.tighter .row .dot { width: 1.4vmin; height: 1.4vmin; }
+.split.many { grid-template-columns: minmax(0, 1fr) !important; }
+.split.many > .extras { display: none; }
 
 /* Tonight's route times and gnomes beside the points (under them on a narrow screen), and the all-time boards: small
    cards with a title and a line per player, the top three's places in gold, silver and bronze. */
