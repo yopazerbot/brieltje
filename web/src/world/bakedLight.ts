@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { snowOn } from './snowCover';
 import { halfSize, loadFile } from './textureFiles';
+import { wallDusk } from './wallDusk';
 
 /**
  * Baked light and wear on our own building models (tools/bake/: the light worked out in Blender's Cycles from
@@ -11,7 +12,8 @@ import { halfSize, loadFile } from './textureFiles';
  *   with the light bounced off the ground and the walls round them, in their colours. It takes the place of
  *   the sky photo's even light; the hemisphere light's fill stays only as far as the sky is open there.
  * - the sun's shadow of everything round them (other houses, trees, the model itself): the real-time sun is
- *   dimmed by it, so the whole village has shadows, not only the 17 m round the main house.
+ *   dimmed by it, so the whole village has shadows, not only the 17 m round the main house. It is noon's: at dusk
+ *   the low sun's long shadows take its place as the sun goes down, from a picture made in the game (world/wallDusk.ts).
  * - the sky's reflections dimmed where little sky is seen, so recesses don't shine.
  * - wear: dust in corners and under sills and eaves, streaks where rain runs down. Patchy, with a little noise
  *   in the world's own coordinates on top, so no two walls look alike. No green: the wear page's G channel
@@ -94,6 +96,8 @@ const FRAGMENT_PARS = /* glsl */ `
 uniform sampler2D bakeWear;
 uniform sampler2D bakeNoise;
 uniform vec4 bakeMood; // x: scale of the sky's light, y: contrast kept (1 all), z: its pivot, w: wet
+uniform sampler2D bakeDuskMap; // the dusk sun's shadow on the page (world/wallDusk.ts)
+uniform float bakeDuskK; // how much of it to show (0: noon's alone)
 varying vec3 vBakeWorld;
 varying vec3 vBakeNormal;
 `;
@@ -110,6 +114,9 @@ export const bakeMood = { value: new THREE.Vector4(1, 1, 3, 0) };
 /** After the surface's colour is known: the light page's texel (used below) and the wear on the colour. */
 const WEAR = /* glsl */ `
 vec4 bakeTexel = texture2D( lightMap, vLightMapUv );
+// The sun's shadow: noon's from the bake, at dusk the low sun's as far as it is down (world/wallDusk.ts).
+float bakeSun = bakeTexel.a;
+if ( bakeDuskK > 0.0 ) bakeSun = mix( bakeSun, texture2D( bakeDuskMap, vLightMapUv ).r, bakeDuskK );
 {
   vec3 wear = texture2D( bakeWear, vLightMapUv ).rgb;
   #ifdef BAKE_FINE
@@ -169,7 +176,7 @@ function patchLights(shader: THREE.WebGLProgramParametersWithUniforms): boolean 
   shader.fragmentShader = f
     .replace('#include <common>', `#include <common>\n${FRAGMENT_PARS}`)
     .replace('#include <map_fragment>', `#include <map_fragment>\n${WEAR}`)
-    .replace('#include <lights_fragment_begin>', begin.replace(dirInfo, `${dirInfo}\n\t\tdirectLight.color *= bakeTexel.a;`))
+    .replace('#include <lights_fragment_begin>', begin.replace(dirInfo, `${dirInfo}\n\t\tdirectLight.color *= bakeSun;`))
     .replace('#include <lights_fragment_maps>', `${INDIRECT}\n${spec}`);
   shader.vertexShader = shader.vertexShader
     .replace('#include <common>', `#include <common>\n${VERTEX_PARS}`)
@@ -208,6 +215,7 @@ function baked(original: THREE.MeshStandardMaterial, light: THREE.Texture, wear:
     shader.uniforms.bakeWear = { value: wear };
     shader.uniforms.bakeNoise = { value: noiseTexture() };
     shader.uniforms.bakeMood = bakeMood;
+    Object.assign(shader.uniforms, wallDusk.uniforms(light));
     // Snow on what faces up and is open to the sky (world/snowCover.ts): the bake's sky light against the open sky's,
     // so none under eaves, in porches or in the rooms. Low thresholds: the sky's light holds the photo's sun too, and
     // an open roof in a neighbour's noon shadow gets far less of it.
@@ -276,6 +284,7 @@ export async function bakeLight(root: THREE.Object3D, renderer: THREE.WebGLRende
           await ready.catch(() => undefined);
         }
         for (const [mesh, , next] of swaps) mesh.material = next;
+        pages.forEach(([light], p) => wallDusk.add(light, fits.filter((m) => m.userData.lm === p))); // their dusk shadow
       } catch (e) {
         console.warn(`baked light: ${model} not available`, e);
       }
