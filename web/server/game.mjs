@@ -75,6 +75,7 @@ import { FlagGuards } from './flagGuards.mjs';
 import { TeamStarts } from './teamStarts.mjs';
 import { truckSpec } from '../shared/assaultFields.mjs';
 import { monitor } from './monitor.mjs';
+import { metrics } from './metrics.mjs';
 import { words } from './words.mjs';
 import { makeKeet } from '../shared/keet.mjs';
 
@@ -462,6 +463,8 @@ export class Game {
     this.wss.handleUpgrade = (req, socket, head, done) =>
       take(req, socket, head, (ws) => {
         ws.on('error', () => {});
+        metrics.wsOpened(); // counted, and why it closes (server/metrics.mjs)
+        ws.on('close', (code) => metrics.wsClosed(code));
         done(ws);
       });
     this.players = new Map(); // username -> { ws, role, color, state, lastChat }
@@ -538,6 +541,7 @@ export class Game {
         const t0 = performance.now();
         this.tick();
         monitor.tick(performance.now() - t0); // how long a tick takes (server/monitor.mjs)
+        metrics.tick(performance.now() - t0); // and for Prometheus (server/metrics.mjs)
       }, TICK_MS).unref(),
       setInterval(() => this.moodSeason(Date.now()), 60_000).unref(), // winter begins or ends: snow on Auto or not
       // Sessions can end while connected (logout, password reset, account deleted or turned off,
@@ -974,6 +978,7 @@ export class Game {
   receive(name, player, raw) {
     player.heard = mono();
     monitor.in(raw.length);
+    metrics.in(raw.length);
     try {
       this.handle(name, player, raw);
     } catch (e) {
@@ -989,7 +994,7 @@ export class Game {
       player.window = now;
       player.msgs = player.states = player.others = 0;
     }
-    if (++player.msgs > 80) return;
+    if (++player.msgs > 80) return metrics.drop();
     let m;
     try {
       m = JSON.parse(String(raw));
@@ -997,7 +1002,8 @@ export class Game {
       return;
     }
     if (!m || typeof m !== 'object') return;
-    if (m.t === 'state' ? ++player.states > 30 : ++player.others > 40) return;
+    if (m.t === 'state' ? ++player.states > 30 : ++player.others > 40) return metrics.drop();
+    metrics.message(m.t); // by type, from the server's own list (server/metrics.mjs)
     if ((this.modes.noShooting || this.lan?.holds(player)) && ['hit', 'vhit', 'rocket', 'nade', 'boom', 'shot', 'crack', 'vil', 'sphit', 'gl'].includes(m.t)) return; // no fighting during a party game or a freeze
     // A room changes nothing of the open world and holds its players at its place (server/rooms.mjs).
     if (this.room && ROOM_REFUSED.has(m.t)) return;
@@ -3130,6 +3136,7 @@ export class Game {
         if (all) everything ??= rest(true);
         const tick = `{"t":"s","st":${st}${part('p', others)}${all ? everything : changed}}`;
         monitor.out(tick.length);
+        metrics.out(tick.length);
         p.ws.send(tick);
         p.hadThings = null; // it has every thing of this tick (prevKeys, next tick)
         continue;
@@ -3167,6 +3174,7 @@ export class Game {
       const g = Object.keys(goneThings).length ? `,"g":${JSON.stringify(goneThings)}` : '';
       const tick = `{"t":"s","st":${st}${part('p', others)}${own}${gone.length ? `,"o":${JSON.stringify(gone)}` : ''}${g}}`;
       monitor.out(tick.length);
+      metrics.out(tick.length);
       p.ws.send(tick);
     }
     this.prevThings = things; // what a page in the shared lists had (its keys only looked at when something goes out of sight)
@@ -3251,6 +3259,7 @@ export class Game {
     if (ws.readyState !== ws.OPEN) return;
     const data = JSON.stringify(msg);
     monitor.out(data.length);
+    metrics.out(data.length);
     ws.send(data);
   }
 
@@ -3260,6 +3269,7 @@ export class Game {
     for (const [name, p] of this.players) if (name !== except && p.ws.readyState === p.ws.OPEN) (p.ws.send(data), n++);
     for (const w of this.watchers) if (w.ws.readyState === w.ws.OPEN) (w.ws.send(data), n++); // the admin's watch views (src/watch.ts)
     monitor.out(data.length, n);
+    metrics.out(data.length, n);
   }
 
   /**

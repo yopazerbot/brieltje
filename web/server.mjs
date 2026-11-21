@@ -13,6 +13,9 @@
 //   STATS_SECRET       at least 32 random bytes, base64url: locks the day's visitor seed in the
 //                      store (server/stats.mjs). Without it visitors are counted in memory only,
 //                      and a restart can count one again.
+//   METRICS_PORT       only for a LAN night's monitoring (lan/compose.yaml, profile monitor): the server's own numbers
+//                      for Prometheus on a listener of its own (server/metrics.mjs). Unset (as on Railway): none.
+//   METRICS_HOST       the address that listener binds (default 127.0.0.1)
 
 import { createHash } from 'node:crypto';
 import { createServer } from 'node:http';
@@ -39,6 +42,7 @@ import { GameNight } from './server/gamenight.mjs';
 import { Interest } from './server/interest.mjs';
 import { Stats } from './server/stats.mjs';
 import { monitor } from './server/monitor.mjs';
+import { metrics, startMetrics } from './server/metrics.mjs';
 import { decodePath } from './server/paths.mjs';
 
 const DIST = resolve(import.meta.dirname, 'dist');
@@ -121,6 +125,9 @@ monitor.people = () => {
     pings: games.flatMap((g) => [...g.players.values()].map((p) => (typeof p.rttAvg === 'number' ? Math.round(p.rttAvg) : null))),
   };
 };
+// The server's own numbers for Prometheus, on a listener of its own, only when METRICS_PORT is set (server/metrics.mjs).
+metrics.attach({ rooms });
+startMetrics();
 const accounts = new Accounts(auth, (name, exceptKey) => rooms.online(name, exceptKey));
 rooms.guestRuns = accounts.guestRuns; // a guest's last good Zombies run, kept a while for an account made from that session (server/keepRun.mjs)
 await accounts.init();
@@ -593,6 +600,7 @@ async function serveFile(req, res, url) {
 const MOVED = { 'huisje.yoshiparlevliet.be': 'brieltje.be', 'www.brieltje.be': 'brieltje.be' };
 
 const server = createServer(async (req, res) => {
+  metrics.request(req, res); // its answer's class and a file's bytes, counted (server/metrics.mjs)
   try {
     const url = new URL(req.url, 'http://local');
     if (url.pathname === '/healthz') return send(res, 200, 'ok'); // also Railway's own check, which doesn't come through Cloudflare
