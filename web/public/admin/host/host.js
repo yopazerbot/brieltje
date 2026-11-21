@@ -211,7 +211,7 @@
     // The game now.
     const now = $('now-game');
     if (v.countdown) now.replaceChildren(el('b', { text: `${KINDS[v.countdown.kind]} starts in ${Math.ceil(v.countdown.ms / 1000)} s` }));
-    else if (m.kind === 'free') now.replaceChildren(el('b', { text: 'Free play' }), el('span', { class: 'muted', text: ' · first to 10 kills wins a round' }));
+    else if (m.kind === 'free') now.replaceChildren(el('b', { text: 'Free play' }), el('span', { class: 'muted', text: ` · first to 10 kills wins a round${v.rooms ? ` · players in ${v.rooms} Zombies room${v.rooms === 1 ? '' : 's'} (Stop brings them here)` : ''}` }));
     else {
       const extra = m.flag?.assault ? assaultLine(m.flag.assault) : m.kind === 'teams' && m.score ? ` · House ${m.score.house} – ${m.score.bungalow} Bungalow (to ${m.goal})` : m.kind === 'zombies' && m.zombies ? ` · wave ${m.zombies.wave ?? ''}` : m.kind === 'flag' && m.score ? ` · Blue ${m.score.blue} – ${m.score.red} Red${m.flag?.sudden ? ' · sudden death' : ''}` : '';
       now.replaceChildren(el('b', { text: title ?? m.kind }), el('span', { text: `${m.phase === 'done' ? ' · over' : ''}${m.ms ? ` · ${clock(m.ms)} left` : ''}${extra}${m.look ? ` · ${LOOKS[m.look] ?? m.look}` : ''}` }), m.result ? el('p', { class: 'muted', text: m.result }) : null);
@@ -222,7 +222,8 @@
       const sides = d.sides.map((x) => `${TEAM_NAMES[x.team]} ${x.out ? 'out at ' : ''}wave ${x.wave}${x.best > x.wave ? ` (best ${x.best})` : ''}, ${x.beaten} beaten, ${x.players} in`).join(' · ');
       now.replaceChildren(el('b', { text: `Zombies duel, ${d.kind === 'final' ? 'final' : 'warm-up'}` }), el('span', { text: `${d.phase === 'done' ? ' · over' : ''}${d.ms ? ` · ${clock(d.ms)}${d.phase === 'done' ? '' : ' left'}` : ''}` }), el('p', { class: 'muted', text: d.winner ? `${d.winner === 'draw' ? 'A draw' : `${TEAM_NAMES[d.winner]} wins`} · ${sides}` : sides }));
     }
-    $('stop').disabled = m.kind === 'free' && !v.duel;
+    // Stop has something to stop: a game here, the Zombies duel, a countdown, or players in a Zombies room (it brings them back).
+    $('stop').disabled = m.kind === 'free' && !v.duel && !v.countdown && !v.rooms;
     $('cancel').hidden = !v.countdown;
 
     // Programme.

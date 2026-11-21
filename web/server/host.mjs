@@ -3,6 +3,9 @@
 // come, no helpers, the evening's scoreboard per player and per team, hosted on a local server). Only for the open
 // world (not the Zombies rooms), and only ever for the admin: every action comes through POST /api/host, behind the
 // admin's session and the same-origin JSON check (server.mjs), and each is checked here again (types, ranges, rate).
+// The host's announcements, countdown, start and Stop reach the rooms too (21 Nov 2026): the countdown shows in every
+// room, the players' rooms close for the host's game in the house and at Stop (everyone in the house), and none opens
+// meanwhile; a Zombies duel still on ends for it as Stop ends it.
 //
 // - The doors: locked, a newcomer waits outside (the page tries again every few seconds) until the host lets them in;
 //   whoever already played this evening comes back in on their own.
@@ -35,6 +38,11 @@ export const EVENING_TEAMS = [
   { id: 'purple', color: '#c77dff' },
 ];
 const COUNTDOWN_MS = 10_000;
+/**
+ * The host's game for everyone: this long before it starts, the players' Zombies rooms close and the Zombies duel ends
+ * (gather), so their players are in the house when it begins (a page connects again in well under a second).
+ */
+export const GATHER_MS = 3_000;
 const KNOCK_MS = 30_000; // someone who tried to come in this recently is on the host's list
 const EVENING_KICK_MS = 12 * 3600_000;
 const PLACES = new Set(ARENAS.map((a) => a.id));
@@ -222,6 +230,7 @@ export class Host {
       mode: this.game.modes.view(now), board: this.board(), kinds: KINDS, places: [...PLACES],
       duel: this.game.hub?.duel?.view(now) ?? null, // the Zombies duel (server/duel.mjs)
       inDuel: this.inDuel(), // who plays in its rooms: the hall screen follows them there (admin/watch)
+      rooms: [...(this.game.hub?.rooms?.values() ?? [])].filter((r) => r.game.players.size).length, // players' rooms with someone in them: Stop brings them back
       guards: this.game.flagGuards?.view() ?? null, // Steal the flag's guards, per team (server/flagGuards.mjs)
     };
   }
@@ -356,6 +365,7 @@ export class Host {
       case 'stop':
         this.callOff(); // a game counting down goes too: Stop means nothing plays (before, it started 10 s later anyway)
         g.hub?.duel?.stop(by); // the Zombies duel: both rooms at once
+        g.hub?.closeRooms?.(by, 'roomsHostStop', 'The host stopped the games. Everyone is back in the house.'); // the players' rooms: everyone to free play here
         this.corked(() => g.modes.start('free', by));
         return { ok: true };
       case 'swap': // Steal the flag's sides, only at the host's request (server/modes.mjs swapSides: its game, its clock)
@@ -421,7 +431,7 @@ export class Host {
       const why = duel ? duel.cannot() : { error: 'No rooms here', code: 'duelTeams' };
       if (why) return why;
     }
-    if (this.countdown) clearTimeout(this.countdown.timer);
+    if (this.countdown) this.clearTimers();
     const until = Date.now() + COUNTDOWN_MS;
     const timer = setTimeout(() => {
       if (this.countdown?.timer !== timer) return; // called off or replaced meanwhile: never a stale start
@@ -431,9 +441,67 @@ export class Host {
       if (r.error) this.game.broadcast({ t: 'system', text: `The Zombies duel could not start: ${r.error}`, code: r.code, args: r.args }); // its reason, in the page's language
     }, COUNTDOWN_MS);
     timer.unref?.();
-    this.countdown = { kind: e.kind, until, timer };
-    this.game.broadcast({ t: 'announce', code: 'nextGame', args: { kind: e.kind }, text: `Next: ${KINDS[e.kind] ?? (e.kind === 'assault' ? ASSAULT_TITLE : 'Zombies duel')}`, ms: COUNTDOWN_MS, count: true });
+    const pull = setTimeout(() => this.countdown?.timer === timer && this.gather(by, !!duel), COUNTDOWN_MS - GATHER_MS);
+    pull.unref?.();
+    this.countdown = { kind: e.kind, until, timer, pull };
+    this.everywhere(this.countdownMsg(Date.now())); // the open world and every room: the same small line (Yoshi: no card over the game)
     return { ok: true };
+  }
+
+  /** The countdown's line, its time left from `now` (a page that comes in during it gets the rest: tellCountdown). */
+  countdownMsg(now) {
+    const k = this.countdown.kind;
+    return { t: 'announce', code: 'nextGame', args: { kind: k }, text: `Next: ${KINDS[k] ?? (k === 'assault' ? ASSAULT_TITLE : 'Zombies duel')}`, ms: Math.max(0, this.countdown.until - now), count: true };
+  }
+
+  /** `name` came into `game` (server/rooms.mjs joined: the open world or a room) while a countdown runs: its line, after the welcome. */
+  tellCountdown(game, name) {
+    if (!this.countdown) return;
+    setImmediate(() => {
+      const p = game.players.get(name);
+      if (p && this.countdown) game.send(p.ws, this.countdownMsg(Date.now()));
+    });
+  }
+
+  /** A message to every page: the open world, the players' rooms and the Zombies duel's (server/rooms.mjs games). */
+  everywhere(msg) {
+    for (const x of this.game.hub?.games() ?? [this.game]) x.broadcast(msg);
+  }
+
+  clearTimers() {
+    clearTimeout(this.countdown.timer);
+    clearTimeout(this.countdown.pull);
+  }
+
+  /**
+   * GATHER_MS before the host's game starts: everyone comes to the house for it. Every players' Zombies room closes, its
+   * game ended as by its own Stop (no run kept, nothing won: server/rooms.mjs closeRooms); its players are told, and
+   * their pages connect to the open world at once (game.mjs close, 4004). A Zombies duel still on ends as the host's
+   * Stop ends it (ranked, its points: its own rule, server/duel.mjs stop), its rooms closed at once instead of after its
+   * result's ten seconds, so its players and the hall screen's views are in the house in time (back where they stood,
+   * duel.mjs back). Not when the game coming is the duel itself: its own rule stays (it takes the teams' players from
+   * wherever they play at its start, duel.mjs pull, and leaves the players' rooms alone otherwise).
+   */
+  gather(by, duel = false) {
+    const hub = this.game.hub;
+    if (!hub || duel) return;
+    if (hub.duel?.on) {
+      hub.duel.stop(by);
+      hub.duel.close();
+    }
+    hub.closeRooms?.(by, 'roomsHostGame', "The host's game starts for everyone. Off to the house!");
+  }
+
+  /**
+   * Why a page can't open a players' Zombies room now (server/rooms.mjs create), or null: the host's next game in the
+   * house counts down, or a game is on in the house (a party game: only ever started by the admin). Everyone plays the
+   * host's game; a room opened now would only close again (gather). The Zombies duel keeps its own rule: the players'
+   * rooms open as before during it and its countdown (server/duel.mjs; its tests).
+   */
+  busy() {
+    if (this.countdown && this.countdown.kind !== 'duel') return { error: "The host's next game starts in a moment. No new room now.", code: 'hostSoon', status: 409 };
+    if (this.game.modes.active) return { error: "The host's game is on for everyone. Open a room once it is over.", code: 'hostPlaying', status: 409 };
+    return null;
   }
 
   /**
@@ -444,9 +512,9 @@ export class Host {
    */
   callOff(always = false) {
     const was = !!this.countdown;
-    if (was) clearTimeout(this.countdown.timer);
+    if (was) this.clearTimers();
     this.countdown = null;
-    if (was || always) this.game.broadcast({ t: 'announce', text: '', ms: 0 });
+    if (was || always) this.everywhere({ t: 'announce', text: '', ms: 0 }); // every room's bar too (startIn told them all)
   }
 
   /** `fn` with every page's socket corked while it tells them all (game.mjs corked), where the game has that. */

@@ -11,6 +11,9 @@
 // - Empty for EMPTY_MS: closed (a page that was in it and comes back is told, and goes back to the open world).
 // - One name in one place: joining a room ends that name's connection in the open world or another room.
 // - Kicks reach every place; the admin's player list shows where each one is.
+// - The host's game is for everyone (server/host.mjs): its countdown shows in every room, the rooms close shortly before
+//   a game in the house starts and at the host's Stop (closeRooms: their players back in the open world), and none opens
+//   meanwhile. The Zombies duel keeps its own rule: it takes the teams' players at its start, the rooms otherwise as ever.
 // - Host rooms (hostRoom): the Zombies duel's two (server/duel.mjs), opened by the host only. Not in the list, not
 //   joinable by their id, not counted in MAX_ROOMS, up to DUEL_PLAYERS each; the server alone puts a page in one (upgrade).
 
@@ -90,6 +93,7 @@ export class Rooms {
       if (p) p.ws.close(4000, 'Logged in somewhere else');
     }
     this.duel.joined(name, game);
+    this.main.host?.tellCountdown(game, name); // the host's countdown, wherever they came in (server/host.mjs)
   }
 
   /** A better Zombies run was kept (server/game.mjs zombieRun). */
@@ -107,6 +111,8 @@ export class Rooms {
     }
     const arena = ARENAS.find((a) => a.id === place);
     if (!arena) return { error: 'Pick a place for the room.', code: 'roomPlace', status: 400 };
+    const busy = this.main.host?.busy(); // the host's countdown or game: everyone plays that (server/host.mjs), their own room not given back either
+    if (busy) return busy;
     const mine = [...this.rooms.values()].find((r) => r.owner === session.username);
     if (mine) return { room: this.entry(mine, session) };
     if (this.rooms.size >= MAX_ROOMS) return { error: `All ${MAX_ROOMS} rooms are in use. Join one, or try again later.`, code: 'roomsFull', args: { n: MAX_ROOMS }, status: 503 };
@@ -198,6 +204,23 @@ export class Rooms {
     r.game.close();
     this.main.auth.log('room_closed', null, { username: by, detail: `${r.arena.id} (${r.id}) of ${r.owner}, by the admin` });
     return true;
+  }
+
+  /**
+   * The host's game starts, or the host's Stop (server/host.mjs gather, stop): every players' room closes. Its game ends
+   * as by its own Stop (its zombies go, no run kept, nothing won: game.mjs close); its players hear why (`code`, `text`)
+   * and their pages connect to the open world at once (4004), where they stood before the room. Not the duel's rooms
+   * (server/duel.mjs ends those). The number of rooms closed.
+   */
+  closeRooms(by, code, text) {
+    const all = [...this.rooms.values()];
+    for (const r of all) {
+      r.game.broadcast({ t: 'system', text, code });
+      this.rooms.delete(r.id);
+      r.game.close();
+      this.main.auth.log('room_closed', null, { username: by, detail: `${r.arena.id} (${r.id}) of ${r.owner}, for the host` });
+    }
+    return all.length;
   }
 
   /** A player's time there and back, wherever they play (the admin's live view, server/stats.mjs). */

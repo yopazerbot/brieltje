@@ -9,7 +9,10 @@
 // its guards, its teams' colours); the evening's points adding up (each team's total is its players' points while on
 // it); the host's calls by name with capitals. The host's Stop during a countdown calls it off (in free play, and with
 // a game on and the next one counting down): no game starts when it would have, every page's countdown goes, and a
-// player's own call to the host's controls is refused.
+// player's own call to the host's controls is refused. Last, a players' Zombies room (server/rooms.mjs) with two guests:
+// the host's countdown shows in it, no room opens during the countdown or the game, both are in the host's game in the
+// house from its start; in a room again, the host's Stop in free play brings both back (pages that follow the server's
+// closes as src/net/client.ts does).
 //
 // --stall: instead of the evening, how long the server is held in each game's countdown, at its start and stop (and
 // Attack and defend's round change, end and the switch to free play once its result has shown, played through with
@@ -467,6 +470,85 @@ v = await view();
 ok('each team\'s total is what its players scored on it', v.board.teams.every((tm) => tm.points === sum(tm.id)), JSON.stringify(v.board.teams.map((tm) => [tm.id, tm.points, sum(tm.id)])));
 ok('the programme is done', v.next === 3);
 ok('every page got every mode change the hall screen got', players.slice(1, -1).every((p) => p.of('mode').length >= 1) && hall.of('mode').length >= 1);
+
+// ---- The players' Zombies rooms (server/rooms.mjs) and the host's game: two guests in a room the admin opened, its
+// Zombies on. The host's countdown shows in the room, no room opens meanwhile, at the start both are in the game in the
+// house; a room again, and the host's Stop in free play brings both back. A player can't start the host's games.
+/** A page that follows the server as src/net/client.ts does: a closed room (4004) or the duel's move (4006), at once to the open world. */
+const roomPage = async (name) => {
+  await call('POST', '/api/lockouts', {}, adminCookie);
+  const { r } = await call('POST', '/api/join', { name, age: true });
+  const p = { name, cookie: cookieOf(r), log: [], ws: null, closes: [], where: null };
+  p.open = (room) => new Promise((res) => {
+    const ws = new WebSocket(`ws://${host}/ws?v=2${room ? `&room=${encodeURIComponent(room)}` : ''}`, { headers: { Cookie: p.cookie, Origin: o.api } });
+    p.ws = ws;
+    p.where = room ? 'room' : 'house';
+    ws.on('message', (d) => {
+      const m = JSON.parse(String(d));
+      if (m.t === 'ping') return ws.send(JSON.stringify({ t: 'pong', n: m.n }));
+      if (m.t !== 's') p.log.push({ ...m, in: p.where });
+    });
+    ws.on('close', (code) => {
+      if (p.ws !== ws) return;
+      p.closes.push(code);
+      if (code === 4004 || code === 4006) p.open(null);
+    });
+    ws.on('open', res);
+    ws.on('error', res);
+  });
+  p.move = async (room) => {
+    const old = p.ws;
+    p.ws = null; // its close is no reason to follow
+    old?.close();
+    await p.open(room);
+  };
+  p.of = (t) => p.log.filter((m) => m.t === t);
+  return p;
+};
+const roomOpen = async () => {
+  const x = await call('POST', '/api/rooms', { place: 'church' }, adminCookie);
+  return { status: x.r.status, code: x.data?.code, id: x.data?.room?.id };
+};
+const intoRoom = async (pair, id) => {
+  for (const p of pair) await p.move(id);
+  await sleep(900);
+  pair[0].ws.send(JSON.stringify({ t: 'mode', kind: 'zombies' }));
+  await sleep(1800);
+  const zombies = pair.every((p) => p.where === 'room' && p.of('welcome').at(-1)?.room?.id === id && p.of('mode').at(-1)?.mode?.kind === 'zombies');
+  ok('two guests in a players\' room, its Zombies on', zombies, JSON.stringify(pair.map((p) => [p.where, p.of('mode').at(-1)?.mode?.kind])));
+};
+const pair = [await roomPage(`gnra${run}`), await roomPage(`gnrb${run}`)];
+let r1 = await roomOpen();
+ok('the admin opens a players\' room in free play', !!r1.id, JSON.stringify(r1));
+await intoRoom(pair, r1.id);
+v = await view();
+ok('the host page: Stop has something to stop in free play (players in a room)', v.mode.kind === 'free' && v.rooms === 1 && !v.countdown);
+const theirs = await Promise.all([{ op: 'start', kind: 'tag', minutes: 3 }, { op: 'next' }, { op: 'stop' }].map((b) => call('POST', '/api/host', b, pair[0].cookie)));
+ok('a player\'s own start, Next and Stop of the host\'s are refused', theirs.every((x) => x.r.status === 403) && !(await view()).countdown && pair.every((p) => p.where === 'room'));
+ok('the host starts tag', (await act({ op: 'start', kind: 'tag', minutes: 3 }))?.ok === true);
+await sleep(800);
+ok('the countdown shows in the room', pair.every((p) => p.log.some((m) => m.t === 'announce' && m.code === 'nextGame' && m.count && m.in === 'room')));
+let refused = await roomOpen();
+ok('no room opens during the host\'s countdown', refused.status === 409 && refused.code === 'hostSoon', JSON.stringify(refused));
+await started((m) => m.kind === 'tag');
+const inTag = lastMode(hall)?.times ?? {};
+ok('both are in the house, in the host\'s game from its start', pair.every((p) => p.where === 'house' && p.closes.includes(4004) && p.log.some((m) => m.code === 'roomsHostGame') && p.name in inTag && p.of('welcome').at(-1)?.room === null),
+  JSON.stringify(pair.map((p) => [p.where, p.closes, p.name in inTag])));
+ok('their pages see the game', pair.every((p) => p.of('mode').at(-1)?.mode?.kind === 'tag'));
+refused = await roomOpen();
+ok('no room opens while it plays', refused.status === 409 && refused.code === 'hostPlaying', JSON.stringify(refused));
+await act({ op: 'stop' });
+await sleep(900);
+r1 = await roomOpen();
+ok('after Stop a room opens again', !!r1.id, JSON.stringify(r1));
+await intoRoom(pair, r1.id);
+ok('the host\'s Stop in free play', (await act({ op: 'stop' }))?.ok === true);
+await sleep(1500);
+v = await view();
+ok('both are back in the house, in free play, the room gone', pair.every((p) => p.where === 'house' && p.log.some((m) => m.code === 'roomsHostStop') && p.of('welcome').at(-1)?.room === null) && v.mode.kind === 'free' && v.rooms === 0 && pair.every((p) => v.players.some((q) => q.name === p.name)),
+  JSON.stringify(pair.map((p) => [p.where, p.closes])));
+ok('no room left in the list', (await call('GET', '/api/rooms', null, adminCookie)).data?.rooms?.length === 0);
+for (const p of pair) p.ws.close();
 
 for (const p of [admin, hall, ...players]) p.ws.close();
 await act({ op: 'reset' });
