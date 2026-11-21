@@ -1,0 +1,33 @@
+# Prometheus for a LAN night's monitoring (lan.cmd -Monitor; lan/compose.yaml, profile monitor; lan/monitor/README.md).
+# It runs on the compose network only: no port of it is published, so neither this computer nor the hall reaches it.
+# Grafana reads it there. It keeps two days (compose.yaml: --storage.tsdb.retention.time=2d) in its own volume.
+global:
+  scrape_interval: 15s
+  scrape_timeout: 5s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # The game server's own numbers (web/server/metrics.mjs): its listener inside the compose network, METRICS_PORT.
+  # Every 2 s: a tick's trouble shows within one or two scrapes; one scrape costs the game about half a millisecond
+  # (10 KB of text, built once however often it is asked within 250 ms).
+  - job_name: game
+    scrape_interval: 2s
+    scrape_timeout: 1s
+    static_configs:
+      - targets: ['game:9464']
+        labels:
+          instance: game
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # This PC itself, when windows_exporter runs on Windows (lan/monitor/README.md, "This PC's own numbers"). Without it
+  # this target is simply down (up 0) and the dashboard's row for the PC stays empty: nothing else changes.
+  - job_name: pc
+    scrape_interval: 5s
+    scrape_timeout: 2s
+    static_configs:
+      - targets: ['host.docker.internal:9182']
+        labels:
+          instance: pc

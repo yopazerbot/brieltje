@@ -1,0 +1,114 @@
+# The game night's alerts: they colour the Game night dashboard and fill Grafana's own alert list, nothing more.
+# No contact point is set up and Grafana has no mail server (SMTP is off by default), so nothing is sent anywhere.
+#   - the tick's p99 over 30 ms for 10 s (orange): busy, players don't feel it yet
+#   - the tick's p99 over 45 ms at any scrape in the last 10 s (red): at the 50 ms budget, everyone stutters
+#   - the event loop's delay (p99) over 100 ms at any scrape in the last 10 s (red): the server answers everyone late
+#   - more than three players lost within 10 s (red): the network, the Wi-Fi or the server
+#   - the game not scraped for 10 s (red): it is down, or Prometheus can't reach it
+# Grafana looks every 10 s: the red ones take the worst of those 10 s, so a spike between two looks is not missed.
+apiVersion: 1
+groups:
+  - orgId: 1
+    name: game-night
+    folder: Brieltje
+    interval: 10s
+    rules:
+      - uid: brieltje-tick-busy
+        title: Tick p99 over 30 ms
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 60, to: 0 }
+            datasourceUid: prometheus
+            model: { refId: A, expr: 'max(brieltje_tick_seconds{stat="p99"})', instant: true, intervalMs: 2000, maxDataPoints: 100 }
+          - refId: C
+            datasourceUid: __expr__
+            model: { refId: C, type: threshold, expression: A, conditions: [{ evaluator: { type: gt, params: [0.03] } }] }
+        for: 10s
+        noDataState: OK
+        execErrState: Error
+        labels: { severity: orange }
+        annotations:
+          summary: The game's tick is busy (p99 over 30 ms for 10 s).
+          description: Nothing to do yet. Red when it passes 45 ms.
+          __dashboardUid__: brieltje-game-night
+          __panelId__: "10"
+      - uid: brieltje-tick-slow
+        title: Tick p99 over 45 ms
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 60, to: 0 }
+            datasourceUid: prometheus
+            model: { refId: A, expr: 'max(max_over_time(brieltje_tick_seconds{stat="p99"}[10s]))', instant: true, intervalMs: 2000, maxDataPoints: 100 }
+          - refId: C
+            datasourceUid: __expr__
+            model: { refId: C, type: threshold, expression: A, conditions: [{ evaluator: { type: gt, params: [0.045] } }] }
+        for: 0s
+        noDataState: OK
+        execErrState: Error
+        labels: { severity: red }
+        annotations:
+          summary: The game's tick is near its 50 ms budget (p99 over 45 ms).
+          description: For more than a few seconds, close the big screen's extra watch views first (lan/cheatsheet.html).
+          __dashboardUid__: brieltje-game-night
+          __panelId__: "10"
+      - uid: brieltje-loop-slow
+        title: Event loop delay over 100 ms
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 60, to: 0 }
+            datasourceUid: prometheus
+            model: { refId: A, expr: 'max(max_over_time(brieltje_event_loop_delay_seconds{stat="p99"}[10s]))', instant: true, intervalMs: 2000, maxDataPoints: 100 }
+          - refId: C
+            datasourceUid: __expr__
+            model: { refId: C, type: threshold, expression: A, conditions: [{ evaluator: { type: gt, params: [0.1] } }] }
+        for: 0s
+        noDataState: OK
+        execErrState: Error
+        labels: { severity: red }
+        annotations:
+          summary: The server answers everyone late (event loop delay over 100 ms).
+          __dashboardUid__: brieltje-game-night
+          __panelId__: "10"
+      - uid: brieltje-players-lost
+        title: More than three players lost in 10 s
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 60, to: 0 }
+            datasourceUid: prometheus
+            model: { refId: A, expr: 'sum(increase(brieltje_ws_closed_total{why="lost"}[10s]))', instant: true, intervalMs: 2000, maxDataPoints: 100 }
+          - refId: C
+            datasourceUid: __expr__
+            model: { refId: C, type: threshold, expression: A, conditions: [{ evaluator: { type: gt, params: [3] } }] }
+        for: 0s
+        noDataState: OK
+        execErrState: Error
+        labels: { severity: red }
+        annotations:
+          summary: More than three players lost their connection within 10 s.
+          description: The Wi-Fi or the network, most often. Who is lagging is on the host page.
+          __dashboardUid__: brieltje-game-night
+          __panelId__: "30"
+      - uid: brieltje-game-down
+        title: The game is not answering
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 60, to: 0 }
+            datasourceUid: prometheus
+            model: { refId: A, expr: 'max(up{job="game"})', instant: true, intervalMs: 2000, maxDataPoints: 100 }
+          - refId: C
+            datasourceUid: __expr__
+            model: { refId: C, type: threshold, expression: A, conditions: [{ evaluator: { type: lt, params: [1] } }] }
+        for: 10s
+        noDataState: Alerting
+        execErrState: Alerting
+        labels: { severity: red }
+        annotations:
+          summary: Prometheus could not read the game for 10 s. It is down, or restarting.
+          description: Look at the lan.cmd window. Docker restarts the game by itself after a crash.
+          __dashboardUid__: brieltje-game-night
+          __panelId__: "1"

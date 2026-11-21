@@ -11,8 +11,11 @@
 #   lan.cmd -Staging                 Let's Encrypt's test service (browsers don't trust it: only for trying out)
 #   lan.cmd -Http [-Port 8090]       plain http on this computer's address: no name, no certificate
 #   lan.cmd -StopAfter 30            stop by itself after so many minutes (a test run)
+#   lan.cmd -Monitor [-MonitorPort 3030]  also Prometheus and Grafana: the server's dashboards at http://localhost:3030,
+#                                    on this computer only (lan/monitor/README.md)
 #
 # Without internet it uses the certificate it has; without one either, it offers plain http (never by itself).
+# A test run beside a real one: COMPOSE_PROJECT_NAME (its own containers and volumes) and LAN_GAME_PORT (the game's port).
 param(
   [string]$Domain = 'lan.brieltje.be',
   [string]$Address = '',
@@ -20,13 +23,19 @@ param(
   [int]$Port = 8080,
   [switch]$NewToken,
   [switch]$Staging,
-  [int]$StopAfter = 0
+  [int]$StopAfter = 0,
+  [switch]$Monitor,
+  [ValidateRange(1024, 65535)][int]$MonitorPort = 3030
 )
 $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 . (Join-Path $PSScriptRoot 'network.ps1')
 $compose = Join-Path $PSScriptRoot 'compose.yaml'
 $gamePort = 18080 # the game's own port, open to this computer only (compose.yaml); players come in through Caddy
+if ($env:LAN_GAME_PORT -match '^\d{4,5}$') { $gamePort = [int]$env:LAN_GAME_PORT }
+# -Monitor: the compose profile with Prometheus and Grafana (compose.yaml), and the game's numbers for Prometheus.
+$profileArgs = @()
+if ($Monitor) { $profileArgs = @('--profile', 'monitor') }
 # Caddy with its Cloudflare add-on, built from these versions in Docker on the first start and kept in $own (outside
 # the repository). Go checks every module it fetches against its public checksum database.
 $caddyVersion = '2.11.9'
@@ -52,9 +61,22 @@ function Start-Game([bool]$overHttp) {
   $env:ADMIN_PASSWORD = Get-Plain $script:password
   $env:LAN_GAME_PORT = "$gamePort"
   if ($overHttp) { $env:LAN_NODE_ENV = '' } else { $env:LAN_NODE_ENV = 'production' }
+  $env:LAN_METRICS_PORT = ''
+  if ($Monitor) { $env:LAN_METRICS_PORT = '9464'; $env:LAN_GRAFANA_PORT = "$MonitorPort" }
   try {
-    docker compose -f $compose up --build --detach --wait
-    return $LASTEXITCODE -eq 0
+    docker compose -f $compose @profileArgs up --build --detach --wait
+    if ($LASTEXITCODE -ne 0) { return $false }
+    # Grafana's admin takes tonight's password (its first start took it from the environment; later starts keep the old
+    # one in their volume): handed over on stdin, never on a command line, in a file or on the screen.
+    if ($Monitor) {
+      $OutputEncoding = [Text.UTF8Encoding]::new($false)
+      $ErrorActionPreference = 'Continue' # its chatter on stderr is no error (Windows PowerShell would make it one)
+      $env:ADMIN_PASSWORD | docker compose -f $compose @profileArgs exec -T grafana grafana cli admin reset-admin-password --password-from-stdin *> $null
+      $set = $LASTEXITCODE -eq 0
+      $ErrorActionPreference = 'Stop'
+      if (-not $set) { Write-Host 'Grafana kept its old admin password (setting tonight''s did not work).' }
+    }
+    return $true
   } finally {
     Remove-Item Env:ADMIN_PASSWORD -ErrorAction SilentlyContinue
   }
@@ -135,6 +157,7 @@ function Show-Addresses([bool]$overHttp, $net, $nets) {
   Write-Host "`nYou, the host:   $base/admin/  (log in as admin), then Host"
   Write-Host "Watch players:   $base/admin/watch/  (one player or up to four side by side)"
   Write-Host "The big screen:  $base/admin/scores/  (F for full screen)"
+  if ($Monitor) { Write-Host "The server:      http://localhost:$MonitorPort/d/brieltje-game-night?kiosk  (this computer only; admin, tonight's password)" }
   Write-Host $line
 }
 
@@ -246,7 +269,9 @@ $caddyProc = $null
 try {
   Write-Host "`nBuilding and starting the game (the first time takes a few minutes)..."
   if (-not (Start-Game $Http)) {
-    Write-Host "`nThe game did not start. Is port $gamePort in use by something else on this computer?"
+    $what = "port $gamePort"
+    if ($Monitor) { $what = "port $gamePort or $MonitorPort (lan.cmd -Monitor -MonitorPort 3031)" }
+    Write-Host "`nThe game did not start. Is $what in use by something else on this computer?"
     return
   }
   $caddyProc = Start-Caddy $Http
@@ -344,7 +369,7 @@ try {
   }
 } finally {
   Stop-Caddy $caddyProc
-  docker compose -f $compose stop
+  docker compose -f $compose @profileArgs stop
   $script:token = $null
   $script:password = $null
   Write-Host 'Stopped. Accounts and rules are kept for next time. Tonight''s scores start fresh.'

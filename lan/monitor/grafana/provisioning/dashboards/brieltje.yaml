@@ -1,0 +1,13 @@
+# The two dashboards (lan/monitor/grafana/dashboards/): Game night and After the night, from the repository's files.
+# Changed in the UI they are not saved; the files are the truth.
+apiVersion: 1
+providers:
+  - name: brieltje
+    folder: Brieltje
+    folderUid: brieltje
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    updateIntervalSeconds: 60
+    options:
+      path: /etc/grafana/dashboards
