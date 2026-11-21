@@ -88,9 +88,13 @@ export class FlagHud {
   private line = document.createElement('div');
   private lineUntil = 0;
   private key = '';
+  /** The game's bar this sits under, and when its height was last looked at (placeUnder) */
+  private after: HTMLElement;
+  private placedAt = 0;
 
   /** `after`: the game's bar (#modebar), which this sits under. */
   constructor(after: HTMLElement) {
+    this.after = after;
     this.root.id = 'flaghud';
     this.root.className = 'hidden';
     const row = document.createElement('div');
@@ -147,6 +151,7 @@ export class FlagHud {
     this.root.classList.toggle('hidden', !v);
     this.line.classList.toggle('show', !!v && now < this.lineUntil);
     if (!v) return;
+    this.placeUnder(now);
     const key = JSON.stringify([v.flags.blue.at, v.flags.blue.by, Math.ceil((v.flags.blue.ms ?? 0) / 1000), v.flags.red.at, v.flags.red.by, Math.ceil((v.flags.red.ms ?? 0) / 1000), me, t('flag.home', { flag: '' }), v.assault?.def]);
     if (key === this.key) return;
     this.key = key;
@@ -159,6 +164,19 @@ export class FlagHud {
         : f.at === 'carried' ? (f.by === me ? t('flag.carriedYou', { flag }) : t('flag.carried', { flag, name: f.by ?? '' }))
         : t('flag.ground', { flag, n: Math.ceil((f.ms ?? 0) / 1000) });
     }
+  }
+
+  /**
+   * Just under the game's bar, however many lines it takes (Attack and defend's runs to two at 1280 px wide, and the chips
+   * covered its second line), four times a second at most: its height is read, never worked out each frame.
+   */
+  private placeUnder(now: number): void {
+    if (now - this.placedAt < 250) return;
+    this.placedAt = now;
+    const bar = this.after;
+    if (!bar.offsetParent) return void (this.root.style.top = '');
+    const gap = document.body.classList.contains('touch') ? 4 : 6;
+    this.root.style.top = `${bar.offsetTop + bar.offsetHeight + gap}px`;
   }
 
   /** The ground's countdown, ticking on the page between the server's views (ms since the view came). */

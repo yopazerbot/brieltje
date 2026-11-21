@@ -2412,7 +2412,7 @@ const nl = {
   'assault.best': 'vlag op {n}% van de weg',
   'assault.time': 'ronde {n}: {team} in {s} s',
   'assault.held': 'ronde {n}: {team} {p}%',
-  'assault.truckReady': 'je komt terug bij de spawntruck',
+  'assault.truckReady': 'je komt terug bij de legertruck',
   'assault.camp': 'het kamp',
   'asup.ammo': '{use}: munitie en granaten',
   'asup.ammoPaint': '{use}: verf en verfgranaten',
@@ -2833,7 +2833,7 @@ const nl = {
   'srv.assaultFar': 'Team {team} wint: hun vlag geraakte het verst, {a}% tegen {b}%',
   'srv.assaultTags': 'Team {team} wint op raken, {a}–{b}',
   'srv.assaultDraw': 'Gelijkspel: gelijk in veroveringen en in hoe ver de vlag geraakte, {a}–{b} in raken',
-  'srv.assaultTruck': 'Alleen de aanvallers rijden met de spawntruck.',
+  'srv.assaultTruck': 'Alleen de aanvallers rijden met de legertruck.',
   'srv.assaultBreakSeat': 'Niet tijdens de pauze: ronde 2 begint zo meteen.',
   'srv.asupBreak': 'Niet tijdens de pauze: ronde 2 begint zo meteen.',
   'srv.asupSide': 'Die is van het andere team.',
@@ -3204,7 +3204,7 @@ const CARS_NL: Record<string, string> = {
   tesla: 'de Tesla', model3: 'de Model 3', churchY: 'de witte Model Y', church3: 'de rode Model 3',
   'modelY-white': 'de witte Model Y', 'modelY-black': 'de zwarte Model Y', 'modelY-grey': 'de grijze Model Y', 'modelY-blue': 'de blauwe Model Y', 'modelY-red': 'de rode Model Y',
   'model3-white': 'de witte Model 3', 'model3-black': 'de zwarte Model 3', 'model3-grey': 'de grijze Model 3', 'model3-blue': 'de blauwe Model 3', 'model3-red': 'de rode Model 3',
-  'truck-blue': 'de spawntruck', 'truck-red': 'de spawntruck', // Attack and defend (shared/assaultFields.mjs)
+  'truck-blue': 'de legertruck', 'truck-red': 'de legertruck', // Attack and defend (shared/assaultFields.mjs)
 };
 export function carName(id: string, fallback: string): string {
   return current === 'en' ? fallback : CARS_NL[id] ?? fallback;
