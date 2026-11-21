@@ -249,8 +249,8 @@ function gloveMaps(m: THREE.MeshStandardMaterial): void {
 /**
  * The weapons' model: one file, a node per weapon (tools/weapons.py). A gun named in GUN_FILES has a file of its own
  * beside it, its nodes laid out the same way (the laser rifle: tools/lasergun.py; a gun modelled again: tools/guns/), and
- * is taken from that file. If its file does not come it is taken from weapons.glb when it is in there; the laser rifle
- * is not, and stays a block gun.
+ * is taken from that file. If its file does not come it is taken from weapons.glb when it is in there (the laser rifle
+ * is not, and stays a block gun). Every gun has its own file now, so weapons.glb is the fallback only.
  */
 const GUN_FILES: Partial<Record<WeaponId, string>> = {
   laser: '/models/lasergun.glb',
@@ -263,21 +263,21 @@ const GUN_FILES: Partial<Record<WeaponId, string>> = {
 };
 const gunLoader = new GLTFLoader();
 const ownFiles = (Object.entries(GUN_FILES) as [WeaponId, string][]).map(([w, url]) => gunLoader.loadAsync(url).then((g) => [w, g] as const, () => [w, null] as const));
-export const gunsReady: Promise<boolean> = gunLoader.loadAsync('/models/weapons.glb').then(
-  async (gltf) => {
-    gltf.scene.updateMatrixWorld(true);
-    const own = new Map(await Promise.all(ownFiles));
-    for (const w of WEAPON_IDS) {
-      const file = own.get(w);
-      if (file) {
-        file.scene.updateMatrixWorld(true);
-        takeGun(file.scene, w);
-      } else if (gltf.scene.getObjectByName(w)) takeGun(gltf.scene, w);
-    }
-    return true;
-  },
-  () => false,
-);
+/** weapons.glb is fetched only for a gun that has no file of its own, or whose file did not come. */
+export const gunsReady: Promise<boolean> = Promise.all(ownFiles).then(async (files) => {
+  const own = new Map(files);
+  const old = WEAPON_IDS.every((w) => own.get(w)) ? null : await gunLoader.loadAsync('/models/weapons.glb').then((g) => g, () => null);
+  old?.scene.updateMatrixWorld(true);
+  let any = false;
+  for (const w of WEAPON_IDS) {
+    const scene = own.get(w)?.scene ?? (old?.scene.getObjectByName(w) ? old.scene : null);
+    if (!scene) continue;
+    if (scene !== old?.scene) scene.updateMatrixWorld(true);
+    takeGun(scene, w);
+    any = true;
+  }
+  return any;
+});
 
 /** Gun `w` out of a loaded file: its own materials with their finish, its hands dressed, ready in loadedGuns. */
 function takeGun(scene: THREE.Object3D, w: WeaponId): void {
