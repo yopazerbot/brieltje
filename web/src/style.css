@@ -951,6 +951,7 @@ input[type=range]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 3px var(--
 .setting { margin: 0 0 16px; }
 .setting .field { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 4px; font-size: 15.5px; font-weight: 500; }
 .walk-value, .set-value { font-weight: 800; color: var(--lamp); }
+.setting .field:has(.set-number) { align-items: center; } .set-number { width: 8ch; padding: 6px 10px; font-size: 16px; font-weight: 800; text-align: right; color: var(--lamp); background: rgba(6, 10, 14, 0.35); border: 1px solid var(--line-strong); border-radius: var(--r-field); } /* the admin's limit (main.ts maxSlider) */
 
 /* "Play with" and "Start at" on one line. */
 .label-row { display: flex; align-items: center; justify-content: space-between; gap: 6px 12px; margin: 0 0 8px; }

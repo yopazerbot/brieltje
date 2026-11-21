@@ -1637,8 +1637,7 @@ function applyRules(next: Rules): void {
   parachuteBox.checked = next.parachute ?? true;
   heliBox.checked = next.heli ?? true;
   menu.setChildSafe(next.paintball ?? false); // child-friendly for everyone: Action plays as Paintball
-  maxSlider.value = String(next.maxPlayers ?? 16);
-  $('set-max-value').textContent = maxSlider.value;
+  if (document.activeElement !== maxSlider) maxSlider.value = String(next.maxPlayers ?? 32); // a number field now: not while the admin types
   avatars.showNames = next.names && !games.hideOthers;
 }
 /** Spawning with /name: alone always; together the admin always, the others when the admin allows it (off at first). */
@@ -1670,8 +1669,12 @@ ruleSwitch(travelBox, 'travel');
 ruleSwitch(paintballBox, 'paintball');
 ruleSwitch(parachuteBox, 'parachute');
 ruleSwitch(heliBox, 'heli');
-maxSlider.addEventListener('input', () => ($('set-max-value').textContent = maxSlider.value));
-maxSlider.addEventListener('change', () => net.send({ t: 'rules', maxPlayers: Number(maxSlider.value) }));
+// How many may play: any whole number from 2 up (server/game.mjs, no ceiling; the server checks it again). Else back to the rule.
+maxSlider.addEventListener('change', () => {
+  const n = Number(maxSlider.value);
+  if (Number.isSafeInteger(n) && n >= 2) net.send({ t: 'rules', maxPlayers: n });
+  else maxSlider.value = String(rules.maxPlayers ?? 32);
+});
 let wasTogether = false; // playing with the others until this account change
 let homeUser: string | null = null; // the account the homes' locks were last set for
 /** Out of a home that is locked for this player (its lock came back while they stood in it): in front of it, at its portal. */
