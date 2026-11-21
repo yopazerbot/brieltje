@@ -24,7 +24,7 @@ export const MESSAGE_TYPES = [
   'asup', 'bell', 'bike', 'boom', 'car', 'cat', 'chat', 'chute', 'claymore', 'clown', 'clownhit', 'coin', 'crack', 'dent',
   'door', 'furn', 'gl', 'glass', 'heli', 'hit', 'horse', 'kick', 'kickball', 'mode', 'mood', 'moodskip', 'moodspeed',
   'nade', 'newround', 'pickup', 'placement', 'pong', 'rally', 'repair', 'revive', 'rocket', 'rules', 'shot', 'smash',
-  'spawn', 'sphit', 'stakes', 'state', 'tag', 'team', 'tesla', 'travel', 'turret', 'unstuck', 'vhit', 'vil', 'zbuy',
+  'spawn', 'sphit', 'stakes', 'state', 'tag', 'team', 'teamstart', 'tesla', 'travel', 'turret', 'unstuck', 'vhit', 'vil', 'zbuy',
   'zhit', 'zitem', 'zwave',
 ];
 /** Where a game is: the open world (the house), a players' Zombies room, one of the Zombies duel's two rooms. */
