@@ -1,9 +1,9 @@
 // The guns everyone holds, against a throwaway game server (a build of this branch), as the server has them: two
-// guests and the admin join and are told their guns (all four; the admin the bazooka too); a hit with each of the four
+// guests and the admin join and are told their guns (all five; the admin the bazooka too); a hit with each of the five
 // counts, before and after a death; an old page's 'loadout' changes nothing and is not answered; a player who holsters
 // right after a hit is still hit back, and only 10 s after the last fight is out of reach; one who drops the connection
 // in a fight and comes back is not healed, is hit at once and gets no car seat; in a Zombies game a
-// hit with the rifle is dropped (the pistol only) while the pistol's counts; when it ends everyone is told all four again
+// hit with the rifle is dropped (the pistol only) while the pistol's counts; when it ends everyone is told all five again
 // and the hits count again.
 //
 //   ADMIN_PASSWORD=... node tools/dev/guns_ws_check.mjs --api http://localhost:8420 [--rifle]
@@ -31,7 +31,7 @@ const call = async (method, path, body, cookie = '') => {
   return { r, data: await r.json().catch(() => null) };
 };
 const cookieOf = (r) => r.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ');
-const ALL = 'pistol+rifle+shotgun+sniper';
+const ALL = 'laser+pistol+rifle+shotgun+sniper'; // the laser rifle is everyone's too outside Zombies (21 Nov 2026)
 const sorted = (list) => [...(list ?? [])].sort().join('+');
 
 /** Where the server has each player and each zombie, as the ticks say (a page's own player is left out of its ticks). */
@@ -78,8 +78,8 @@ const guest = async (name) => {
 const admin = await connect('admin', cookieOf((await call('POST', '/api/login', { username: 'admin', password })).r));
 const alice = await guest('Alice');
 let bob = await guest('Bob');
-ok('a guest joining is told all four', sorted(alice.weapons().at(-1)?.list) === ALL, sorted(alice.weapons().at(-1)?.list));
-ok('the admin joining is told all four and the bazooka', sorted(admin.weapons().at(-1)?.list) === `bazooka+${ALL}`, sorted(admin.weapons().at(-1)?.list));
+ok('a guest joining is told all five', sorted(alice.weapons().at(-1)?.list) === ALL, sorted(alice.weapons().at(-1)?.list));
+ok('the admin joining is told all five and the bazooka', sorted(admin.weapons().at(-1)?.list) === `bazooka+${ALL}`, sorted(admin.weapons().at(-1)?.list));
 // A respawn by parachute would keep Bob in the air (calm) until his page lands him: this check has no page, so no drops.
 const parachute = admin.log.find((m) => m.t === 'welcome')?.rules?.parachute;
 admin.send({ t: 'rules', parachute: false });
@@ -89,7 +89,7 @@ await sleep(2500); // spawn protection (2 s)
 /** Alice hits Bob once with each gun: which of them counted ('hurt' to Bob, or his 'kill'). */
 const hitsWithEach = async (label) => {
   const counted = [];
-  for (const w of ['pistol', 'rifle', 'shotgun', 'sniper']) {
+  for (const w of ['laser', 'pistol', 'rifle', 'shotgun', 'sniper']) {
     alice.hold(w);
     bob.hold('pistol');
     await sleep(200);
@@ -100,7 +100,7 @@ const hitsWithEach = async (label) => {
     if (after.some((m) => m.t === 'hurt' || (m.t === 'kill' && m.victim === bob.name && m.w === w))) counted.push(w);
     if (after.some((m) => m.t === 'kill' && m.victim === bob.name)) await sleep(5500); // back after RESPAWN_MS, past his protection
   }
-  ok(`${label}: a hit with each of the four counts`, counted.join('+') === ALL, counted.join('+'));
+  ok(`${label}: a hit with each of the five counts`, counted.join('+') === ALL, counted.join('+'));
 };
 await hitsWithEach('in Action');
 // Bob was beaten by the sniper's hit (100): he came back. Again with each, now that he lives again.
@@ -241,13 +241,13 @@ if (o.rifle) {
   }
 }
 
-// Over: everyone told all four again (the admin the bazooka too), and the hits count again.
+// Over: everyone told all five again (the admin the bazooka too), and the hits count again.
 const told = alice.weapons().length;
 admin.send({ t: 'mode', kind: 'free' });
 await sleep(1500);
-ok('after Zombies Alice is told all four', alice.weapons().length > told && sorted(alice.weapons().at(-1).list) === ALL, sorted(alice.weapons().at(-1)?.list));
-ok('after Zombies Bob is told all four', sorted(bob.weapons().at(-1)?.list) === ALL);
-ok('after Zombies the admin is told all four and the bazooka', sorted(admin.weapons().at(-1)?.list) === `bazooka+${ALL}`);
+ok('after Zombies Alice is told all five', alice.weapons().length > told && sorted(alice.weapons().at(-1).list) === ALL, sorted(alice.weapons().at(-1)?.list));
+ok('after Zombies Bob is told all five', sorted(bob.weapons().at(-1)?.list) === ALL);
+ok('after Zombies the admin is told all five and the bazooka', sorted(admin.weapons().at(-1)?.list) === `bazooka+${ALL}`);
 await sleep(1000);
 await hitsWithEach('after Zombies');
 
