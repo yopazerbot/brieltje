@@ -224,18 +224,22 @@ function liteGun(gun: THREE.Object3D, muzzle: THREE.Vector3): THREE.Group {
   return lite;
 }
 
+/** The glove's three pictures, fetched once and shared by every gun's hands (each gun has a model file and a Glove material of its own). */
+const glovePictures = new Map<string, THREE.Texture>();
 /**
  * The glove on your hands: its painted pictures (tools/gloves.py), laid on the hands by the model's own
  * layout. Leather, fabric, rubber pads, seams and stitches: the colours, the relief and how dull each
  * piece is. Set before the first draw, so the material is compiled once, with them.
  */
 function gloveMaps(m: THREE.MeshStandardMaterial): void {
-  const loader = new THREE.TextureLoader();
   const load = (name: string, colour: boolean) => {
-    const t = loader.load(`/models/${name}.webp`);
+    let t = glovePictures.get(name);
+    if (t) return t;
+    t = new THREE.TextureLoader().load(`/models/${name}.webp`);
     t.flipY = false; // as a model's own pictures are
     t.colorSpace = colour ? THREE.SRGBColorSpace : THREE.NoColorSpace;
     t.anisotropy = 4;
+    glovePictures.set(name, t);
     return t;
   };
   m.map = load('glove_color', true);
