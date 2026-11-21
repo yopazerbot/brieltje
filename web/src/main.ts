@@ -120,6 +120,7 @@ import { BankPlants } from './world/bankPlants';
 import { GrassTufts } from './world/grassTufts';
 import { HostNotice } from './ui/hostNotice';
 import { Objective } from './ui/objective';
+import { ResultsPanel } from './ui/results';
 import { GroundShade } from './world/groundShade';
 import { castLayers, SunShadow } from './world/sunShadow';
 import { groundPiece, groundPieceCoarse, groundPieces, groundSkirt, pieceOf, PIECE, terrain, type GroundCuts } from './world/terrain';
@@ -852,6 +853,7 @@ const hud = new Hud();
 const hostNotice = new HostNotice();
 // Steal the flag's task line on the countdown card and its flag markers in the first seconds (ui/objective.ts).
 const objective = new Objective(document.getElementById('host-bar'));
+const resultsPanel = new ResultsPanel(); // a team game's results moment, once it is over (ui/results.ts)
 // A view of the admin's watch page (src/watch.ts): the camera follows a player; their kills for its tag.
 const watchView = watch ? new WatchView() : null;
 let watching = false;
@@ -2934,6 +2936,7 @@ let teamsMenu = false;
 function followGame(view: ModeView): void {
   const before = games.view;
   games.set(view);
+  resultsPanel.set(games.view, games.me, !watching); // a team game's results moment (ui/results.ts); none in a watch view
   homeLocks.setClosed(view.kind === 'hide' || view.kind === 'tag'); // no hiding inside a home (server/homeGate.mjs shut)
   // Together too, the hint where they come out of a wood (the Sparrenhof), once as the game starts.
   if (view.kind === 'zombies' && before.kind !== 'zombies' && arenaOf(view.zombies?.place).woods) chat.system(() => t('z.woods'));
@@ -4072,6 +4075,7 @@ renderer.setAnimationLoop((now: number) => {
     flagRacks.update(dt);
     assaultCamp.update();
     games.flagHud?.update(games.flagOn ? games.view.flag ?? null : null, me?.username ?? '');
+    resultsPanel.update();
     objective.update(games.flagOn ? games.view.flag ?? null : null, flagTeam(), combat.alive, camera, { x: player.x, y: player.feet, z: player.z }, flagCarrier, me?.username ?? '');
     // The cars: E or Triangle next to one gets you in (unless two are in it already), and out again.
     // A wreck or one gone in a team match (world/vehicleWear.ts) is none: no "get in", and the bike's and horse's prompts free.
