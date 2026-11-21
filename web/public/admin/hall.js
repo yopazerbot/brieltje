@@ -147,11 +147,27 @@
       built?.box.remove();
       built = { key, ...build(m, totals, lang) };
       root.append(built.box);
+      fitNames(built.box);
     }
     // The steps by the time since the end (a page opened midway shows what is due at once).
     built.box.classList.toggle('awards-on', since >= AWARDS_AT);
     built.box.classList.toggle('totals-on', since >= TOTALS_AT && totals.length > 0);
     return true;
+  }
+
+  /**
+   * A long name on an award card (a name may have 20 letters, a card is a quarter of the screen): its type smaller,
+   * step by step, until it fits, down to about half the size; longer still, it ends in an ellipsis (hall.css).
+   */
+  function fitNames(box) {
+    for (const n of box.querySelectorAll('.hr-name')) {
+      let size = parseFloat(getComputedStyle(n).fontSize);
+      const least = size * 0.5;
+      for (let i = 0; i < 12 && n.scrollWidth > n.clientWidth + 1 && size > least; i++) {
+        size = Math.max(least, size * 0.9);
+        n.style.fontSize = `${size.toFixed(1)}px`;
+      }
+    }
   }
 
   function build(m, totals, lang) {
