@@ -34,8 +34,9 @@ WIDTH = {"SCALAR": 1, "VEC2": 2, "VEC3": 3, "VEC4": 4, "MAT2": 4, "MAT3": 9, "MA
 PAD = 2  # texels of margin round each piece (filled by the bake's dilation; keeps mip levels apart)
 CHART_COS = math.cos(math.radians(30))  # a piece grows over triangles within 30 degrees of its first one
 
-# Meshes that keep real-time light: see-through, leaves, small details, loose fittings.
-SKIP_WORDS = ("glass", "clear", "foliage", "detail", "fittings", "trim", "_in")
+# Meshes that keep real-time light: see-through, leaves, small details, loose fittings. And the rain's streaks
+# under the sills (world/rainStreaks.ts): drawn as a multiply over the walls, they already take the walls' baked light.
+SKIP_WORDS = ("glass", "clear", "foliage", "detail", "fittings", "trim", "_in", "streaks")
 # Ground surfaces (roads, pavers, yards, terraces) keep real-time light too: the ground's own shading
 # (world/groundShade.ts) already gives them the houses' shadows, and a rebuilt road lying in the
 # village's ground came out of the bake black, where that ground covered it (Yoshi, 5 Nov 2026). The Sparrenhof's
