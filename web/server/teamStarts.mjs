@@ -58,6 +58,20 @@ const CAR_GAP = 3.2;
 /** m looked along each way for open ground. */
 const VIEW = 20;
 const WAYS = 16;
+/** m of open ground straight ahead for a base's place to face its way out exactly (faceOut). */
+const AHEAD = 6;
+/**
+ * A base's places (Steal the flag, Attack and defend: base): at most this many, and m at least between two (a player is
+ * 0.6 m across: a teammate a step and a half off, never inside your view at the first frame).
+ */
+export const BASE_MOST = 128;
+export const BASE_GAP = 1.5;
+/** m from (px, pz) to the segment (ax, az)-(bx, bz). */
+const segDist = (px, pz, ax, az, bx, bz) => {
+  const dx = bx - ax, dz = bz - az;
+  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (pz - az) * dz) / (dx * dx + dz * dz || 1)));
+  return Math.hypot(px - ax - t * dx, pz - az - t * dz);
+};
 
 const finite = (...v) => v.every((n) => typeof n === 'number' && Number.isFinite(n));
 const round = (v) => Math.round(v * 100) / 100;
@@ -139,21 +153,52 @@ export class TeamStarts {
    * level, outside the homes and the water, clear of the cars; each facing open ground (`toward` breaks a tie).
    */
   spread(x, y, z, toward = null) {
+    return this.rings(x, y, z).map((q) => ({ x: q.x, y: q.y, z: q.z, face: this.face(q.x, q.z, toward) }));
+  }
+
+  /**
+   * The places round (x, y, z), ring by ring (`ring`: 0 the middle, 1 the first ring, ...), with the checks of `spread`.
+   * `o` (Steal the flag's bases, base): `edge` a Bounds for the map (its depth kept to `inset` m), `keep` circles
+   * { x, z, r, solid } no place is in (a solid one, a tent, also blocks the way from the middle), `ok(x, z)` a test of
+   * its own, `most` places at most.
+   */
+  rings(x, y, z, { edge = this.map, inset = 0, keep = [], ok = null, most = MOST } = {}) {
     const cars = Object.values(this.game.cars ?? {});
+    const solid = keep.filter((c) => c.solid);
     const out = [];
-    for (const [r, n] of RINGS) {
+    for (const [i, [r, n]] of RINGS.entries()) {
       const turn = r * 0.37; // each ring a little turned: no spokes
-      for (let k = 0; k < n && out.length < MOST; k++) {
+      for (let k = 0; k < n && out.length < most; k++) {
         const a = (k / n) * Math.PI * 2 + turn;
         const px = x + Math.sin(a) * r;
         const pz = z + Math.cos(a) * r;
-        if (!this.map.inside(px, pz)) continue;
+        if (!edge.inside(px, pz) || (inset && edge.depth && edge.depth(px, pz) < inset)) continue;
+        if (keep.some((c) => Math.hypot(px - c.x, pz - c.z) < c.r) || (ok && !ok(px, pz))) continue;
         const st = this.game.standAt(px, pz);
         if (!st.ok || Math.abs(st.y - y) > LEVEL || onTower(px, pz) || this.indoors(px, pz) || this.water(px, pz) || this.private(px, pz, st.y, HOME_GAP)) continue;
         if (cars.some((c) => Math.hypot(px - c.x, pz - c.z) < CAR_GAP)) continue;
-        if (!this.clear(x, z, px, pz)) continue;
-        out.push({ x: round(px), y: round(st.y), z: round(pz), face: this.face(px, pz, toward) });
+        if (!this.clear(x, z, px, pz) || solid.some((c) => segDist(c.x, c.z, x, z, px, pz) < c.r)) continue;
+        out.push({ x: round(px), y: round(st.y), z: round(pz), ring: i });
       }
+    }
+    return out;
+  }
+
+  /**
+   * A base's places for a whole team (Steal the flag's and Attack and defend's: server/flags.mjs places), spread round
+   * its start places `centres` ([x, z, y]) as `spread` spreads round one start: the start places themselves first, then
+   * the first ring round each, then the next, none within BASE_GAP m of another, at most BASE_MOST. `o`: as `rings`
+   * (edge, inset, keep, ok), and `toward` ({ x, z }), the way out of the base each place faces (faceOut). Each place
+   * { x, y, z, ring, face }.
+   */
+  base(centres, { toward, ...o } = {}) {
+    const all = centres.flatMap(([x, z], c) => this.rings(x, this.game.standAt(x, z).y, z, { ...o, most: Infinity }).map((q, k) => ({ ...q, c, k })));
+    all.sort((a, b) => a.ring - b.ring || a.c - b.c || a.k - b.k);
+    const out = [];
+    for (const q of all) {
+      if (out.length >= BASE_MOST) break;
+      if (out.some((p) => Math.hypot(p.x - q.x, p.z - q.z) < BASE_GAP)) continue;
+      out.push({ x: q.x, y: q.y, z: q.z, ring: q.ring, face: this.faceOut(q.x, q.z, toward) });
     }
     return out;
   }
@@ -169,18 +214,34 @@ export class TeamStarts {
     return true;
   }
 
-  /** A point 10 m off along the way from (x, z) with the most open ground ahead (the other start breaking a tie). */
-  face(x, z, toward) {
+  /**
+   * A point 10 m off along the way from (x, z) with the most open ground ahead (the other start breaking a tie; `pull`
+   * how much it counts against open ground).
+   */
+  face(x, z, toward, pull = 3) {
     const aim = toward ? Math.atan2(toward.x - x, toward.z - z) : null;
     let best = null;
     for (let i = 0; i < WAYS; i++) {
       const a = (i / WAYS) * Math.PI * 2;
       let open = 0;
       while (open < VIEW && this.game.free(x + Math.sin(a) * (open + 1), z + Math.cos(a) * (open + 1)) && this.map.inside(x + Math.sin(a) * (open + 1), z + Math.cos(a) * (open + 1))) open++;
-      const score = open + (aim === null ? 0 : 3 * Math.cos(a - aim));
+      const score = open + (aim === null ? 0 : pull * Math.cos(a - aim));
       if (!best || score > best.score) best = { score, a };
     }
     return [round(x + Math.sin(best.a) * 10), round(z + Math.cos(best.a) * 10)];
+  }
+
+  /**
+   * The way out of a base from (x, z): straight at `toward` (its stand, the field beyond) when the ground is open that
+   * way for AHEAD m, else the open way nearest to it (never a wall a step ahead).
+   */
+  faceOut(x, z, toward) {
+    if (!toward) return this.face(x, z, null);
+    const d = Math.hypot(toward.x - x, toward.z - z) || 1;
+    const ux = (toward.x - x) / d, uz = (toward.z - z) / d;
+    let open = 0;
+    while (open < AHEAD && this.game.free(x + ux * (open + 1), z + uz * (open + 1))) open++;
+    return open >= AHEAD ? [round(x + ux * 10), round(z + uz * 10)] : this.face(x, z, toward, 12);
   }
 }
 
