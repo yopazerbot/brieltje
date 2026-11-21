@@ -3,6 +3,8 @@
 //
 // - Beaten, the spirit leaves one launcher at the hover point nearest to where it came apart, lying `lie` s. For the
 //   first `first` s only the sessions that hurt it in that fight may take it, then anyone.
+// - One per win (21 Nov 2026): a holder keeps theirs when the spirit is beaten again; the new win lays a new one. One
+//   lies at a time (a new one replaces one lying unclaimed), one per session in hand, at most MOST_HELD held.
 // - Taken by walking into it: alive, armed, on foot (no car, bike, horse or helicopter seat), not flying, in no drop, no
 //   game running, within `across` / 2 m (and the player's own half width) across and `high` m in height of it, where the
 //   server has them. With `rounds` grenades, counted here. Nothing a page sends takes it.
@@ -41,6 +43,11 @@ export const LATE_MS = 3000;
 /** s and m of slack on a shot's reach along the ground, for the network between the shot's message and its blast's. */
 export const SLACK_S = 0.3;
 export const SLACK_M = 2;
+/**
+ * At most this many launchers held at once, one per win: a win beyond it lays none (nobody told: no line fits, and the
+ * fight's own end says it was won). Over an evening's hall of 30, three holders is plenty and keeps the fights fair.
+ */
+export const MOST_HELD = 3;
 /** m: a player's own half width, added to the launcher's half box for a take (as the page's take alone). */
 const BODY = 0.35;
 const GRAVITY = 9.81;
@@ -84,17 +91,28 @@ export class SpiritLauncher {
   constructor(game, d) {
     this.game = game;
     this.d = d;
+    /** The launcher lying, or null: { at: 'lying', x, y, z, n, until, first: session keys or null, firstUntil }. One at most. */
+    this.lying = null;
     /**
-     * The launcher now: null (none), lying ({ at: 'lying', x, y, z, n, until, first: session keys or null, firstUntil }) or
-     * held ({ at: 'held', key, name, n, next (ms: its next shot), away (ms: when its holder's connection dropped, or 0) }).
+     * The launchers held, one per win (at most MOST_HELD): { at: 'held', key, name, n, next (ms: its next shot), away (ms:
+     * when its holder's connection dropped, or 0) }. One per session.
      */
-    this.l = null;
+    this.held = [];
   }
 
-  /** The spirit was beaten (BrookSpirit.onBeaten): the launcher lies at its drop, the fighters' sessions first. */
+  /** The launcher lying, else the first held, else null: the one launcher of a fight (the welcome's, the tests'). */
+  get l() {
+    return this.lying ?? this.held[0] ?? null;
+  }
+
+  /**
+   * The spirit was beaten (BrookSpirit.onBeaten): a launcher lies at its drop, the fighters' sessions first. One per win:
+   * whoever holds one from an earlier win keeps it (before, the new one took it out of their hands); one lying unclaimed
+   * is replaced, not doubled; with MOST_HELD held already the win lays none (a server never fills with launchers).
+   */
   drop(beaten) {
     const g = this.game;
-    if (g.room || g.modes.active || !beaten?.drop) return;
+    if (g.room || g.modes.active || !beaten?.drop || this.held.length >= MOST_HELD) return;
     const at = beaten.at;
     const first = new Set();
     for (const name of beaten.by ?? []) {
@@ -104,19 +122,48 @@ export class SpiritLauncher {
     this.lie(beaten.drop, this.d.rounds, at, this.d.lie * 1000, first, at + this.d.first * 1000);
   }
 
-  /** The launcher lies at `spot` with `n` grenades for `ms`; only sessions `first` may take it until `firstUntil`. */
+  /** A launcher lies at `spot` with `n` grenades for `ms` (one lying before is gone); only sessions `first` may take it until `firstUntil`. */
   lie(spot, n, now, ms, first = null, firstUntil = 0) {
-    const held = this.l?.at === 'held' ? this.l : null;
-    this.l = { at: 'lying', x: spot.x, y: spot.y, z: spot.z, n, until: now + ms, first, firstUntil };
-    if (held) this.disarm(held);
-    this.game.broadcast({ t: 'sgl', e: 'drop', x: spot.x, y: spot.y, z: spot.z, n, ms });
+    this.lying = { at: 'lying', x: spot.x, y: spot.y, z: spot.z, n, until: now + ms, first, firstUntil };
+    this.tell({ t: 'sgl', e: 'drop', x: spot.x, y: spot.y, z: spot.z, n, ms });
   }
 
-  /** It is gone: out of its holder's hands, every page told. */
+  /**
+   * A message about the launcher lying, to every page but the holders': their page takes its own launcher out of their
+   * hands on any `drop` or `gone` (src/world/spiritFight.ts launcher, made for one launcher). A holder doesn't see one
+   * lying (they can't take a second); told it when theirs is out of their hands (lose).
+   */
+  tell(msg) {
+    const holders = new Set(this.held.map((h) => this.holder(h)?.p).filter(Boolean));
+    if (!holders.size) return this.game.broadcast(msg);
+    for (const [, p] of this.game.audience()) if (!holders.has(p)) this.game.send(p.ws, msg); // the watch views too, as broadcast
+  }
+
+  /** The launcher lying is gone (its time is up): every page but the holders' told. */
+  lyingGone() {
+    this.lying = null;
+    this.tell({ t: 'sgl', e: 'gone' });
+  }
+
+  /**
+   * Held launcher `h` is gone (emptied, its holder away too long, or down inside a home): out of their hands; their page
+   * told it is gone, or, with one lying, shown that one instead (lie's `drop` takes theirs out of their hands too).
+   */
+  lose(h) {
+    this.held = this.held.filter((x) => x !== h);
+    const q = this.holder(h);
+    this.disarm(h);
+    const l = this.lying;
+    if (!l) return this.tell({ t: 'sgl', e: 'gone' });
+    if (q) this.game.send(q.p.ws, { t: 'sgl', e: 'drop', x: l.x, y: l.y, z: l.z, n: l.n, ms: Math.max(0, l.until - Date.now()) });
+  }
+
+  /** Every launcher gone (a game starts): out of every holder's hands, every page told. */
   gone() {
-    const held = this.l?.at === 'held' ? this.l : null;
-    this.l = null;
-    if (held) this.disarm(held);
+    const held = this.held;
+    this.lying = null;
+    this.held = [];
+    for (const h of held) this.disarm(h);
     this.game.broadcast({ t: 'sgl', e: 'gone' });
   }
 
@@ -146,26 +193,32 @@ export class SpiritLauncher {
    */
   step(now) {
     const g = this.game;
-    const l = this.l;
-    if (l && g.modes.active) this.gone();
-    else if (l?.at === 'lying') {
-      if (now >= l.until) this.gone();
+    if ((this.lying || this.held.length) && g.modes.active) this.gone();
+    const l = this.lying;
+    if (l) {
+      if (now >= l.until) this.lyingGone();
       else this.takes(l, now);
-    } else if (l?.at === 'held') {
-      const h = this.holder(l);
-      if (!h) {
-        l.away ||= now;
-        if (now - l.away >= this.d.lost * 1000) this.gone();
-      } else {
-        l.away = 0;
-        l.name = h.name;
-        if (!h.p.alive) {
-          // Down inside a home: gone, so that no page learns where in it (every page hears of a launcher lying).
-          const st = h.p.state;
-          if (g.gate?.insideOf(h.p)) this.gone();
-          else this.lie({ x: st.x, y: st.y, z: st.z }, l.n, now, this.d.dropLie * 1000);
-        }
+    }
+    for (const h of [...this.held]) {
+      const c = this.holder(h);
+      if (!c) {
+        h.away ||= now;
+        if (now - h.away >= this.d.lost * 1000) this.lose(h);
+        continue;
       }
+      h.away = 0;
+      h.name = c.name;
+      if (c.p.alive) continue;
+      // Down inside a home: gone, so that no page learns where in it (every page hears of a launcher lying). Else it
+      // falls where they went down (one lying before is gone: lie).
+      if (g.gate?.insideOf(c.p)) {
+        this.lose(h);
+        continue;
+      }
+      this.held = this.held.filter((x) => x !== h);
+      this.disarm(h);
+      const st = c.p.state;
+      this.lie({ x: st.x, y: st.y, z: st.z }, h.n, now, this.d.dropLie * 1000);
     }
     this.armAll();
   }
@@ -180,24 +233,30 @@ export class SpiritLauncher {
       const st = p?.state;
       if (!st || !fin(st.x) || Math.hypot(st.x - l.x, st.z - l.z) > reach || Math.abs(st.y - l.y) > this.d.high) continue;
       if (!this.mayTake(name, p, now) || typeof p.key !== 'string') continue;
+      if (this.held.some((h) => h.key === p.key)) continue; // one in their hands already: one each
       if (l.first && now < l.firstUntil && !l.first.has(p.key)) continue; // the fighters' first claim
-      this.l = { at: 'held', key: p.key, name, n: l.n, next: 0, away: 0 };
-      g.broadcast({ t: 'sgl', e: 'taken', name, n: l.n }, name); // the others; the holder hears its count (arm)
+      this.held.push({ at: 'held', key: p.key, name, n: l.n, next: 0, away: 0 });
+      this.lying = null;
+      g.broadcast({ t: 'sgl', e: 'taken', name, n: l.n }, name); // the others (a holder's page: nothing lay there); the holder hears its count (arm)
       return;
     }
   }
 
-  /** Each player's guns as they should be: the launcher in the holder's hands only. */
+  /** Each player's guns as they should be: a launcher in its holder's hands only. */
   armAll() {
-    const h = this.holder();
-    for (const p of this.game.players.values()) this.arm(p, !!h && h.p === p);
+    const mine = new Map();
+    for (const h of this.held) {
+      const c = this.holder(h);
+      if (c) mine.set(c.p, h);
+    }
+    for (const p of this.game.players.values()) this.arm(p, mine.has(p), mine.get(p)?.n);
   }
 
-  /** `p` carries the launcher when `on`, else not; their page is told when that changed (the count first). */
-  arm(p, on) {
+  /** `p` carries a launcher (with `n` grenades) when `on`, else not; their page is told when that changed (the count first). */
+  arm(p, on, n = 0) {
     if (!p.weapons || p.weapons.has('launcher') === on) return;
     if (on) {
-      this.game.send(p.ws, { t: 'sgl', e: 'left', n: this.l.n }); // before the guns: the page gives it with this count
+      this.game.send(p.ws, { t: 'sgl', e: 'left', n }); // before the guns: the page gives it with this count
       p.weapons.add('launcher');
     } else {
       p.weapons.delete('launcher');
@@ -218,11 +277,11 @@ export class SpiritLauncher {
    */
   fire(name, p, m, now) {
     const g = this.game;
-    const l = this.l;
     if (!p || !m || typeof m !== 'object' || !fin(now)) return 'bad';
+    const l = this.held.find((h) => h.key === p.key) ?? null; // the one in this session's hands
     const vel = clampShot(m.vx, m.vy, m.vz);
     if (!vel || ![m.x, m.y, m.z].every((v) => typeof v === 'number' && fin(v))) return 'bad';
-    if (l?.at !== 'held' || l.key !== p.key || this.holder(l)?.p !== p) return 'holder';
+    if (!l || this.holder(l)?.p !== p) return 'holder';
     if (l.n < 1) return 'empty';
     const st = p.state;
     if (!st || !p.alive || !st.armed || st.flying || g.roundOver || g.modes.active || g.room) return 'who';
@@ -238,7 +297,7 @@ export class SpiritLauncher {
     if (p.thrown.length > 8) p.thrown.shift();
     g.broadcastFrom({ t: 'nade', name, ...from, ...vel, l: 1 }, p, name);
     g.send(p.ws, { t: 'sgl', e: 'left', n: l.n });
-    if (l.n === 0) this.gone();
+    if (l.n === 0) this.lose(l);
     return 'ok';
   }
 
@@ -262,7 +321,7 @@ export class SpiritLauncher {
     return 'ok';
   }
 
-  /** `welcome.spirit.gl`: lying ({ x, y, z, n, ms }), held ({ name, n }) or null. */
+  /** `welcome.spirit.gl`: the one lying ({ x, y, z, n, ms }), else one held ({ name, n }), or null. */
   view(now) {
     const l = this.l;
     if (l?.at === 'lying') return { x: l.x, y: l.y, z: l.z, n: l.n, ms: Math.max(0, l.until - now) };

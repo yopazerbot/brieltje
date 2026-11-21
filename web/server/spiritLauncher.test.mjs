@@ -3,7 +3,7 @@ import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import { Game } from './game.mjs';
 import { BY, DATA } from './brookSpirit.mjs';
-import { clampShot, EARLY_MS, inReach, LATE_MS, RELOAD_MS } from './spiritLauncher.mjs';
+import { clampShot, EARLY_MS, inReach, LATE_MS, MOST_HELD, RELOAD_MS } from './spiritLauncher.mjs';
 import { makeTerrain } from '../shared/terrain.mjs';
 
 // The Brook Spirit's grenade launcher when people play together (server/spiritLauncher.mjs), with a real Game on a fake
@@ -397,4 +397,150 @@ test('garbage never throws', () => {
   t.lw().drop(null);
   t.lw().drop({});
   t.tick(100);
+});
+
+// One launcher per win (21 Nov 2026): a second win while someone still holds the first's laid a new one by taking it out
+// of their hands. Now a holder keeps theirs, the win lays a new one, one lying is replaced (never two lying), one per
+// session in hand, and at most MOST_HELD held at once (a win beyond it lays none).
+const ANOTHER = { x: DROP.x + 12, z: DROP.z + 5 };
+ANOTHER.y = ground(ANOTHER.x, ANOTHER.z);
+const beatAt = (t, by, at) => t.game.spirit.beat({ names: by, by, drop: { ...at } }, t.now());
+const heldBy = (t) => t.lw().held.map((h) => h.key).sort();
+
+test('beaten again while ann holds the first: she keeps hers, a new one lies, and kid takes it: two held', () => {
+  const t = holding();
+  const ann = t.game.players.get('ann');
+  assert.equal(t.lw().fire('ann', ann, shot(ann), t.now()), 'ok');
+  t.at(RELOAD_MS);
+  const kid = t.join('kid');
+  t.sent.get('ann').length = 0;
+  beatAt(t, ['kid'], ANOTHER);
+  t.tick(50);
+  assert.ok(ann.weapons.has('launcher'), 'still in her hands');
+  assert.deepEqual(heldBy(t), ['k-ann']);
+  assert.equal(t.lw().lying?.n, L.rounds, 'a new one lies, full');
+  assert.equal(t.lw().fire('ann', ann, shot(ann), t.now()), 'ok', 'and she fires on');
+  // Her page is not told of it lying: src/world/spiritFight.ts takes the launcher out of the hands on any drop.
+  assert.ok(!t.sent.get('ann').some((m) => m.t === 'sgl' && (m.e === 'drop' || m.e === 'gone')), 'not to the holder');
+  assert.ok(t.sent.get('kid').some((m) => m.t === 'sgl' && m.e === 'drop'), 'to the others');
+  assert.ok(!t.sent.get('ann').some((m) => m.t === 'weapons' && !m.list.includes('launcher')), 'her guns never sent without it');
+  t.put('kid', ANOTHER.x, ANOTHER.z);
+  t.tick(50);
+  assert.deepEqual(heldBy(t), ['k-ann', 'k-kid'], 'two held, one per win');
+  assert.equal(t.lw().lying, null);
+  assert.ok(kid.weapons.has('launcher') && ann.weapons.has('launcher'));
+  t.put('kid', ANOTHER.x, ANOTHER.z, 'launcher');
+  assert.equal(t.lw().fire('kid', kid, shot(kid), t.now()), 'ok');
+  assert.equal(t.lw().held.find((h) => h.key === 'k-kid').n, L.rounds - 1, 'each its own count');
+  assert.equal(t.lw().held.find((h) => h.key === 'k-ann').n, L.rounds - 2);
+});
+
+test('one lying unclaimed is replaced by the next win, never doubled; a holder never takes a second', () => {
+  const t = setup();
+  t.join('ann');
+  t.join('bob');
+  t.put('ann', DROP.x + 30, DROP.z);
+  t.put('bob', DROP.x + 30, DROP.z + 2);
+  t.beat(['ann']);
+  t.tick(50);
+  beatAt(t, ['ann'], ANOTHER);
+  t.tick(50);
+  assert.deepEqual([t.lw().lying.x, t.lw().lying.z], [ANOTHER.x, ANOTHER.z], 'the newer one');
+  assert.equal(t.lw().held.length, 0);
+  assert.equal(t.out.filter((m) => m.t === 'sgl' && m.e === 'drop').length, 2, 'every page told: it lies there now (the page shows one)');
+  t.put('ann', DROP.x, DROP.z); // where the first lay: nothing there any more
+  t.tick(50);
+  assert.equal(t.lw().held.length, 0);
+  t.put('ann', ANOTHER.x, ANOTHER.z);
+  t.tick(50);
+  assert.deepEqual(heldBy(t), ['k-ann']);
+  // Another win: ann, holding one, stands on it: not hers; bob takes it.
+  beatAt(t, ['ann', 'bob'], ANOTHER);
+  t.tick(500);
+  assert.deepEqual(heldBy(t), ['k-ann'], 'one each');
+  assert.equal(t.lw().lying?.n, L.rounds);
+  t.put('bob', ANOTHER.x, ANOTHER.z);
+  t.tick(50);
+  assert.deepEqual(heldBy(t), ['k-ann', 'k-bob']);
+});
+
+test('at most MOST_HELD held: a win beyond it lays none; one emptied, the next win lays one again', () => {
+  const t = setup();
+  const names = ['ann', 'bob', 'cid', 'dee'];
+  for (const n of names) t.join(n);
+  for (let i = 0; i < MOST_HELD; i++) {
+    beatAt(t, [names[i]], DROP);
+    t.put(names[i], DROP.x, DROP.z);
+    t.tick(50);
+    t.put(names[i], DROP.x + 40 + i * 3, DROP.z); // away from the next one's drop
+  }
+  assert.equal(t.lw().held.length, MOST_HELD);
+  t.out.length = 0;
+  beatAt(t, ['dee'], DROP);
+  t.tick(50);
+  assert.equal(t.lw().lying, null, 'none laid');
+  assert.equal(t.out.filter((m) => m.t === 'sgl' && m.e === 'drop').length, 0);
+  assert.equal(t.lw().held.length, MOST_HELD, 'nobody lost theirs');
+  // ann fires all of hers: then a win lays one again.
+  const ann = t.put('ann', DROP.x + 40, DROP.z, 'launcher');
+  for (let k = 0; k < L.rounds; k++) {
+    assert.equal(t.lw().fire('ann', ann, shot(ann), t.now()), 'ok');
+    t.at(RELOAD_MS);
+  }
+  assert.equal(t.lw().held.length, MOST_HELD - 1);
+  assert.equal(ann.weapons.has('launcher'), false);
+  beatAt(t, ['dee'], DROP);
+  t.tick(50);
+  assert.equal(t.lw().lying?.n, L.rounds);
+});
+
+test('a holder emptied or down while another lies: their page shown the one lying, the others\' told nothing wrong', () => {
+  const t = holding();
+  const ann = t.game.players.get('ann');
+  t.join('kid');
+  t.put('kid', DROP.x + 30, DROP.z);
+  beatAt(t, ['kid'], ANOTHER);
+  t.tick(50);
+  // ann fires her last grenades.
+  t.out.length = 0;
+  for (let k = 0; k < L.rounds; k++) {
+    t.lw().fire('ann', ann, shot(ann), t.now());
+    t.at(RELOAD_MS);
+  }
+  assert.equal(t.lw().held.length, 0);
+  assert.equal(t.lw().lying?.x, ANOTHER.x, 'the one lying still lies');
+  assert.ok(!t.out.some((m) => m.t === 'sgl' && m.e === 'gone'), 'no page told "gone": theirs would take away the one lying');
+  const last = t.sent.get('ann').filter((m) => m.t === 'sgl').at(-1);
+  assert.deepEqual([last.e, last.x, last.z], ['drop', ANOTHER.x, ANOTHER.z], 'her page now shows the one lying');
+  // bob takes it (past kid's first claim), and goes down far from where the next win lays one: his falls where he went
+  // down and replaces that one (one lying, the newest).
+  t.at(L.first * 1000);
+  const bob = t.put('bob', ANOTHER.x, ANOTHER.z);
+  t.tick(50);
+  assert.deepEqual(heldBy(t), ['k-bob']);
+  beatAt(t, ['kid'], DROP);
+  t.tick(50);
+  t.put('bob', DROP.x + 20, DROP.z + 4);
+  t.game.npcDamage('bob', bob, 500, t.now(), BY, { x: DROP.x, z: DROP.z });
+  t.tick(50);
+  assert.equal(t.lw().held.length, 0);
+  assert.deepEqual([t.lw().lying.x, t.lw().lying.n], [bob.state.x, L.rounds], 'his fell where he went down: one lying, the newest');
+});
+
+test('a game starting takes every launcher away, lying and held', () => {
+  const t = holding();
+  const kid = t.join('kid');
+  beatAt(t, ['kid'], ANOTHER);
+  t.put('kid', ANOTHER.x, ANOTHER.z);
+  t.tick(50);
+  beatAt(t, ['kid'], DROP);
+  t.tick(50);
+  assert.equal(t.lw().held.length, 2);
+  assert.ok(t.lw().lying);
+  t.game.modes.start('treasure', 'boss');
+  t.tick(50);
+  assert.equal(t.lw().held.length, 0);
+  assert.equal(t.lw().lying, null);
+  assert.equal(kid.weapons.has('launcher'), false);
+  assert.equal(t.game.players.get('ann').weapons.has('launcher'), false);
 });
