@@ -74,6 +74,17 @@ test('the host\'s own spot: refused inside a home, its garden, the water, indoor
   assert.equal(ts.check(inside.x, ground(inside.x, inside.z), inside.z).code, 'startWater', 'in a pond');
   const ok = ts.check(cx, ground(cx, cz), cz);
   assert.ok(ok.ok && ok.spots.length >= MIN_ROOM, JSON.stringify(ok).slice(0, 200));
+  // By the school's play tower (shared/playground.json): no place on its slide, ladder or under its roof.
+  const tower = JSON.parse(readFileSync(new URL('../shared/playground.json', import.meta.url), 'utf8')).tower;
+  const near = ts.check(475, ground(475, -820), -820);
+  assert.ok(near.ok, near.code);
+  for (const s of near.spots) {
+    const dx = s.x - tower.at[0];
+    const dz = s.z - tower.at[1];
+    const v = dx * tower.v[0] + dz * tower.v[1];
+    const w = dx * tower.w[0] + dz * tower.w[1];
+    assert.ok(!(Math.abs(v) < tower.roof.half + 0.3 && w > tower.ladder.foot - 0.3 && w < tower.slide.end[0] + 0.3), `${JSON.stringify(s)} on the play tower`);
+  }
 });
 
 test('"Blue starts here": the admin\'s own spot as the server has it, never the page\'s; only the admin', () => {

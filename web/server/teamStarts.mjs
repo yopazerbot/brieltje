@@ -19,6 +19,19 @@ import { readFileSync } from 'node:fs';
 import { END_GARDEN, HOMES, distanceToHome, homeAt } from '../shared/homes.mjs';
 
 const SPAWNS = JSON.parse(readFileSync(new URL('../shared/spawns.json', import.meta.url), 'utf8'));
+/**
+ * The school's play tower (shared/playground.json): its posts, ladder and slide are no block of the ground map, so a
+ * place on its slide would stand a player in it. Its box along dv and dw (from the ladder's foot to the slide's end), with
+ * room to spare.
+ */
+const TOWER = JSON.parse(readFileSync(new URL('../shared/playground.json', import.meta.url), 'utf8')).tower;
+const onTower = (x, z) => {
+  const dx = x - TOWER.at[0];
+  const dz = z - TOWER.at[1];
+  const v = dx * TOWER.v[0] + dz * TOWER.v[1];
+  const w = dx * TOWER.w[0] + dz * TOWER.w[1];
+  return Math.abs(v) < TOWER.roof.half + 0.6 && w > TOWER.ladder.foot - 0.6 && w < TOWER.slide.end[0] + 0.6;
+};
 
 /** The starts as they were: blue at the house, red at the bungalow (the game's own start places, game.mjs SPAWNS). */
 export const DEFAULT_STARTS = Object.freeze({ blue: 'house', red: 'bungalow' });
@@ -136,7 +149,7 @@ export class TeamStarts {
         const pz = z + Math.cos(a) * r;
         if (!this.map.inside(px, pz)) continue;
         const st = this.game.standAt(px, pz);
-        if (!st.ok || Math.abs(st.y - y) > LEVEL || this.indoors(px, pz) || this.water(px, pz) || this.private(px, pz, st.y, HOME_GAP)) continue;
+        if (!st.ok || Math.abs(st.y - y) > LEVEL || onTower(px, pz) || this.indoors(px, pz) || this.water(px, pz) || this.private(px, pz, st.y, HOME_GAP)) continue;
         if (cars.some((c) => Math.hypot(px - c.x, pz - c.z) < CAR_GAP)) continue;
         if (!this.clear(x, z, px, pz)) continue;
         out.push({ x: round(px), y: round(st.y), z: round(pz), face: this.face(px, pz, toward) });
