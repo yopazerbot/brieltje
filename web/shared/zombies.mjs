@@ -37,8 +37,27 @@ export const ZOMBIE = {
   break: 15000,
   breakStep: 1000,
   breakMax: 25000,
-  /** The most up at once, however many players */
+  /** The most up at once with up to `crowd` players who fight (aliveCap); a big group has its own (crowdMax) */
   maxAlive: 30,
+  /**
+   * A big group (a game night: up to 30 in one game, up to 20 a room in the duel). Thirty guns beat the zombies far
+   * faster than eight, so past `crowd` players who fight each one more adds as much again as each of the first eight
+   * did, as the big co-op games scale a wave's total and its flow with the players rather than the zombies' health
+   * (tools/dev/horde_sim.mjs measured it): `crowdWave` to the wave's size (waveSize, as each of the first eight adds
+   * 0.4), `crowdCap` to the most up at once (aliveCap: 30 for eight, never past `crowdMax`, which the page's figures and
+   * the ticks' bytes set), `crowdPulse` zombies to each pulse (on top of pulsePer), a share `crowdGap` less time between
+   * the pulses of a peak (pulseGap, never under gapLeast of it); the zombies of a pulse come out `crowdStagger` ms apart
+   * (stagger); a big one has a share `crowdBig` more health a player, so thirty take as long to beat it as eight do.
+   * Up to `crowd` players none of this counts: the horde is the same as it was.
+   */
+  crowd: 8,
+  crowdWave: 0.4,
+  crowdCap: 1.5,
+  crowdMax: 45,
+  crowdPulse: 0.15,
+  crowdGap: 0.03,
+  crowdStagger: 100,
+  crowdBig: 0.125,
   /** m: a zombie's half width (they keep this far apart); the big one's */
   radius: 0.35,
   bigRadius: 0.8,
@@ -212,11 +231,12 @@ function crosses(ax, az, bx, bz, cx, cz, dx, dz) {
 
 /**
  * How many zombies wave `n` (1, 2 ...) brings with `players` who fight: 3 + 2n, times 1 for one
- * player, 2.2 for four, 3.8 for eight, 5 for sixteen. The big ones come on top (bigOf).
+ * player, 2.2 for four, 3.8 for eight; past eight ZOMBIE.crowdWave more a player (7 for sixteen, 12.6 for thirty).
+ * The big ones come on top (bigOf).
  */
 export function waveSize(n, players) {
   const p = Math.max(1, players);
-  return Math.round((3 + 2 * n) * (0.6 + 0.4 * Math.min(p, 8) + 0.15 * Math.max(0, p - 8)));
+  return Math.round((3 + 2 * n) * (0.6 + 0.4 * Math.min(p, ZOMBIE.crowd) + ZOMBIE.crowdWave * Math.max(0, p - ZOMBIE.crowd)));
 }
 
 /** Big zombies in wave `n`: one every fifth wave, two every tenth, at most three. */
@@ -231,9 +251,16 @@ export function runnersOf(n, size) {
   return Math.min(size, Math.max(1, Math.round(size * share)));
 }
 
-/** The most up at once: 11 alone, 20 for four, 30 from eight players. */
+/** The most up at once: 11 alone, 20 for four, 30 for eight; past eight (ZOMBIE.crowd) crowdCap more a player, up to crowdMax. */
 export function aliveCap(players) {
-  return Math.min(ZOMBIE.maxAlive, 8 + 3 * Math.max(1, players));
+  const p = Math.max(1, players);
+  if (p <= ZOMBIE.crowd) return Math.min(ZOMBIE.maxAlive, 8 + 3 * p);
+  return Math.min(ZOMBIE.crowdMax, Math.round(aliveCap(ZOMBIE.crowd) + ZOMBIE.crowdCap * (p - ZOMBIE.crowd)));
+}
+
+/** How many more than ZOMBIE.crowd players fight (0 up to it): what the big group's rules go by. */
+function past(players) {
+  return Math.max(0, players - ZOMBIE.crowd);
 }
 
 /**
@@ -1441,8 +1468,9 @@ export class Horde {
    * rest, from a side each, with its escort.
    */
   plan() {
-    const size = (ZOMBIE.pulse + ZOMBIE.pulsePer * this.players) * (1 + ZOMBIE.pulseGrow * (this.wave - 1));
-    const quick = Math.max(ZOMBIE.gapLeast, 1 - ZOMBIE.gapShrink * (this.wave - 1));
+    const crowd = past(this.players);
+    const size = (ZOMBIE.pulse + ZOMBIE.pulsePer * this.players + ZOMBIE.crowdPulse * crowd) * (1 + ZOMBIE.pulseGrow * (this.wave - 1));
+    const quick = Math.max(ZOMBIE.gapLeast, (1 - ZOMBIE.gapShrink * (this.wave - 1)) / (1 + ZOMBIE.crowdGap * crowd));
     const [g0, g1] = ZOMBIE.pulseGap.map((g) => g * quick);
     const [k0, k1] = ZOMBIE.peak;
     const out = [];
@@ -1597,6 +1625,7 @@ export class Horde {
       if (run) this.runners--;
     }
     const s = zombieStats(this.wave, big, this.mix(), run);
+    if (big && this.players > ZOMBIE.crowd) s.hp = Math.round(s.hp * (1 + ZOMBIE.crowdBig * past(this.players))); // as long to beat as for eight
     const id = this.nextId++;
     const kind = big ? BIG : run ? RUNNER : WALKERS[Math.floor(this.mix() * WALKERS.length)];
     const yaw = Math.atan2(this.home.x - at.x, this.home.z - at.z);
@@ -1604,7 +1633,7 @@ export class Horde {
       id, kind, x: at.x, y: this.nav.y(at.node, at.x, at.z), z: at.z, node: at.node, yaw, speed: 0, top: s.speed, hp: s.hp, max: s.hp, damage: s.damage,
       act: 'walk', actAt: now, until: 0, struck: false, next: now + 800, downAt: 0, target: null,
     });
-    this.nextSpawn = now + ZOMBIE.stagger;
+    this.nextSpawn = now + (this.players > ZOMBIE.crowd ? ZOMBIE.crowdStagger : ZOMBIE.stagger);
     if ((cur.n <= 0 || !this.toSpawn) && (cur.bigs <= 0 || !this.bigs)) {
       // The pulse is out: a rest after a peak, else the next pulse of it.
       this.cur = null;

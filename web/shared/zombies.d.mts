@@ -15,6 +15,14 @@ export const ZOMBIE: {
   breakStep: number;
   breakMax: number;
   maxAlive: number;
+  crowd: number;
+  crowdWave: number;
+  crowdCap: number;
+  crowdMax: number;
+  crowdPulse: number;
+  crowdGap: number;
+  crowdStagger: number;
+  crowdBig: number;
   radius: number;
   bigRadius: number;
   attackFrom: number;
