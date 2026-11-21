@@ -12,8 +12,8 @@ the round where they were), each part made again in detail:
 - the break frame: a steel receiver rounded over the top and closed by a dome, its long edges chamfered; a side plate
   let into each side with a thin seam round it and socket screws; the hinge pin through both knuckles, its slotted
   head on the left; the trigger's and the hammer's pin heads; the standing breech with the firing pin's bushing;
-- the latch on top: a lever on a round boss swung to the right, its thumb pad ridged across; behind it the sliding
-  safety on the tang, ridged, in a slot, a white dot ahead of it;
+- the latch on top: a lever on a round boss lying back along the tang, its thumb pad ridged across; behind it the sliding
+  safety on the tang, ridged, in a slot, a white dot beside it;
 - the barrel: its breech face with the extractor, a dark seam where it breaks from the frame, a reinforced muzzle with
   a chamfered crown, and the twelve-groove rifling inside; the olive handguard, eight-sided, with retaining rings at
   both ends, ribs over its top and heat slots cut into its sides; the fore grip shaped for the fingers on its mount;
@@ -154,9 +154,12 @@ for s in (-1, 1):  # the side plate's recess
     frame_cuts.append(dark(box(s * FW - 0.0012 if s > 0 else -FW - 0.01, s * FW + 0.01 if s > 0 else -FW + 0.0012, -0.056, 0.040, 0.034, B - 0.006)))
 body.append(prism("frame", [(-0.07, B), (-0.074, 0.04), (-0.062, 0.027), (0.05, 0.027), (0.0565, 0.034), (0.0565, B)], FW, M["Steel"], 0.0016, 2,
                   cuts=frame_cuts))
-# The dome and the rounded top, the safety's slot cut into the tang.
-body.append(lathe("shroud", [(-0.079, 0.0), (-0.0785, 0.012), (-0.0755, 0.021), (-0.07, FW), (0.0545, FW), (0.0565, 0.0255), (0.0565, 0)], M["Steel"], 32, AX))
-body[-1] = K.cut(body[-1], [dark(box(-0.0055, 0.0055, -0.073, -0.051, B + FW - 0.0014, B + 0.05))])
+# The rounded top, and at the back a long dome that slopes down into the tang (aimed, the eye looks over it: a short
+# full dome showed as a dark round mass at the foot of the view); the safety's slot cut into the tang.
+TZ = B + 0.0185  # the tang's top where the safety slides
+body.append(lathe("shroud", [(-0.080, 0.0), (-0.0795, 0.008), (-0.076, 0.014), (-0.066, 0.019), (-0.052, 0.024), (-0.042, FW), (0.0545, FW),
+                             (0.0565, 0.0255), (0.0565, 0)], M["Steel"], 32, AX))
+body[-1] = K.cut(body[-1], [dark(box(-0.0055, 0.0055, -0.0715, -0.0575, TZ - 0.0012, B + 0.05))])
 for s in (-1, 1):
     body.append(block("plate", s * (FW - 0.0012), s * (FW - 0.0004), -0.0553, 0.0393, 0.0347, B - 0.0067, M["Dark"], 0.0004, 1))
     for y, z in ((-0.047, 0.040), (0.031, 0.040), (-0.047, B - 0.013), (0.031, B - 0.013)):
@@ -177,14 +180,15 @@ body.append(ring("hingepin", -FW - 0.0006, FW + 0.0006, 0.0058, M["Dark"], (0, H
 body.append(K.cut(ring("pinhead", -FW - 0.0022, -FW - 0.0004, 0.0070, M["Steel"], (0, HY, HZ), 20, "x", 0.0006),
                   [dark(box(-FW - 0.004, -FW - 0.0012, HY - 0.0062, HY + 0.0062, HZ - 0.0006, HZ + 0.0006))]))
 body.append(screw(FW + 0.0006, HY, HZ, 1, 0.0034))
-# The latch on top: a round boss, the lever swung to the right and back, its thumb pad ridged across.
+# The latch on top: a round boss, the lever lying back along the tang, its thumb pad ridged across.
 LZ = B + FW
 body.append(lathe("boss", [(LZ - 0.002, 0), (LZ - 0.002, 0.0070), (LZ + 0.0032, 0.0070), (LZ + 0.0040, 0.0062), (LZ + 0.0040, 0)], M["Dark"], 20,
                   (0, -0.030, 0), "z"))
 body.append(ring("bossscrew", LZ + 0.0040, LZ + 0.0050, 0.0030, M["Steel"], (0, -0.030, 0), 12, "z", 0.0003))
-d = Vector((0.026, -0.020, 0)).normalized()
+# Closed, it lies straight back along the tang on the centre line, its thumb pad towards you (aimed, you look over it).
+d = Vector((0.0, -1.0, 0))
 n = Vector((-d.y, d.x, 0))
-p0, p1 = Vector((0.0, -0.030, 0)), Vector((0.026, -0.050, 0))
+p0, p1 = Vector((0.0, -0.030, 0)), Vector((0.0, -0.043, 0))
 lever = [p0 - n * 0.0040 - d * 0.004, p1 - n * 0.0046, p1 + d * 0.0005 - n * 0.0062, p1 + d * 0.0125 - n * 0.0062, p1 + d * 0.0135 - n * 0.004,
          p1 + d * 0.0135 + n * 0.004, p1 + d * 0.0125 + n * 0.0062, p1 + d * 0.0005 + n * 0.0062, p1 + n * 0.0046, p0 + n * 0.0040 - d * 0.004]
 body.append(zprism("lever", [(p.x, p.y) for p in lever], LZ + 0.0018, LZ + 0.0052, M["Dark"], 0.0007, 1))
@@ -192,10 +196,10 @@ for k in range(5):
     c = p1 + d * (0.0015 + 0.0024 * k)
     rid = [c - d * 0.0005 - n * 0.0056, c + d * 0.0005 - n * 0.0056, c + d * 0.0005 + n * 0.0056, c - d * 0.0005 + n * 0.0056]
     body.append(zprism("ridge", [(p.x, p.y) for p in rid], LZ + 0.0050, LZ + 0.0063, M["Dark"], 0.0002, 1))
-# The sliding safety on the tang behind it, ridged, a white dot ahead of it ("safe").
-body.append(block("safety", -0.0046, 0.0046, -0.0700, -0.0590, LZ - 0.0016, LZ + 0.0026, M["Dark"], 0.0007, 1,
-                  cuts=[dark(box(-0.01, 0.01, y, y + 0.0009, LZ + 0.0018, LZ + 0.004)) for y in (-0.0672, -0.0650, -0.0628, -0.0606)]))
-body.append(ring("safedot", LZ - 0.0004, LZ + 0.0002, 0.0012, M["Dot"], (0, -0.047, 0), 10, "z", 0.0))
+# The sliding safety on the tang behind it, ridged, a white dot beside it ("safe").
+body.append(block("safety", -0.0046, 0.0046, -0.0700, -0.0590, TZ - 0.0016, TZ + 0.0026, M["Dark"], 0.0007, 1,
+                  cuts=[dark(box(-0.01, 0.01, y, y + 0.0009, TZ + 0.0018, TZ + 0.004)) for y in (-0.0672, -0.0650, -0.0628, -0.0606)]))
+body.append(ring("safedot", B + 0.0160, B + 0.0168, 0.0012, M["Dot"], (0.0075, -0.064, 0), 10, "z", 0.0))
 # The grip in walnut, checkered on both sides, a steel cap; the trigger, curved, and the guard in a smooth curve.
 GRIP_PTS = [(0.005, 0.0), (-0.003, -0.04), (-0.012, -0.095), (-0.05, -0.098), (-0.045, -0.06), (-0.036, -0.02), (-0.035, 0.0)]
 body.append(prism("grip", GRIP_PTS, 0.0145, M["Wood"], 0.0038, 2))
