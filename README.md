@@ -22,14 +22,18 @@ The whole project was made with AI. Yoshi Parlevliet, a cybersecurity consultant
 
 ## Recent updates — 21 November 2026
 
-- **A horde that comes in groups.** In Zombies, a wave arrives in bunches from two or three sides at once, with peaks and short rests. Zombies far off and out of sight hurry, so a group arrives together.
+- **A laser rifle for everyone.** A beam weapon with heat, a vent and an energy cell, carried by everyone outside Zombies. In Zombies it is a rare drop from wave 6 or the stall's dearest buy. The server keeps its pace and decides its hits, and others see the beam.
+- **A horde that comes in groups.** In Zombies, a wave arrives in bunches from two or three sides at once, with peaks and short rests. Zombies far off and out of sight hurry, so a group arrives together. With 9 to 30 players the waves grow with the group and up to 45 zombies stand at once.
+- **Hedges, fences and young trees break.** A car at speed ploughs through a garden hedge, flattens a light fence or snaps a young tree, and is slowed doing it. Everyone sees the same gap, and it mends after a few minutes. A parked car that is run into gets a dent.
 - **Cars that show what happened.** Dents where they were hit, cracked glass, broken lamps, steam from a hard crash and mud up the sides. Hedges give way; a pond holds a car.
 - **The helicopter moves the air.** Its rotor blows dust, leaves and grass about. It has lamps and a sound that carries across the village.
 - **Weather you can stand in.** One wind moves the trees, the grass, the rain, the snow and the smoke. Rain and snow stop at roofs, the ground under a carport stays dry, and you can watch the rain from indoors.
 - **Longer shadows.** On High the sun's shadows reach 100 m. At dusk they lie long across fields, streets and house walls, on every preset.
 - **Houses with more to see.** Roof tiles in relief, boards under the eaves, porch lamps, and lit windows that differ from house to house at night.
 - **The woods and the fields.** A forest floor with sun flecks and fallen leaves, late-autumn crowns, tree lines fading into haze, tree nurseries with rows of young trees, and rough plots with tall tussocks.
-- **A grenade launcher to win.** Beat the Brook Spirit together and it leaves a grenade launcher behind. The server decides who gets it.
+- **A grenade launcher to win.** Beat the Brook Spirit together and it leaves a grenade launcher behind, one per win. The server decides who gets it.
+- **The host reaches every room.** On a game night the host's countdown, start, Stop, freeze, mute, kick, move and bring also reach players in a Zombies room.
+- **Lighter on phones.** A phone or tablet starts on Low, and loading holds far less memory, so the game starts again on an iPhone.
 - **Paint that sticks.** In the paint games, splats show on players, zombies, cars and helicopters.
 
 ## Recent updates — 20 November 2026
