@@ -99,8 +99,11 @@ export function fieldRows(g: THREE.BufferGeometry, p: Prism): void {
     // Leaves of the declared nursery's kind, a little different from field to field.
     if (crop[2] !== undefined) hue = Math.min(1, Math.max(0, crop[2] + (hue - 0.5) * 0.2));
   } else if (p.m === 'field_crop') {
-    kind = h < 0.78 ? NURSERY : SOWN;
-    hue = hue < 0.62 ? 0.35 : 0.6; // green or turning
+    // Half green on the photo and no crop declared: a paddock, a big garden gone rough, a plot beside the houses. Rough
+    // grass going to seed in clumps, now and then a winter cereal. Never a nursery: those are declared (above), and
+    // their rows of leaves, drawn flat, lay bright stripes across gardens and up to the houses' walls.
+    kind = h < 0.78 ? COVER : SOWN;
+    if (kind === COVER) own = 0.9 + 0.1 * own; // the shader's rough grass (over 0.88)
   } else kind = h < 0.45 ? PLOUGHED : h < 0.75 ? STUBBLE : SOWN;
   const n = g.attributes.position.count;
   const a = new Int8Array(n * 4);
@@ -240,6 +243,14 @@ export function patchFields(material: THREE.MeshStandardMaterial): void {
               + texture2D(fieldNoise, mat2(0.809, 0.588, -0.588, 0.809) * vFieldXZ / 23.0 + 0.4).r * 0.4;
             float seed = own * smoothstep(0.45, 0.65, 0.5 + (seedAt - 0.5) * 1.6 + (texelLum - 0.13) * 2.0);
             vec3 c = mix(leaf * mix(0.9, 1.06, smoothstep(0.5, 0.0, tri) * fade), vec3(0.2, 0.14, 0.07), seed);
+            if (own > 0.88) {
+              // Rough grass on a plot no farmer declared (own over 0.88): never sown, so no drill rows; olive tussocks
+              // and dead straw between them, mottled at a stride's scale rather than in flat blotches.
+              float tussock = texture2D(fieldNoise, vFieldXZ / 1.7 + 0.13).r;
+              vec3 grass = vec3(0.07, 0.105, 0.035) * (0.75 + 0.5 * tussock) * (0.8 + 0.2 * texelLum / 0.13);
+              vec3 straw = vec3(0.16, 0.14, 0.075) * (0.8 + 0.4 * texelLum / 0.13);
+              c = mix(grass, straw, 0.6 * smoothstep(0.35, 0.75, 0.5 + (seedAt - 0.5) * 1.2 + (tussock - 0.5) * 0.6));
+            }
             diffuseColor.rgb = mix(c, soil, 0.08 * (1.0 - own));
             fieldPlant = 1.0;
           }
