@@ -32,6 +32,7 @@ import { ARENAS } from '../shared/arenas.mjs';
 import { DUEL_KINDS, SIDES as DUEL_SIDES } from './duel.mjs';
 import { FIELDS } from '../shared/flagFields.mjs';
 import { DEFAULT_STARTS, FAR_M, NEAR_M, START_PLACES, nearestPlace } from './teamStarts.mjs';
+import { linkOf, serverLoad } from './hostLink.mjs';
 
 // The first two are the evening's blue and red (Yoshi, 16 Nov 2026: "team blue vs team red").
 export const EVENING_TEAMS = [
@@ -307,11 +308,16 @@ export class Host {
 
   // ------------------------------------------------------------------ what the host page shows
 
-  /** `addresses`: each player's connection too (connectionOf), for the host page's own call only (server.mjs). */
-  view({ addresses = false } = {}) {
+  /**
+   * `addresses`: each player's connection too (connectionOf), for the host page's own call only (server.mjs).
+   * `links`: each player's connection quality and the server's own delay (server/hostLink.mjs), the host page's too.
+   */
+  view({ addresses = false, links = false } = {}) {
     const now = Date.now();
     for (const [n, k] of this.knocking) if (now - k.at > KNOCK_MS || this.game.players.has(n)) this.knocking.delete(n);
+    const load = links ? serverLoad() : null;
     const person = (x, name, p) => ({
+      ...(load ? { link: linkOf(name, p, load, now) } : {}),
       name, role: p.role, team: this.teamIdOf(name), muted: this.muted.has(name), alive: p.alive, ping: p.rttAvg === null ? null : Math.round(p.rttAvg),
       points: this.scores[name]?.points ?? 0, kills: p.score.kills, deaths: p.score.deaths,
       inside: !!x.gate.insideOf(p), // inside a private home: the hall screen shows a card, never the picture
@@ -323,6 +329,7 @@ export class Host {
     const away = (this.game.hub?.games() ?? []).filter((x) => x !== this.game).flatMap((x) => [...x.players.entries()].filter(([, p]) => !p.guard)
       .map(([name, p]) => ({ ...person(x, name, p), where: duel.has(x) ? `duel-${x.room.duel}` : 'room' })));
     return {
+      ...(load ? { load: { busy: load.busy } } : {}),
       players, away, max: this.game.rules.maxPlayers, most: this.game.most, locked: this.locked, knocking: [...this.knocking.keys()],
       frozen: this.frozen, chatOff: this.chatOff, words: words.list(),
       teams: { count: this.teamCount, list: EVENING_TEAMS },

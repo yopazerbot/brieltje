@@ -4,7 +4,7 @@
 //
 // - the round trip: the last, a smoothed mean (as TCP's: 1/8 of each new one) and the jitter (as RTP's, RFC 3550: the
 //   mean change between two round trips, 1/16 of each new one);
-// - the pings it did not answer before the next one;
+// - the pings it did not answer before the next one (the last minute's also with their times, at most 31 numbers);
 // - per name, this evening: the reconnects (back after the connection was lost) and the connections lost.
 //
 // It measures the network only (and Caddy in front): the game's own ping (server/game.mjs pings) is answered by the
@@ -24,6 +24,9 @@ export const SLOW_MS = 150;
 export const MAX_NAMES = 1000;
 /** A ping unanswered this long when the name connects again: the old connection was gone (a reconnect, not a move). */
 const STALE_MS = 1500;
+/** The host page's "missed in the last minute" (recent): the times of a connection's last misses, at most one a ping. */
+export const RECENT_MS = 60_000;
+const RECENT_KEEP = Math.ceil(RECENT_MS / PING_MS) + 1;
 
 const round = (v) => (typeof v === 'number' ? Math.round(v * 10) / 10 : null);
 
@@ -54,7 +57,7 @@ export class LinkQuality {
       if (rec) rec.reconnects++;
     }
     if (rec) rec.gone = false;
-    const e = { ws, name, rec, at: 0, payload: null, last: null, mean: null, jitter: 0, missed: 0, streak: 0, pongs: 0 };
+    const e = { ws, name, rec, at: 0, payload: null, last: null, mean: null, jitter: 0, missed: 0, streak: 0, pongs: 0, misses: [] };
     this.conns.set(name, e);
     ws.on('pong', (data) => this.pong(e, data));
     ws.on('close', (code) => this.closed(e, code)); // once: closed() forgets the entry
@@ -83,6 +86,8 @@ export class LinkQuality {
         e.missed++;
         e.streak++;
         this.missed++;
+        e.misses.push(now);
+        if (e.misses.length > RECENT_KEEP) e.misses.shift();
       }
       e.payload = this.payload();
       e.at = now;
@@ -114,6 +119,14 @@ export class LinkQuality {
       connected: !!e, rtt: round(e?.last), mean: round(e?.mean), jitter: e && e.pongs > 1 ? round(e.jitter) : null,
       missed: e?.missed ?? 0, waiting: !!e?.payload && this.now() - e.at > this.every, reconnects: rec?.reconnects ?? 0, lost: rec?.lost ?? 0,
     };
+  }
+
+  /** How many pings `name`'s connection now missed in the last `ms` (the host page: server/hostLink.mjs); 0 for none. */
+  recent(name, ms = RECENT_MS) {
+    const e = this.conns.get(name);
+    if (!e) return 0;
+    const from = this.now() - ms;
+    return e.misses.filter((t) => t > from).length;
   }
 
   /** The players together (ms): the latest round trips' median, 95th percentile and max, how many are slow; the totals. */

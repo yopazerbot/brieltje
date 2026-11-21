@@ -405,7 +405,8 @@ async function api(req, res, url) {
   // action at a time. Behind the admin's session (above) and body()'s same-origin JSON check (no cross-site posts);
   // every action is checked again there, and at most ten a second.
   // ?addresses=1: each player's network address too (server/host.mjs connectionOf), asked by the host page only.
-  if (path === '/api/host' && method === 'GET') return json(res, 200, { ...game.host.view({ addresses: url.searchParams.get('addresses') === '1' }), server: monitor.view() });
+  // ?links=1: each player's connection quality (server/hostLink.mjs), the host page's too; never the watch page's.
+  if (path === '/api/host' && method === 'GET') return json(res, 200, { ...game.host.view({ addresses: url.searchParams.get('addresses') === '1', links: url.searchParams.get('links') === '1' }), server: monitor.view() });
   if (path === '/api/host' && method === 'POST') {
     const r = game.host.act(s.username, await body(req));
     return r.error ? json(res, 400, r) : json(res, 200, r);
