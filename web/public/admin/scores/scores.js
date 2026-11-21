@@ -365,10 +365,11 @@
     const cols = columns(shown);
     const grid = el('div', `cols${colsClass(shown.length)}`);
     let rank = 0;
+    const named = colsOf(shown.length) === 1; // the team's name after a player's in one column; in more the dot says it
     for (const list of cols) {
       const col = el('div', 'rows');
       col.append(head([t('points'), t('won'), t('played')]));
-      for (const p of list) col.append(row(++rank, { name: p.name, color: TEAM_COLOURS[p.team] ?? '#9aa5b1' }, [p.points, p.wins, p.played], { lead: p.points > 0, out: !p.here, note: p.team ? t(p.team) : '' }));
+      for (const p of list) col.append(row(++rank, { name: p.name, color: TEAM_COLOURS[p.team] ?? '#9aa5b1' }, [p.points, p.wins, p.played], { lead: p.points > 0, out: !p.here, note: named && p.team ? t(p.team) : '' }));
       grid.append(col);
     }
     // Tonight's route times and gnomes beside the names: those with a line only; in a narrow column beside two columns

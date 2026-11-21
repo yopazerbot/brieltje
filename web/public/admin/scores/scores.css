@@ -176,7 +176,7 @@ header .hall-sound { position: static; margin-top: 0.8vmin; }
 .tonight .row.head .num { font-size: max(1.3vmin, calc(var(--f) * 0.46)); letter-spacing: 0.05em; }
 .tonight .cols.two { display: grid; grid-template-columns: repeat(var(--cols, 2), minmax(0, 1fr)); gap: 0 2.6vmin; }
 .tonight .cols.two .rows { --f: var(--fit, 2.9vmin); }
-.tonight .cols.two .row .name small, .tonight .cols.two .row .bar { display: none; }
+.tonight .cols.two .row .bar { display: none; }
 .tonight .cols.tight .rows { --f: var(--fit, 2.5vmin); gap: calc(var(--f) * 0.2); }
 .tonight .cols.tight .row { padding: calc(var(--f) * 0.13) calc(var(--f) * 0.5); line-height: 1.2; }
 .tonight .cols.tight .row .rank { width: calc(var(--f) * 1.15); height: calc(var(--f) * 1.15); }
