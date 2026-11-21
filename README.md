@@ -22,6 +22,11 @@ The whole project was made with AI. Yoshi Parlevliet, a cybersecurity consultant
 
 ## Recent updates — 21 November 2026
 
+- **Every gun built again.** The pistol, carbine, shotgun, sniper rifle, bazooka and grenade launcher are new models made in Blender from the published sizes of their kind: real parts, edges that catch the light, no brand. Aiming looks down the gun as big shooters frame it. Other players' guns are light copies, so a crowd stays cheap to draw.
+- **Team games for a full hall.** Team against team with start places the host chooses. In Steal the flag and Attack and defend every player starts on a spot of their own, is told their task on the countdown, gets a marker to the flag, and hears flag news from their own side: a fanfare for good news, an alarm for bad.
+- **Riders sit in the saddle.** On a horse a player sits with their feet in the stirrups and their hands on the reins, and moves with the walk, the trot, the gallop and a jump.
+- **As many players as the host allows.** The number of players is the host's own setting, with no ceiling in the code. Tested comfortable up to 60 on one PC.
+- **Tools for a game night.** The host sees who is connected from which address, and `lan.cmd -Monitor` adds live dashboards of the server in Grafana.
 - **A laser rifle for everyone.** A beam weapon with heat, a vent and an energy cell, carried by everyone outside Zombies. In Zombies it is a rare drop from wave 6 or the stall's dearest buy. The server keeps its pace and decides its hits, and others see the beam.
 - **A horde that comes in groups.** In Zombies, a wave arrives in bunches from two or three sides at once, with peaks and short rests. Zombies far off and out of sight hurry, so a group arrives together. With 9 to 30 players the waves grow with the group and up to 45 zombies stand at once.
 - **Hedges, fences and young trees break.** A car at speed ploughs through a garden hedge, flattens a light fence or snaps a young tree, and is slowed doing it. Everyone sees the same gap, and it mends after a few minutes. A parked car that is run into gets a dent.
