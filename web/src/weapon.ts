@@ -174,49 +174,101 @@ const loadedGuns = new Map<WeaponId, LoadedGun>();
 /** The sleeves' material (all hands share it): the colour of your suit. */
 const sleeves: THREE.MeshStandardMaterial[] = [];
 
-/** For the others' hands, the small accents take the colour of a material nearby: 3 or 4 draws per gun, as before. */
-const FOLD: Record<string, string> = {
+/**
+ * For the others' hands, the small accents take the colour of a material nearby: 3 or 4 draws per gun, as before. A
+ * list: the first that gun has (a part folds on along the chain: the sights' dots into the steel, the steel into the
+ * slide). The guns modelled again fold their own into one of the same role in the paint look and of about the colour.
+ */
+const FOLD: Record<string, string | string[]> = {
   Dot: 'Steel', Brass: 'Steel', Glass: 'Dark', Lens: 'Dark', RedDot: 'Dark', Grip: 'Dark', Warhead: 'Olive',
   // The laser rifle's lit parts: in the others' hands a steady glow, the read-out and the fins as in yours at rest (theirs aren't yours to light).
   LaserFin: 'Steel', LaserLens: 'Dark', LaserReticle: 'Dark', LaserGlass: 'Dark',
   LaserBar0: 'LaserGlow', LaserBar1: 'LaserGlow', LaserBar2: 'LaserGlow', LaserBar3: 'LaserGlow', LaserBar4: 'LaserGlow',
+  // The pins, levers and barrels into the pistol's slide, the shotgun's blued steel, the rifles' phosphated barrel, the laser's upper.
+  Steel: ['PistolSlide', 'ShotgunBlued', 'RiflePhosphate', 'LaserAnodised'],
+  Polymer: ['RifleAnodised'], // the carbine's and the bolt-action rifle's black furniture into their black receiver
 };
 
-/** The gun merged into one mesh per material (not the parts' moving): a few draws per player who holds it. */
-function liteGun(gun: THREE.Object3D, muzzle: THREE.Vector3): THREE.Group {
-  gun.updateMatrixWorld(true);
-  const inv = gun.matrixWorld.clone().invert();
-  const byMat = new Map<THREE.Material, THREE.BufferGeometry[]>();
+/** How far off (m, seen at a 72 degree view) the others' guns and those lying about turn to their light copy. */
+const FAR_GUN = 7;
+const TAN36 = Math.tan((36 * Math.PI) / 180);
+const _lodA = new THREE.Vector3();
+const _lodB = new THREE.Vector3();
+/**
+ * The full gun up close, its light copy (`<gun>_far`, tools/guns/farcopy.py) further off: switched by its size on
+ * the screen, as three's LOD by distance but with the view's angle in it, so a scope's zoom brings the full one back.
+ */
+class GunLod extends THREE.LOD {
+  override update(camera: THREE.Camera): void {
+    const [near, far] = this.levels;
+    if (!far) return;
+    const p = camera as THREE.PerspectiveCamera;
+    const fov = p.isPerspectiveCamera ? p.getEffectiveFOV() : 72;
+    _lodA.setFromMatrixPosition(camera.matrixWorld);
+    _lodB.setFromMatrixPosition(this.matrixWorld);
+    const seen = (_lodA.distanceTo(_lodB) * Math.tan((fov * Math.PI) / 360)) / TAN36;
+    far.object.visible = seen >= far.distance * (far.object.visible ? 1 - far.hysteresis : 1);
+    near.object.visible = !far.object.visible;
+  }
+}
+
+/**
+ * The gun merged into one mesh per material (not the parts' moving): a few draws per player who holds it. With its
+ * light copy `far` (tools/guns/farcopy.py), the two in a GunLod: the full gun only close by.
+ */
+function liteGun(gun: THREE.Object3D, muzzle: THREE.Vector3, far?: THREE.Object3D): THREE.Group {
   const named = new Map<string, THREE.Material>();
   gun.traverse((o) => {
     if (o instanceof THREE.Mesh) named.set((o.material as THREE.Material).name, o.material as THREE.Material);
   });
-  gun.traverse((o) => {
-    if (!(o instanceof THREE.Mesh)) return;
-    const g = new THREE.BufferGeometry();
-    for (const name of ['position', 'normal']) {
-      const a = o.geometry.getAttribute(name); // 16- and 8-bit in the file: floats here, as merging wants one kind
-      const f = new Float32Array(a.count * 3);
-      for (let i = 0; i < a.count; i++) f.set([a.getX(i), a.getY(i), a.getZ(i)], i * 3);
-      g.setAttribute(name, new THREE.BufferAttribute(f, 3));
+  const fold = (m: THREE.Material): THREE.Material => {
+    for (let i = 0, n = m.name; i < 3; i++) {
+      const to = ([] as string[]).concat(FOLD[n] ?? []).find((k) => named.has(k));
+      if (!to) break;
+      m = named.get(to)!;
+      n = to;
     }
-    g.setIndex(o.geometry.index!.clone());
-    g.applyMatrix4(o.matrixWorld.clone().premultiply(inv));
-    const own = o.material as THREE.Material;
-    const mat = (o.userData.kit ? undefined : named.get(FOLD[own.name])) ?? own;
-    const list = byMat.get(mat) ?? [];
-    list.push(g);
-    byMat.set(mat, list);
-  });
+    return m;
+  };
+  const merged = (root: THREE.Object3D): THREE.Group => {
+    root.updateMatrixWorld(true);
+    const inv = root.matrixWorld.clone().invert();
+    const byMat = new Map<THREE.Material, THREE.BufferGeometry[]>();
+    root.traverse((o) => {
+      if (!(o instanceof THREE.Mesh)) return;
+      const g = new THREE.BufferGeometry();
+      for (const name of ['position', 'normal']) {
+        const a = o.geometry.getAttribute(name); // 16- and 8-bit in the file: floats here, as merging wants one kind
+        const f = new Float32Array(a.count * 3);
+        for (let i = 0; i < a.count; i++) f.set([a.getX(i), a.getY(i), a.getZ(i)], i * 3);
+        g.setAttribute(name, new THREE.BufferAttribute(f, 3));
+      }
+      g.setIndex(o.geometry.index!.clone());
+      g.applyMatrix4(o.matrixWorld.clone().premultiply(inv));
+      const own = o.material as THREE.Material;
+      const mat = o.userData.kit ? own : fold(own);
+      const list = byMat.get(mat) ?? [];
+      list.push(g);
+      byMat.set(mat, list);
+    });
+    const group = new THREE.Group();
+    for (const [mat, list] of byMat) {
+      const mesh = new THREE.Mesh(mergeGeometries(list), mat);
+      mesh.userData.ignoreRay = true;
+      mesh.userData.kit = kitMats.includes(mat);
+      mesh.castShadow = true;
+      group.add(mesh);
+      for (const g of list) g.dispose();
+    }
+    return group;
+  };
   const lite = new THREE.Group();
-  for (const [mat, list] of byMat) {
-    const mesh = new THREE.Mesh(mergeGeometries(list), mat);
-    mesh.userData.ignoreRay = true;
-    mesh.userData.kit = kitMats.includes(mat);
-    mesh.castShadow = true;
-    lite.add(mesh);
-    for (const g of list) g.dispose();
-  }
+  if (far) {
+    const lod = new GunLod();
+    lod.addLevel(merged(gun), 0);
+    lod.addLevel(merged(far), FAR_GUN, 0.1);
+    lite.add(lod);
+  } else lite.add(merged(gun));
   const tip = new THREE.Object3D();
   tip.name = 'muzzle';
   tip.position.copy(muzzle);
@@ -338,7 +390,15 @@ function takeGun(scene: THREE.Object3D, w: WeaponId): void {
   const muzzle = gun.getObjectByName(`${w}_muzzle`)!;
   muzzle.name = 'muzzle';
   const sight = gun.getObjectByName(`${w}_sight`)!.position.clone();
-  loadedGuns.set(w, { gun, hands, sight, lite: liteGun(gun, muzzle.position) });
+  // Its light copy for the others' hands and the guns lying about, when the file has one (tools/guns/farcopy.py): the
+  // gun's own materials, as dressed above, and its kit shown with Paintball's.
+  const far = scene.getObjectByName(`${w}_far`);
+  far?.removeFromParent();
+  far?.getObjectByName(`${w}_far_kit`)?.traverse((o) => (o.userData.kit = true));
+  far?.traverse((o) => {
+    if (o instanceof THREE.Mesh) o.material = own.get(o.material as THREE.Material) ?? o.material;
+  });
+  loadedGuns.set(w, { gun, hands, sight, lite: liteGun(gun, muzzle.position, far) });
 }
 
 const skin =new THREE.MeshStandardMaterial({ color: '#c99a7b', roughness: 0.7 });
