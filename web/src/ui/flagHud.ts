@@ -21,6 +21,22 @@ export interface FlagState {
   z?: number;
   /** On the ground: ms until it goes home by itself */
   ms?: number;
+  /** Carried and away 45 s or more (server/flags.mjs BEACON_MS): a beacon over the carrier on every page */
+  seen?: boolean;
+}
+/** One player's counts in a flag game (server/flags.mjs statsList): in the view at its end, and on the admin's board. */
+export interface FlagPlayerStats {
+  name: string;
+  team: FlagTeam | null;
+  captures: number;
+  returns: number;
+  stops: number;
+  guards: number;
+  assists: number;
+  tags: number;
+  tagged: number;
+  /** The acts' points (server/flags.mjs WORTH), not the tags' */
+  points: number;
 }
 /** Steal the flag in a mode's view (server/flags.mjs view). */
 export interface FlagGameView {
@@ -36,6 +52,10 @@ export interface FlagGameView {
   racks?: Record<FlagTeam, { at: 'rack' | 'out'; ms?: number }>;
   /** Attack and defend (server/assault.mjs view): its round, roles, results, heavy weapons, traps and spawn truck */
   assault?: AssaultView;
+  /** How far each team got the other team's flag towards its own stand, whole per cent (the tie-break; not in Attack and defend) */
+  way?: Record<FlagTeam, number>;
+  /** Each player's counts, once the game is over (its result showing) */
+  stats?: FlagPlayerStats[];
 }
 export interface FlagEvent {
   ev: 'taken' | 'dropped' | 'returned' | 'captured' | 'safe' | 'swapped';

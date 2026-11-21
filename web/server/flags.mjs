@@ -15,8 +15,13 @@
 //   left alone for RETURN_MS it goes home by itself.
 // - Down: back at your own base after BACK_MS, protected for SAFE_MS (ends at your first shot, as always, and when you
 //   take or return a flag).
-// - The clock: the programme's minutes (12 by default). Most captures wins; level, SUDDEN_MS of sudden death where the
-//   next capture wins; still level, most tags; still level, a draw.
+// - The clock: the programme's minutes (12 by default). Most captures wins. Level with a flag away from its stand: sudden
+//   death while one is away, SUDDEN_MS at most, the next capture wins. Level with both flags home (at the time, or again
+//   in sudden death): the tie-break at once (flagTie): the team that got the other flag furthest towards its own stand
+//   (the best share of the way, Attack and defend's measure); within WAY_LEVEL per cent, most tags; still level, a draw.
+// - The standoff: a flag away BEACON_MS puts a beacon over whoever carries it, on every page (view `seen`).
+// - Credit for helpers (WORTH, counts): a flag brought home, a carrier stopped, a tag by a guard, an assist; each
+//   player's counts for the game's end (view `stats`) and the evening's points (server/host.mjs gameOver).
 //
 // Guarded against (the attack table: DECISIONS.md, "Steal the flag"):
 // - forged pickups and captures: no message takes, drops, returns or scores a flag. Every flag event is derived here,
@@ -30,6 +35,12 @@
 //   swap is checked there (admin only, this game played, SWAP_MS), and a capture counts for the carrier's team as it is
 //   at that tick, only with that team's own flag home;
 // - protected touches: taking or returning a flag ends spawn protection, so nobody carries one protected.
+// - score forgery and claimed credit (a page claiming a return, a stop, a guard's tag or an assist): no message gives
+//   credit; each is derived from the server's own events (its touches, its captures, its tags through game.mjs damage)
+//   and the positions it holds; the tie-break's share of the way from the flags' places the server keeps; the beacon's
+//   time from the server's clock.
+// - griefing by holding a flag (the standoff, a carrier hiding): the beacon after BEACON_MS, whoever carries it, its
+//   clock kept through drops and pick-ups, so dropping it to a teammate does not start it again.
 // - spawn forgery and spawn camping: where a player starts and comes back is the server's choice alone (baseSpot), from
 //   the positions it holds; no message asks for a place. A free place only (nobody within FREE_R m), away from the
 //   opponents there, never where a teammate was just tagged; every place outside the locked homes and their gardens
@@ -42,6 +53,7 @@ import { homeAt } from '../shared/homes.mjs';
 import { STAGE } from './vehicleDamage.mjs';
 import { FlagBazooka } from './flagBazooka.mjs';
 import { FIELDS, FLAG_COLORS, FLAG_TEAMS, baseOf, fieldEdge, fieldOf, vehicleTeam } from '../shared/flagFields.mjs';
+import { shareOfWay } from '../shared/assaultFields.mjs';
 
 export { FIELDS, FLAG_COLORS, FLAG_TEAMS };
 const BOUNDS = loadBounds(JSON.parse(readFileSync(new URL('../shared/bounds.json', import.meta.url), 'utf8')));
@@ -51,8 +63,33 @@ const BIKES = JSON.parse(readFileSync(new URL('../shared/bike.json', import.meta
 const EDGES = Object.fromEntries(Object.values(FIELDS).map((f) => [f.id, fieldEdge(f, BOUNDS)]));
 /** ms: the default clock. */
 export const FLAG_MS = 12 * 60_000;
-/** ms of sudden death after a level clock. */
-export const SUDDEN_MS = 5 * 60_000;
+/**
+ * ms of sudden death at most after a level clock, played only while a flag is away from its stand (Modes.flagTick): the
+ * next capture wins; both flags home with the score still level, the tie-break at once (flagTie).
+ */
+export const SUDDEN_MS = 2 * 60_000;
+/**
+ * ms a flag may be away from its stand before whoever carries it gets a beacon every page draws (view `seen`): the
+ * standoff, both flags carried and nobody able to score, found and broken. The clock runs from the flag's taking from its
+ * stand, through drops and pick-ups, until it is home again (scored, brought home, or home by itself).
+ */
+export const BEACON_MS = 45_000;
+/** Whole per cent: two teams this close in how far they got the other flag are level on it (flagTie: then the tags). */
+export const WAY_LEVEL = 5;
+/**
+ * What a game's acts are worth on the game's own scoreboard (a player's points; a tag is 100 there, a bullseye 50 more:
+ * game.mjs POINTS). A capture stays the big thing; each helpful act is worth about a tag (a tag near your own stand half
+ * a tag more, on top of the tag's own 100: it is the one that comes most often).
+ */
+export const WORTH = Object.freeze({ capture: 500, home: 100, stop: 100, guard: 50, assist: 100 });
+/** The evening's points (server/host.mjs) for a game's acts: one for every EVENING_PER of WORTH's, at most EVENING_MAX a game. */
+export const EVENING_PER = 300;
+export const EVENING_MAX = 3;
+/** m: a tag by a guard (the tagger or the tagged this near their stand, their own flag home). */
+export const GUARD_R = 20;
+/** m and ms: a teammate this near the carrier in the last ASSIST_MS before a capture has an assist. */
+export const ASSIST_R = 10;
+export const ASSIST_MS = 10_000;
 /** ms a dropped flag lies before it goes home by itself. */
 export const RETURN_MS = 30_000;
 /** ms down before you are back at your base. */
@@ -158,6 +195,10 @@ export class FlagGame {
     this.look = look ?? null;
     this.score = { blue: 0, red: 0 };
     this.tags = { blue: 0, red: 0 };
+    /** For each team, the best share of the way (0 to 1) it got the other team's flag towards its own stand (flagTie) */
+    this.way = { blue: 0, red: 0 };
+    /** Each player's counts this game, by name (credit, statsList): kept when they leave, for the game's end */
+    this.counts = new Map();
     this.sudden = false;
     /** team -> its flag: at 'home', 'carried' (by a name) or on the 'ground' (since when) */
     this.flags = Object.fromEntries(FLAG_TEAMS.map((t) => [t, this.homeFlag(t)]));
@@ -195,7 +236,85 @@ export class FlagGame {
 
   homeFlag(team) {
     const s = this.baseOf(team).stand;
-    return { at: 'home', by: null, x: s[0], y: s[2], z: s[1], since: 0, warp: 0 };
+    return { at: 'home', by: null, x: s[0], y: s[2], z: s[1], since: 0, warp: 0, out: 0, seen: false, escort: null };
+  }
+
+  // ------------------------------------------------------------------ credit for helpers
+
+  /** `name`'s counts this game (a fresh row the first time). */
+  countOf(name) {
+    let c = this.counts.get(name);
+    if (!c) this.counts.set(name, (c = { team: this.teams[name] ?? null, captures: 0, returns: 0, stops: 0, guards: 0, assists: 0, tags: 0, tagged: 0, bonus: 0 }));
+    return c;
+  }
+
+  /**
+   * `name` did `act` (a WORTH key, or 'tag' / 'tagged': counted only): one more in their counts, and WORTH's points on the
+   * game's own scoreboard (their score's points, sent with the next scores). True when points were given.
+   */
+  credit(name, act) {
+    const p = this.game.players.get(name);
+    if (!name || p?.guard) return false;
+    const c = this.countOf(name);
+    if (this.teams[name]) c.team = this.teams[name];
+    const key = { capture: 'captures', home: 'returns', stop: 'stops', guard: 'guards', assist: 'assists', tag: 'tags', tagged: 'tagged' }[act];
+    c[key]++;
+    const worth = WORTH[act] ?? 0;
+    if (!worth) return false;
+    c.bonus += worth;
+    if (p?.score) p.score.points += worth;
+    return true;
+  }
+
+  /** Every page's scoreboard with the points just given (credit). */
+  sendScores() {
+    this.game.broadcast?.({ t: 'scores', list: this.game.scoreList() });
+  }
+
+  /**
+   * Who walks with the carrier of flag `f` (`team`'s flag): each teammate of theirs within ASSIST_R m, alive, now (for an
+   * assist at a capture). A new carrier starts a new list.
+   */
+  escortStep(f, now) {
+    if (f.at !== 'carried') return;
+    const p = this.game.players.get(f.by);
+    const mine = this.teams[f.by];
+    if (!p?.state || !mine) return;
+    if (!f.escort || f.escort.by !== f.by) f.escort = { by: f.by, at: new Map() };
+    for (const [n, o] of this.game.players) {
+      if (n === f.by || o.guard || !o.alive || !o.state || this.teams[n] !== mine) continue;
+      if (Math.hypot(o.state.x - p.state.x, o.state.z - p.state.z) <= ASSIST_R && Math.abs(o.state.y - p.state.y) <= ASSIST_R) f.escort.at.set(n, now);
+    }
+  }
+
+  /** A capture by `name` of flag `f`: theirs, and an assist for each teammate near them in the last ASSIST_MS. */
+  captureCredit(name, f, now) {
+    this.credit(name, 'capture');
+    if (f.escort?.by === name) for (const [n, at] of f.escort.at) if (now - at <= ASSIST_MS && this.teams[n] === this.teams[name]) this.credit(n, 'assist');
+  }
+
+  /**
+   * Each player's counts, for the game's end (view `stats`, the results moment) and the admin's board: { name, team,
+   * captures, returns, stops, guards, assists, tags, tagged, points (WORTH's, the acts' only) }, the most points first.
+   */
+  statsList() {
+    return [...this.counts].map(([name, c]) => ({ name, team: c.team, captures: c.captures, returns: c.returns, stops: c.stops, guards: c.guards, assists: c.assists, tags: c.tags, tagged: c.tagged, points: c.bonus }))
+      .sort((a, b) => b.points - a.points || b.tags - a.tags || (a.name < b.name ? -1 : 1));
+  }
+
+  /** The evening's extra points for `name` from this game's acts (server/host.mjs gameOver): EVENING_PER each, EVENING_MAX at most. */
+  eveningBonus(name) {
+    return Math.min(EVENING_MAX, Math.floor((this.counts.get(name)?.bonus ?? 0) / EVENING_PER));
+  }
+
+  /** How far each away flag got towards the stand of the team that has it now (way): its best share of the way. */
+  measureWay() {
+    for (const team of FLAG_TEAMS) {
+      const f = this.flags[team];
+      if (f.at === 'home') continue;
+      const to = other(team);
+      this.way[to] = Math.max(this.way[to], shareOfWay(this.baseOf(team).stand, this.baseOf(to).stand, f.x, f.z));
+    }
   }
 
   /** The team of the flag `name` carries, or null. */
@@ -311,12 +430,14 @@ export class FlagGame {
   /**
    * One tick: every flag's carrier followed (and dropped when down, gone or moved by the server), dropped flags sent home
    * after RETURN_MS or by their own team's touch or picked up by the carrier's team, flags on their stands taken, and
-   * captures. Returns the events in order: { ev: 'taken' | 'dropped' | 'returned' | 'captured', team, name }, `team`
-   * being the flag's.
+   * captures; the helpers' credit, how far each flag got and the beacon. Returns the events in order: { ev: 'taken' |
+   * 'dropped' | 'returned' | 'captured' | 'safe' | 'seen', team, name }, `team` being the flag's ('seen': the beacon
+   * came on, the server's own: no page's line).
    */
   step(now) {
     const g = this.game;
     const events = [];
+    let scored = false; // points given this tick (credit): every page's scoreboard told once
     for (const team of FLAG_TEAMS) {
       const f = this.flags[team];
       if (f.at !== 'carried') continue;
@@ -367,22 +488,27 @@ export class FlagGame {
       if (own.at === 'ground' && this.near(st, own.x, own.y, own.z, TOUCH)) {
         this.flags[mine] = this.homeFlag(mine);
         events.push({ ev: 'returned', team: mine, name });
+        scored = this.credit(name, 'home') || scored; // a flag brought home
         p.protectedUntil = 0; // touching a flag ends your spawn protection, as a first shot does
       }
       // The other team's flag, on its stand or on the ground: yours to carry (one flag a player; the enemy's only).
       // Not straight back by whoever dropped it (logging in again where it fell, with a reconnect's fresh protection).
       const regrab = enemy.at === 'ground' && enemy.dropper === name && now - enemy.since < REGRAB_MS;
       if ((enemy.at === 'home' || enemy.at === 'ground') && !regrab && this.near(st, enemy.x, enemy.y, enemy.z, TOUCH)) {
-        Object.assign(enemy, { at: 'carried', by: name, since: now, warp: p.warp, x: round(st.x), y: round(st.y), z: round(st.z) });
+        // `out`: when it left its stand (the beacon's clock), kept when it is picked up from the ground.
+        const out = enemy.at === 'home' ? now : enemy.out;
+        Object.assign(enemy, { at: 'carried', by: name, since: now, out, warp: p.warp, x: round(st.x), y: round(st.y), z: round(st.z) });
         events.push({ ev: 'taken', team: theirs, name });
         p.protectedUntil = 0; // nobody carries a flag protected
       }
     }
     this.keepStandsFree(now);
+    this.measureWay(); // how far each away flag got (the tie-break)
     // Captures: the carrier at their own stand (in a car too), with their own flag home.
     for (const team of FLAG_TEAMS) {
       const f = this.flags[team];
       if (f.at !== 'carried') continue;
+      this.escortStep(f, now); // who walks with the carrier (an assist at a capture)
       const p = g.players.get(f.by);
       const mine = this.teams[f.by];
       if (!p?.alive || !p.state || mine !== other(team) || this.flags[mine].at !== 'home') continue;
@@ -390,9 +516,21 @@ export class FlagGame {
       const reach = g.carOf?.(f.by) ? CAPTURE_CAR : CAPTURE;
       if (!this.near(p.state, s[0], s[2], s[1], reach)) continue;
       this.score[mine]++;
+      this.way[mine] = 1; // all the way
       events.push({ ev: 'captured', team, name: f.by });
+      this.captureCredit(f.by, f, now);
+      scored = true;
       this.flags[team] = this.homeFlag(team);
     }
+    // The beacon: a flag away BEACON_MS, whoever carries it is seen by every page (view `seen`). An event of the server's
+    // own ('seen': no page gets it as a flag line, Modes.flagEvents) so every page gets the view at once.
+    for (const team of FLAG_TEAMS) {
+      const f = this.flags[team];
+      const on = f.at === 'carried' && now - f.out >= BEACON_MS;
+      if (on && !f.seen) events.push({ ev: 'seen', team, name: f.by });
+      f.seen = on;
+    }
+    if (scored) this.sendScores();
     return events;
   }
 
@@ -439,8 +577,21 @@ export class FlagGame {
    */
   tagged(killer, victim) {
     const team = this.teams[killer];
-    if (team && team !== this.teams[victim]) this.tags[team]++;
     const st = this.game.players.get(victim)?.state;
+    if (team && team !== this.teams[victim]) {
+      this.tags[team]++;
+      this.credit(killer, 'tag');
+      if (this.teams[victim]) this.credit(victim, 'tagged');
+      // The carrier stopped: the victim carries the tagger's team's flag (it drops at the next tick: step).
+      let bonus = this.carrying(victim) ? this.credit(killer, 'stop') : false;
+      // A guard's tag: the tagger or the tagged within GUARD_R m of the tagger's stand, the tagger's own flag home (in
+      // Attack and defend the defenders' only: the attackers' camp flag never moves).
+      const ks = this.game.players.get(killer)?.state;
+      const [sx, sz] = this.baseOf(team).stand;
+      const near = (s) => !!s && Math.hypot(s.x - sx, s.z - sz) <= GUARD_R;
+      if (this.flags[team].at === 'home' && (!this.assault || team === this.defender()) && (near(ks) || near(st))) bonus = this.credit(killer, 'guard') || bonus;
+      if (bonus) this.sendScores();
+    }
     const now = Date.now();
     this.downs = this.downs.filter((d) => now - d.at < DOWN_MS).slice(-63);
     if (st && this.teams[victim]) this.downs.push({ team: this.teams[victim], x: st.x, z: st.z, at: now });
@@ -455,19 +606,25 @@ export class FlagGame {
     return this.drop(team, now);
   }
 
-  /** What every page gets (Modes.view `flag`): the field, each flag's state, the tags and sudden death. */
-  view(now = Date.now()) {
+  /**
+   * What every page gets (Modes.view `flag`): the field, each flag's state, the tags, sudden death, how far each team got
+   * the other flag (`way`, whole per cent). `stats` (each player's counts, statsList) with `withStats`: the game's end
+   * (its result showing) and the admin's board.
+   */
+  view(now = Date.now(), withStats = false) {
     const flags = {};
     for (const t of FLAG_TEAMS) {
       const f = this.flags[t];
       // Carried: only who carries it (the pages draw it on their figure, where they may see them); never its place.
-      flags[t] = f.at === 'carried' ? { at: f.at, by: f.by } : { at: f.at, x: f.x, y: f.y, z: f.z, ...(f.at === 'ground' ? { ms: Math.max(0, RETURN_MS - (now - f.since)) } : {}) };
+      // `seen`: the beacon over the carrier (BEACON_MS; not in Attack and defend, where the clock is the defenders').
+      flags[t] = f.at === 'carried' ? { at: f.at, by: f.by, ...(f.seen && !this.assault ? { seen: true } : {}) } : { at: f.at, x: f.x, y: f.y, z: f.z, ...(f.at === 'ground' ? { ms: Math.max(0, RETURN_MS - (now - f.since)) } : {}) };
     }
     // `swapped`: the sides traded bases (every page draws the stands, the racks and the marks there; a page joining
     // later too). `vehicles`: the field's bikes parked, and the village's own bikes out of play for the game (`off`).
     const v = this.vehicles;
     return {
       field: this.field.id, flags, tags: { ...this.tags }, sudden: this.sudden, swapped: this.swapped || undefined,
+      way: { blue: Math.floor(this.way.blue * 100), red: Math.floor(this.way.red * 100) }, stats: withStats ? this.statsList() : undefined,
       vehicles: v.bikes.length || v.off.length ? { bikes: [...v.bikes], off: [...v.off] } : undefined, racks: this.arms.over ? undefined : this.arms.view(now),
     };
   }
@@ -637,4 +794,21 @@ export class FlagGame {
     g.flagGuards?.moved?.(now); // the guards' rounds round the stands as they are now (server/flagGuards.mjs)
     return { ev: 'swapped', team: 'blue', name: '' };
   }
+}
+
+/**
+ * The tie-break of a level Steal the flag (Modes.flagOver), from `way` (each team's best share of the way with the other
+ * team's flag, 0 to 1) and `tags` (each team's): { team, why: 'far' | 'tags' | 'draw', a, b } (a the winner's figure, b
+ * the other's; per cent for 'far'). In order: the team that got the other flag further, unless within WAY_LEVEL whole per
+ * cent of each other; then the most tags; then a draw.
+ */
+export function flagTie(way, tags) {
+  const blue = Math.floor(way.blue * 100), red = Math.floor(way.red * 100);
+  if (Math.abs(blue - red) >= WAY_LEVEL) {
+    const team = blue > red ? 'blue' : 'red';
+    return { team, why: 'far', a: Math.max(blue, red), b: Math.min(blue, red) };
+  }
+  if (tags.blue === tags.red) return { team: null, why: 'draw' };
+  const team = tags.blue > tags.red ? 'blue' : 'red';
+  return { team, why: 'tags', a: tags[team], b: tags[other(team)] };
 }

@@ -411,6 +411,7 @@
       const team = typeof a.team === 'string' ? t(sideName(a.team, m)) : '';
       const score = { a: num(a[left] ?? m.score?.[left]), b: num(a[right] ?? m.score?.[right]) };
       if (m.resultCode === 'flagTagsWon' && team) return t('wonTags', { team, a: num(a.a), b: num(a.b) });
+      if ((m.resultCode === 'flagFarBlue' || m.resultCode === 'flagFarRed') && team) return t('aFar', { team, a: num(a.a) }); // level: the flag got furthest (server/modes.mjs flagOver)
       if ((m.resultCode === 'flagWon' || m.resultCode === 'teamWon' || m.resultCode === 'teamsTime') && team) return t('wonScore', { team, ...score });
       if (m.resultCode === 'flagDraw' || m.resultCode === 'teamsDraw') return t('drawScore', score);
       return t('over');

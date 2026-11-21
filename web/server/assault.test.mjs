@@ -621,3 +621,60 @@ test('the start places by the truck stand on the ground with room round them; no
   assert.ok(Math.hypot(back.x - cx, back.z - cz) < 10, 'the camp');
   g.standAt = standAt;
 });
+
+test('credit for helpers: a defender\'s tag by their stand, a carrier stopped, the flag brought home, an assist; none for guarding the camp, none in the break', () => {
+  const s = four('blue');
+  const g = s.game;
+  const [a, a2] = s.att();
+  const [d, d2] = s.def();
+  const f = () => s.f();
+  const [sx, sz, sy] = f().baseOf(f().defender()).stand;
+  // A defender's tag by their own stand, their flag home: a guard's tag.
+  s.put(a, sx + 6, sz, sy);
+  s.put(d, sx + 2, sz, sy);
+  g.damage(d, g.players.get(d), a, g.players.get(a), 500, false, 'rifle', s.now());
+  assert.equal(f().countOf(d).guards, 1);
+  // An attacker's tag in their own camp: no guard's tag (the camp is no stand to guard).
+  g.players.get(a).alive = true;
+  s.inCamp(a);
+  s.inCamp(d2, 3);
+  g.damage(a, g.players.get(a), d2, g.players.get(d2), 500, false, 'rifle', s.now());
+  assert.equal(f().countOf(a).guards, 0);
+  assert.equal(f().countOf(a).tags, 1);
+  g.players.get(d2).alive = true;
+  // The carrier stopped, then the flag brought home.
+  s.onStand(a);
+  s.tick();
+  assert.equal(f().flags.blue.by, a);
+  s.put(a, sx + 60, sz, sy);
+  s.put(d, sx + 64, sz, sy);
+  s.tick();
+  g.damage(d, g.players.get(d), a, g.players.get(a), 500, false, 'rifle', s.now());
+  assert.equal(f().countOf(d).stops, 1);
+  s.tick();
+  assert.equal(f().flags.blue.at, 'ground');
+  const fl = f().flags.blue;
+  s.put(d2, fl.x, fl.z, fl.y);
+  s.tick();
+  assert.equal(f().countOf(d2).returns, 1);
+  // An assist: a2 beside the carrier as it reaches the camp.
+  g.players.get(a).alive = true;
+  s.at(6000);
+  s.onStand(a2);
+  s.tick();
+  assert.equal(f().flags.blue.by, a2);
+  s.inCamp(a2, ASSAULT.campR + 6);
+  s.inCamp(a, ASSAULT.campR + 12);
+  s.tick();
+  s.inCamp(a2, ASSAULT.campR - 0.5);
+  s.tick();
+  assert.equal(f().countOf(a2).captures, 1);
+  assert.equal(f().countOf(a).assists, 1);
+  // The break: a tag counts for nothing, credit neither.
+  assert.equal(f().phase, 'break');
+  const before = JSON.stringify(f().statsList());
+  g.damage(d, g.players.get(d), a, g.players.get(a), 500, false, 'rifle', s.now());
+  assert.equal(JSON.stringify(f().statsList()), before);
+  // No beacon in this game, whatever the time.
+  assert.equal(g.modes.view().flag.way, undefined, 'its own measure, not Steal the flag\'s');
+});

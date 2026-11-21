@@ -254,9 +254,16 @@ export const ROUND_FIELDS = Object.freeze(['assaultChurch', 'assaultSparrenhof']
  * from the camp than the stand is), 1 at the camp. Straight lines: the same measure in both fields.
  */
 export function progressOf(field, x, z) {
-  const [sx, sz] = field.bases.blue.stand;
-  const [cx, cz] = field.assault.camp.flag;
-  const whole = Math.hypot(cx - sx, cz - sz);
-  const left = Math.hypot(cx - x, cz - z);
-  return Math.max(0, Math.min(1, 1 - left / whole));
+  return shareOfWay(field.bases.blue.stand, field.assault.camp.flag, x, z);
+}
+
+/**
+ * The share of the way (0 to 1) a flag at (x, z) got from `from` ([x, z, ...]: where it stood) towards `to` (where it is
+ * brought): 1 less what is left of the straight line, over its whole length. Attack and defend's measure (progressOf),
+ * and Steal the flag's tie-break (server/flags.mjs way): one measure for both.
+ */
+export function shareOfWay(from, to, x, z) {
+  const whole = Math.hypot(to[0] - from[0], to[1] - from[1]);
+  const left = Math.hypot(to[0] - x, to[1] - z);
+  return whole > 0 ? Math.max(0, Math.min(1, 1 - left / whole)) : 0;
 }

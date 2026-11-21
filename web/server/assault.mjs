@@ -20,6 +20,10 @@
 //   level, a draw.
 // - The defenders bring a dropped flag home by touch; left alone it goes home after RETURN_MS (as Steal the flag). The
 //   attackers' own flag stands in their camp and nobody takes it.
+// - Credit for helpers, as in Steal the flag (server/flags.mjs WORTH): a flag brought home, a carrier stopped, a
+//   defender's tag near their stand (the attackers' camp is no stand to guard), an assist at a capture; each player's
+//   counts over both rounds (a tag in the break counts for nothing). No sudden death and no beacon here: the round's
+//   clock is the defenders' to run down, and its own tie-break (winner) already measures how far the flag got.
 // - Start places: the defenders 12 to 22 m behind their stand; the attackers at their camp, or at the spawn truck when it
 //   stands still (ASSAULT.truckStillMs, nobody at the wheel), whole and at least ASSAULT.truckMin m from the defenders'
 //   stand. Protected for SAFE_MS, as in Steal the flag.
@@ -250,6 +254,7 @@ export class AssaultGame extends FlagGame {
   step(now) {
     const g = this.game;
     const events = [];
+    let scored = false; // points given this tick (server/flags.mjs credit)
     const def = this.defender();
     const att = other(def);
     this.flags[att] = this.homeFlag(att); // the camp's flag: always home
@@ -283,6 +288,7 @@ export class AssaultGame extends FlagGame {
       if (mine === def && flag.at === 'ground' && this.near(st, flag.x, flag.y, flag.z, TOUCH)) {
         this.flags[def] = this.homeFlag(def);
         events.push({ ev: 'returned', team: def, name });
+        scored = this.credit(name, 'home') || scored; // a flag brought home (server/flags.mjs WORTH)
         p.protectedUntil = 0;
       }
       const regrab = flag.at === 'ground' && flag.dropper === name && now - flag.since < REGRAB_MS;
@@ -297,16 +303,20 @@ export class AssaultGame extends FlagGame {
     // How far it got: carried (its carrier's place) or lying.
     if (flag.at !== 'home') this.best = Math.max(this.best, progressOf(this.field, flag.x, flag.z));
     if (flag.at === 'carried') {
+      this.escortStep(flag, now); // who walks with the carrier (an assist at a capture: server/flags.mjs)
       const p = g.players.get(flag.by);
       const [cx, cz, cy] = this.camp;
       const reach = g.carOf?.(flag.by) ? ASSAULT.campRCar : ASSAULT.campR;
       if (p?.alive && p.state && this.teams[flag.by] === att && Math.hypot(p.state.x - cx, p.state.z - cz) <= reach && Math.abs(p.state.y - cy) <= ASSAULT.campHigh) {
         this.score[att]++;
         events.push({ ev: 'captured', team: def, name: flag.by });
+        this.captureCredit(flag.by, flag, now);
+        scored = true;
         this.flags[def] = this.homeFlag(def);
         this.best = 1;
       }
     }
+    if (scored) this.sendScores();
     return events;
   }
 
@@ -426,9 +436,10 @@ export class AssaultGame extends FlagGame {
   }
 
   /** What every page gets (Modes.view `flag`): Steal the flag's view and this game's own part (`assault`). */
-  view(now = Date.now()) {
-    const v = super.view(now);
+  view(now = Date.now(), withStats = false) {
+    const v = super.view(now, withStats);
     delete v.racks; // no racks in this game: the heavy weapons come from crates
+    delete v.way; // its own measure: `assault.best` and the rounds' results
     const traps = this.supply.view();
     const truck = this.truckCar();
     v.assault = {

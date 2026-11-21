@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Game } from './game.mjs';
-import { BACK_MS, CAPTURE, FLAG_MS, RETURN_MS, SAFE_MS, SUDDEN_MS, TOUCH } from './flags.mjs';
+import { ASSIST_MS, BACK_MS, BEACON_MS, CAPTURE, FLAG_MS, GUARD_R, RETURN_MS, SAFE_MS, SUDDEN_MS, TOUCH, WORTH, flagTie } from './flags.mjs';
 import { FIELDS, fieldOf } from '../shared/flagFields.mjs';
 import { NO_SHOOT, noShoot } from '../shared/zones.mjs';
 import { PORTALS, REACH } from '../shared/portals.mjs';
@@ -284,17 +284,18 @@ test('the clock: most captures wins when time is up; the programme\'s minutes se
   assert.equal(d.game.modes.state.until - d.now(), FLAG_MS, 'twelve minutes by default');
 });
 
-test('sudden death: level when time is up, the next capture wins', () => {
+test('sudden death: level when time is up with a flag away, the next capture wins', () => {
   const s = four();
+  const [b] = s.blue;
+  s.onStand(b, 'red');
+  s.tick(); // blue carries red's flag as the time runs out
   s.at(FLAG_MS);
   s.tick();
   assert.equal(s.game.modes.state.phase, 'playing');
   assert.equal(s.flag().sudden, true);
   assert.equal(s.game.modes.state.until - s.now(), SUDDEN_MS);
+  assert.equal(SUDDEN_MS, 120_000, 'two minutes at most');
   assert.ok(s.out.some((m) => m.code === 'flagSuddenStart'));
-  const [b] = s.blue;
-  s.onStand(b, 'red');
-  s.tick();
   s.onStand(b, 'blue');
   s.tick();
   assert.equal(s.game.modes.state.phase, 'done');
@@ -302,7 +303,80 @@ test('sudden death: level when time is up, the next capture wins', () => {
   assert.equal(s.game.modes.state.resultArgs.team, 'blue');
 });
 
-test('the tie: still level after sudden death, most tags; still level, a draw', () => {
+test('level with both flags home when time is up: it ends at once on the tie-break, no sudden death', () => {
+  const s = four();
+  s.at(FLAG_MS);
+  s.tick();
+  assert.equal(s.game.modes.state.phase, 'done', 'at the time, not five minutes later');
+  assert.equal(s.game.modes.flag, null, 'no longer played');
+  assert.equal(s.game.modes.state.f.sudden, false);
+  assert.ok(!s.out.some((m) => m.code === 'flagSuddenStart'));
+  assert.equal(s.game.modes.state.resultCode, 'flagDraw', 'nobody got a flag anywhere, no tags: a draw');
+});
+
+test('sudden death lasts while a flag is away: both home again, the tie-break at once; two minutes at most', () => {
+  // Brought home in sudden death: over at that tick.
+  const s = four();
+  const [b] = s.blue;
+  const [r] = s.red;
+  s.onStand(b, 'red');
+  s.tick();
+  s.at(FLAG_MS);
+  s.tick();
+  assert.equal(s.flag().sudden, true);
+  s.game.players.get(b).alive = false; // the carrier down: red's flag lies there
+  s.tick();
+  assert.equal(s.flag().flags.red.at, 'ground');
+  assert.equal(s.game.modes.state.phase, 'playing', 'still away: play goes on');
+  const f = s.flag().flags.red;
+  s.put(r, f.x, f.z, f.y);
+  s.tick();
+  assert.equal(s.game.modes.state.phase, 'done', 'both home: over at once');
+  assert.match(s.game.modes.state.resultCode, /^flagFar(Blue|Red)$|^flagTagsWon$|^flagDraw$/);
+  // Still away after two minutes: over then.
+  const d = four();
+  d.onStand(d.blue[0], 'red');
+  d.tick();
+  d.at(FLAG_MS);
+  d.tick();
+  assert.equal(d.flag().sudden, true);
+  d.put(d.blue[0], 100, 100, 0); // away with it, nowhere near either stand
+  d.at(SUDDEN_MS - 100);
+  d.tick();
+  assert.equal(d.game.modes.state.phase, 'playing');
+  d.tick(200);
+  assert.equal(d.game.modes.state.phase, 'done', 'two minutes at most');
+});
+
+test('the tie-break: the team that got the other flag furthest (the share of the way); within 5 %, the tags; then a draw', () => {
+  // Blue carries red's flag 80 % of the way from red's stand to blue's, then is tagged; level at 0-0, both home at the time.
+  const s = four();
+  const [b] = s.blue;
+  const [r] = s.red;
+  const [rx, rz, ry] = s.stand('red');
+  const [bx, bz] = s.stand('blue');
+  s.onStand(b, 'red');
+  s.tick();
+  s.put(b, rx + (bx - rx) * 0.8, rz + (bz - rz) * 0.8, ry);
+  s.tick();
+  assert.equal(s.flag().view().way.blue, 80, 'the share of the way, whole per cent');
+  s.game.damage(r, s.game.players.get(r), b, s.game.players.get(b), 500, false, 'rifle', s.now());
+  s.tick();
+  s.at(RETURN_MS);
+  s.tick(); // home by itself
+  assert.equal(s.flag().flags.red.at, 'home');
+  s.at(FLAG_MS);
+  s.tick();
+  assert.equal(s.game.modes.state.resultCode, 'flagFarBlue', 'blue got further, though red has more tags');
+  assert.deepEqual({ ...s.game.modes.state.resultArgs }, { team: 'blue', blue: 0, red: 0, a: 80, b: 0 });
+  // The pure rule.
+  assert.deepEqual(flagTie({ blue: 0.8, red: 0.45 }, { blue: 0, red: 9 }), { team: 'blue', why: 'far', a: 80, b: 45 });
+  assert.deepEqual(flagTie({ blue: 0.42, red: 0.46 }, { blue: 3, red: 1 }), { team: 'blue', why: 'tags', a: 3, b: 1 }, 'within 5 %: level on the way');
+  assert.equal(flagTie({ blue: 0.42, red: 0.47 }, { blue: 3, red: 1 }).team, 'red', '5 % apart: red got further');
+  assert.deepEqual(flagTie({ blue: 0.1, red: 0.1 }, { blue: 2, red: 2 }), { team: null, why: 'draw' });
+});
+
+test('the tie: level in captures and in how far the flags got, most tags; still level, a draw', () => {
   const s = four();
   const [b] = s.blue;
   const [r] = s.red;
@@ -312,14 +386,10 @@ test('the tie: still level after sudden death, most tags; still level, a draw', 
   assert.deepEqual(s.flag().tags, { blue: 1, red: 0 }, 'a teammate down is no tag');
   s.at(FLAG_MS);
   s.tick();
-  s.at(SUDDEN_MS);
-  s.tick();
   assert.equal(s.game.modes.state.resultCode, 'flagTagsWon');
   assert.equal(s.game.modes.state.resultArgs.team, 'blue');
   const d = four();
   d.at(FLAG_MS);
-  d.tick();
-  d.at(SUDDEN_MS);
   d.tick();
   assert.equal(d.game.modes.state.resultCode, 'flagDraw');
 });
@@ -801,8 +871,9 @@ test('the host swaps the sides: flags home, launchers on their racks, bases, rac
     assert.equal(f.swapped, false);
     // Never automatic: the clock running out, sudden death, the end, none swap.
     const s2 = four(field, { minutes: 1 });
+    const f2 = s2.flag();
     for (let i = 0; i < 20; i++) s2.tick(5000);
-    assert.equal(s2.flag().swapped, false);
+    assert.equal(f2.swapped, false);
   }
 });
 
@@ -1007,7 +1078,7 @@ test('the evening\'s scoreboard: a point for playing, three more for the winners
   s.at(60_000);
   s.tick();
   const board = Object.fromEntries(s.game.host.board().players.map((p) => [p.name, p.points]));
-  for (const n of s.red) assert.equal(board[n], 4);
+  for (const n of s.red) assert.equal(board[n], n === r ? 5 : 4, 'the capturer one more: 500 of credit (the helpers\' credit test)');
   for (const n of s.blue) assert.equal(board[n], 1);
   // Its result shown, back to free play: the teams' colours go and the vehicles with them.
   s.at(11_000);
@@ -1092,4 +1163,189 @@ test('back after a tag at your base: the server picks the spot, away from the op
     assert.ok(foe > 5, `away from the opponents (${foe.toFixed(1)} m)`);
     assert.ok(Math.hypot(p.state.x - spawns[5][0], p.state.z - spawns[5][1]) > 1, 'not on the spot where they were tagged');
   }
+});
+
+// ------------------------------------------------------------------ the beacon, the helpers' credit, a hosted evening
+
+/** The last mode view every page was sent. */
+const lastMode = (s) => [...s.out].reverse().find((m) => m.t === 'mode')?.mode;
+/** ms: past REGRAB_MS (5 s) for whoever dropped a flag. */
+const REGRAB_GAP = 6000;
+
+test('the beacon: a flag away 45 s puts a beacon over whoever carries it, on every page; gone when dropped, back at once when a teammate picks it up; gone home', () => {
+  const s = four();
+  const [b] = s.blue;
+  const [r, r2] = s.red;
+  s.onStand(r, 'blue');
+  s.tick();
+  s.put(r, 600, -740, 6);
+  s.at(BEACON_MS - 200);
+  s.tick();
+  assert.equal(s.game.modes.view().flag.flags.blue.seen, undefined, 'not yet');
+  s.out.length = 0;
+  s.tick(200);
+  assert.equal(s.game.modes.view().flag.flags.blue.seen, true, '45 s after it left its stand');
+  assert.equal(lastMode(s)?.flag.flags.blue.seen, true, 'every page told at once, in the flag\'s own view');
+  assert.ok(!s.out.some((m) => m.t === 'flag' && m.ev === 'seen'), 'no flag line for it: the view carries it');
+  // Dropped: gone. Picked up by a teammate: the flag's clock runs on, so back at once (no fresh start by dropping it).
+  s.game.damage(b, s.game.players.get(b), r, s.game.players.get(r), 500, false, 'rifle', s.now());
+  s.tick();
+  assert.equal(s.flag().flags.blue.at, 'ground');
+  assert.equal(s.game.modes.view().flag.flags.blue.seen, undefined);
+  s.put(r2, 600.5, -740, 6);
+  s.tick();
+  assert.equal(s.flag().flags.blue.by, r2);
+  assert.equal(s.game.modes.view().flag.flags.blue.seen, true, 'the new carrier at once');
+  // Home (its own team's touch): the clock starts again at the next take.
+  s.game.damage(b, s.game.players.get(b), r2, s.game.players.get(r2), 500, false, 'rifle', s.now());
+  s.tick();
+  const f = s.flag().flags.blue;
+  s.put(b, f.x, f.z, f.y);
+  s.tick();
+  assert.equal(s.flag().flags.blue.at, 'home');
+  s.at(REGRAB_GAP);
+  s.game.players.get(r).alive = true;
+  s.onStand(r, 'blue');
+  s.tick();
+  assert.equal(s.flag().flags.blue.by, r);
+  assert.equal(s.game.modes.view().flag.flags.blue.seen, undefined, 'a fresh take: a fresh clock');
+  // Scored: gone with it.
+  s.at(BEACON_MS);
+  s.tick();
+  assert.equal(s.game.modes.view().flag.flags.blue.seen, true);
+  s.onStand(r, 'red');
+  s.tick();
+  assert.equal(s.flag().score.red, 1);
+  assert.equal(s.game.modes.view().flag.flags.blue.at, 'home');
+});
+
+test('credit: a flag brought home, a carrier stopped, a guard\'s tag (own flag home, near the stand), each with its points', () => {
+  const s = four();
+  const [b, b2] = s.blue;
+  const [r, r2] = s.red;
+  const pts = (n) => s.game.players.get(n).score.points;
+  const count = (n) => s.flag().countOf(n);
+  // A carrier stopped: red takes blue's flag, blue tags them away from both stands.
+  s.onStand(r, 'blue');
+  s.tick();
+  s.put(r, 600, -740, 6);
+  s.put(b, 610, -740, 6);
+  s.tick();
+  const before = pts(b);
+  s.out.length = 0;
+  s.game.damage(b, s.game.players.get(b), r, s.game.players.get(r), 500, false, 'rifle', s.now());
+  assert.equal(count(b).stops, 1, 'a carrier stopped');
+  assert.equal(count(b).tags, 1);
+  assert.equal(count(r).tagged, 1);
+  assert.equal(count(b).guards, 0, 'their own flag was away: no guard\'s tag');
+  assert.equal(pts(b) - before, 100 + WORTH.stop, 'the tag and the stop');
+  assert.ok(s.out.filter((m) => m.t === 'scores').length >= 2, 'the scoreboards told the points');
+  // Brought home: blue's own flag on the ground, touched by blue.
+  s.tick();
+  const f = s.flag().flags.blue;
+  const homeBefore = pts(b2);
+  s.put(b2, f.x, f.z, f.y);
+  s.tick();
+  assert.equal(count(b2).returns, 1);
+  assert.equal(pts(b2) - homeBefore, WORTH.home);
+  // A guard's tag: blue's flag home, red comes to blue's stand, b2 tags them there.
+  const [bx, bz, by] = s.stand('blue');
+  s.put(r2, bx + 5, bz, by);
+  s.put(b2, bx + 1, bz + GUARD_R + 30, by); // the tagger far off: the tagged near the stand counts
+  s.game.damage(b2, s.game.players.get(b2), r2, s.game.players.get(r2), 500, false, 'rifle', s.now());
+  assert.equal(count(b2).guards, 1);
+  // Far from both: no guard's tag.
+  s.game.players.get(r2).alive = true;
+  s.put(r2, 600, -740, 6);
+  s.put(b2, 605, -740, 6);
+  s.game.damage(b2, s.game.players.get(b2), r2, s.game.players.get(r2), 500, false, 'rifle', s.now());
+  assert.equal(count(b2).guards, 1, 'not near the stand');
+  assert.equal(count(b2).tags, 2);
+});
+
+test('credit: an assist for a teammate within 10 m of the carrier in the last 10 s before a capture; not further, not earlier', () => {
+  const s = four();
+  const [r, r2] = s.red;
+  s.onStand(r, 'blue');
+  s.tick();
+  const [rx, rz, ry] = s.stand('red');
+  // r2 walks beside the carrier, then stays behind 11 s before the capture: no assist.
+  s.put(r, 600, -740, 6);
+  s.put(r2, 605, -740, 6);
+  s.tick();
+  s.put(r2, 640, -740, 6); // 40 m off
+  s.at(ASSIST_MS + 1000);
+  s.onStand(r, 'red');
+  s.tick();
+  assert.equal(s.flag().score.red, 1);
+  assert.equal(s.flag().countOf(r).captures, 1);
+  assert.equal(s.flag().countOf(r2).assists, 0, 'too long ago');
+  // Again, r2 within 10 m of the carrier 4 s before the capture: an assist.
+  s.onStand(r, 'blue');
+  s.tick();
+  s.put(r, rx + 30, rz, ry);
+  s.put(r2, rx + 30 + 8, rz, ry);
+  s.tick();
+  s.at(4000);
+  s.put(r2, rx + 200, rz, ry); // gone off since, within the 10 s
+  s.onStand(r, 'red');
+  s.tick();
+  assert.equal(s.flag().score.red, 2);
+  assert.equal(s.flag().countOf(r2).assists, 1);
+  assert.equal(s.game.players.get(r).score.points, 2 * WORTH.capture);
+  assert.equal(s.game.players.get(r2).score.points, WORTH.assist);
+});
+
+test('the counts: each player\'s in the final state every page gets, the admin\'s board live, not in a page\'s view while it plays', () => {
+  const s = four('compact', { minutes: 1 });
+  const [b] = s.blue;
+  const [r] = s.red;
+  s.onStand(r, 'blue');
+  s.tick();
+  s.onStand(r, 'red');
+  s.tick();
+  const [bx, bz, by] = s.stand('blue');
+  s.put(b, bx + 5, bz, by); // by their own stand, their flag home: a guard's tag
+  s.game.damage(b, s.game.players.get(b), r, s.game.players.get(r), 500, false, 'rifle', s.now());
+  assert.equal(s.game.modes.view().flag.stats, undefined, 'not sent to every page while it plays');
+  const live = s.game.board().mode.flag.stats;
+  assert.ok(Array.isArray(live) && live.find((x) => x.name === r).captures === 1, 'the admin\'s board, live');
+  s.at(60_000);
+  s.tick();
+  assert.equal(s.game.modes.state.phase, 'done');
+  const stats = lastMode(s).flag.stats;
+  const row = stats.find((x) => x.name === r);
+  assert.deepEqual(row, { name: r, team: 'red', captures: 1, returns: 0, stops: 0, guards: 0, assists: 0, tags: 0, tagged: 1, points: WORTH.capture });
+  // b tagged from their base, their flag home: a guard's tag.
+  assert.deepEqual(stats.find((x) => x.name === b), { name: b, team: 'blue', captures: 0, returns: 0, stops: 0, guards: 1, assists: 0, tags: 1, tagged: 0, points: WORTH.guard });
+  assert.equal(stats[0].name, r, 'the most points first');
+});
+
+test('the evening\'s points from the helpers\' credit: one for every 300, three at most; the team\'s total with them', () => {
+  const s = four('compact', { minutes: 1 });
+  const [b, b2] = s.blue;
+  const f = s.flag();
+  for (let i = 0; i < 3; i++) f.credit(b, 'home'); // 300: one point
+  for (let i = 0; i < 20; i++) f.credit(b2, 'stop'); // 2000: three at most
+  assert.equal(f.eveningBonus(b), 1);
+  assert.equal(f.eveningBonus(b2), 3);
+  assert.equal(f.eveningBonus(s.red[0]), 0);
+  s.at(60_000);
+  s.tick(); // a draw: a point each for playing
+  assert.equal(s.game.modes.state.resultCode, 'flagDraw');
+  const board = Object.fromEntries(s.game.host.board().players.map((p) => [p.name, p.points]));
+  assert.equal(board[b], 2);
+  assert.equal(board[b2], 4);
+  const blue = s.game.host.board().teams.find((t) => t.id === 'blue');
+  assert.equal(blue.points, 6);
+});
+
+test('no message from a page gives credit: forged returns, stops, guards\' tags, assists and beacons do nothing', () => {
+  const s = four();
+  const [r] = s.red;
+  for (const m of [{ t: 'flag', ev: 'returned', team: 'red' }, { t: 'credit', act: 'assist' }, { t: 'flag', op: 'home' }, { t: 'stats', captures: 9 }, { t: 'flag', ev: 'seen', team: 'blue' }]) s.msg(r, m);
+  s.tick();
+  assert.equal(s.flag().counts.size, 0, 'nothing counted');
+  assert.equal(s.game.players.get(r).score.points, 0);
+  assert.equal(s.game.modes.view().flag.flags.blue.seen, undefined);
 });

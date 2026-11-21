@@ -117,11 +117,11 @@ test('the admin\'s bazooka is back when the game ends by its clock too', () => {
   const s = game('compact', { minutes: 1 });
   s.tick();
   assert.equal(s.game.players.get('boss').weapons.has('bazooka'), false);
-  s.at(60_000);
-  s.tick(); // level: sudden death
+  s.at(50_000);
+  s.tick();
   assert.equal(s.game.players.get('boss').weapons.has('bazooka'), false);
-  s.at(5 * 60_000);
-  s.tick(); // still level, no tags: a draw
+  s.at(10_000);
+  s.tick(); // level with both flags home: the tie-break at once (no tags: a draw), no sudden death (server/modes.mjs flagTick)
   assert.equal(s.game.modes.state.phase, 'done');
   assert.equal(s.game.players.get('boss').weapons.has('bazooka'), true);
   assert.equal(s.game.modes.view().flag.racks, undefined, 'the racks gone with the result');

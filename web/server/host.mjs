@@ -23,8 +23,10 @@
 //   off for it, a player's own Paintball kept; or none, the house rule); Next starts the next one after a countdown of
 //   ten seconds, as does starting one straight away.
 // - The evening's scoreboard: every game played gives a point to each who took part and three more to its winners; in
-//   Zombies everyone also gets a point for every three waves; a won round of free play counts as a game. A team's total
-//   is what its players scored while on it. Kept in memory: a restart begins a new evening.
+//   Zombies everyone also gets a point for every three waves; in the flag games a point for every 300 of a player's
+//   helpers' credit (server/flags.mjs WORTH: captures, flags brought home, carriers stopped, guards' tags, assists), three
+//   at most; a won round of free play counts as a game. A team's total is what its players scored while on it. Kept in
+//   memory: a restart begins a new evening.
 
 import { words } from './words.mjs';
 import { ASSAULT_TITLE, KINDS, LOOKS, shuffled, TEAMS_TITLE } from './modes.mjs';
@@ -229,11 +231,12 @@ export class Host {
 
   // ------------------------------------------------------------------ the evening's scores
 
-  award(names, winners, extra = 0) {
+  /** `bonus`: a player's own extra points, by name (a flag game's helpers' credit: server/flags.mjs eveningBonus). */
+  award(names, winners, extra = 0, bonus = null) {
     const won = new Set(winners);
     for (const n of new Set(names)) {
       const s = (this.scores[n] ??= { points: 0, wins: 0, played: 0 });
-      const got = POINTS.played + extra + (won.has(n) ? POINTS.won : 0);
+      const got = POINTS.played + extra + (won.has(n) ? POINTS.won : 0) + (bonus?.(n) ?? 0);
       s.points += got;
       s.played++;
       if (won.has(n)) s.wins++;
@@ -256,10 +259,12 @@ export class Host {
     else if (code === 'foundAll') winners = [...(state.seekers ?? [])];
     else if (code === 'seekerLeft') winners = here.filter((n) => !state.seekers?.has(n));
     else if (code === 'tagWon') winners = [args.name];
-    else if (code === 'teamWon' || code === 'teamsTime' || code === 'flagWon' || code === 'flagTagsWon' || ASSAULT_WON.has(code)) winners = Object.keys(state.teams ?? {}).filter((n) => state.teams[n] === (args.side ?? args.team)); // the teams game: `side` its own, `team` the name it played under
+    else if (code === 'teamWon' || code === 'teamsTime' || code === 'flagWon' || code === 'flagTagsWon' || code === 'flagFarBlue' || code === 'flagFarRed' || ASSAULT_WON.has(code)) winners = Object.keys(state.teams ?? {}).filter((n) => state.teams[n] === (args.side ?? args.team)); // the teams game: `side` its own, `team` the name it played under
     else if (code === 'zOver' || code === 'zOverBest') extra = this.wavePoints(args.n);
     winners = winners.filter((n) => typeof n === 'string' && present.has(n));
-    this.award(here, winners, extra);
+    // A flag game (Steal the flag, Attack and defend): each player's helpers' credit on top (server/flags.mjs WORTH).
+    const f = state.kind === 'flag' ? state.f : null;
+    this.award(here, winners, extra, f?.eveningBonus ? (n) => f.eveningBonus(n) : null);
     if (['hide', 'tag', 'treasure', 'teams'].includes(state.kind)) this.game.partyWon?.(state.kind, winners); // the all-time board of party games won
     this.history.push({ kind: state.kind, at: Date.now(), winners });
     if (this.history.length > 50) this.history.shift();

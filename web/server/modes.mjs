@@ -8,7 +8,7 @@
 
 import { DONE_MS as ZOMBIES_DONE_MS, RECONNECT_MS as ZOMBIES_RECONNECT_MS, ZombieGame } from './zombies.mjs';
 import { arenaOf, portalOf } from '../shared/arenas.mjs';
-import { BACK_MS, FIELDS, FLAG_COLORS, FLAG_MS, FLAG_TEAMS, FlagGame, SAFE_MS, SUDDEN_MS } from './flags.mjs';
+import { BACK_MS, FIELDS, FLAG_COLORS, FLAG_MS, FLAG_TEAMS, FlagGame, SAFE_MS, SUDDEN_MS, flagTie } from './flags.mjs';
 import { AssaultGame } from './assault.mjs';
 import { placeName } from './teamStarts.mjs';
 
@@ -266,8 +266,11 @@ export class Modes {
     else this.send();
   }
 
-  /** What every browser gets: the game, the phase and its time left, roles and scores (seekers and teams of the players here). */
-  view(now = Date.now()) {
+  /**
+   * What every browser gets: the game, the phase and its time left, roles and scores (seekers and teams of the players
+   * here). `admin`: the admin's board (game.mjs board): a flag game's counts for each player live too, not only at its end.
+   */
+  view(now = Date.now(), admin = false) {
     const s = this.state;
     if (s.kind === 'free') return { kind: 'free' };
     return {
@@ -279,7 +282,8 @@ export class Modes {
       result: s.result, resultCode: s.resultCode, resultArgs: s.resultArgs,
       teams: s.teams && this.here(s.teams), score: s.score, goal: s.kind === 'teams' ? s.goal ?? TEAM_GOAL : undefined,
       colors: s.kind === 'teams' ? s.colors ?? TEAM_COLORS : s.kind === 'flag' ? FLAG_COLORS : undefined, // the teams' colours, for the big screen (admin/scores)
-      flag: s.kind === 'flag' ? s.f.view(now) : undefined, // Steal the flag: the field, each flag, the tags (server/flags.mjs)
+      // Steal the flag: the field, each flag, the tags (server/flags.mjs); each player's counts once it is over (`stats`).
+      flag: s.kind === 'flag' ? s.f.view(now, admin || s.phase === 'done') : undefined,
       look: s.look ?? undefined, // the host's look for this game (LOOKS), for the host page
       // Zombies: the wave, how many are left, who stands, everyone's count and the best ever; the break's countdown.
       ...(s.kind === 'zombies' ? { zombies: s.z.view(now), ms: s.phase === 'done' ? Math.max(0, s.until - now) : s.z.ms(now) } : {}),
@@ -616,8 +620,10 @@ export class Modes {
 
   /**
    * Steal the flag, every tick (server/flags.mjs): the flags followed from where the players are, a line and a sound on
-   * every page for each event, and the clock. Level when time is up: SUDDEN_MS more where the next capture wins; still
-   * level, the most tags; still level, a draw.
+   * every page for each event, and the clock. Time up with more captures for one team: theirs. Level with a flag away
+   * from its stand: sudden death while one is away, SUDDEN_MS at most, the next capture wins. Level with both flags home,
+   * at the time or again during sudden death, or sudden death's time up: the tie-break at once (server/flags.mjs flagTie).
+   * A nine-minute 0-0 (four of play, five of sudden death with both flags home) now ends at the time.
    */
   flagTick(now) {
     const s = this.state;
@@ -628,42 +634,55 @@ export class Modes {
     if (events.length) this.flagEvents(events);
     const captured = events.some((e) => e.ev === 'captured');
     const { blue, red } = f.score;
+    const away = FLAG_TEAMS.some((t) => f.flags[t].at !== 'home');
     if (f.sudden && captured) return this.flagOver('flagSudden');
+    if (f.sudden && !away) return this.flagOver('flagLevel'); // both home again, still level: nothing left to decide it
     if (now < s.until) {
       if (events.length || racks) this.send();
       return;
     }
-    if (!f.sudden && blue === red) {
+    if (blue !== red) return this.flagOver('flagTime');
+    if (!f.sudden && away) {
       f.sudden = true;
       s.until = now + SUDDEN_MS;
-      this.say(`Time's up at ${blue} to ${red}: sudden death, the next capture wins (5 minutes)`, 'flagSuddenStart', { blue, red });
+      this.say(`Time's up at ${blue} to ${red} and a flag is still out: sudden death, up to 2 minutes. The next flag brought in wins`, 'flagSuddenStart', { blue, red });
       return this.send();
     }
-    this.flagOver(blue !== red ? 'flagTime' : 'flagTags');
+    this.flagOver('flagLevel');
   }
 
   /**
    * Steal the flag is over: `why` 'flagTime' (more captures when time was up), 'flagSudden' (the capture in sudden
-   * death) or 'flagTags' (level after sudden death: the most tags, else a draw).
+   * death) or 'flagLevel' (level: the tie-break, server/flags.mjs flagTie: the flag got furthest, else the most tags,
+   * else a draw).
    */
   flagOver(why) {
     const f = this.state.f;
     f.arms.end(); // the bazookas out of everyone's hands, the racks gone, the admin's own back (server/flagBazooka.mjs)
     const { blue, red } = f.score;
+    if (why !== 'flagLevel') {
+      const team = blue > red ? 'blue' : 'red';
+      return this.finish(`Team ${FLAG_NAMES[team]} wins, ${blue} to ${red}`, 'flagWon', { team, blue, red });
+    }
     const tags = f.tags;
-    if (why === 'flagTags' && tags.blue === tags.red) return this.finish(`A draw: ${blue} to ${red} in captures and ${tags.blue} to ${tags.red} in tags`, 'flagDraw', { blue, red, a: tags.blue, b: tags.red });
-    const team = why === 'flagTags' ? (tags.blue > tags.red ? 'blue' : 'red') : blue > red ? 'blue' : 'red';
-    if (why === 'flagTags') return this.finish(`Team ${FLAG_NAMES[team]} wins on tags, ${tags.blue} to ${tags.red} (captures ${blue} to ${red})`, 'flagTagsWon', { team, blue, red, a: tags.blue, b: tags.red });
-    this.finish(`Team ${FLAG_NAMES[team]} wins, ${blue} to ${red}`, 'flagWon', { team, blue, red });
+    const w = flagTie(f.way, tags);
+    if (w.why === 'far') {
+      const them = w.team === 'blue' ? 'red' : 'blue';
+      // One code a team ("the red flag" / "de rode vlag": the colour's own word in each language).
+      return this.finish(`Level at ${blue} to ${red}: ${FLAG_NAMES[w.team]} got the ${them} flag furthest, ${w.a}% of the way (${FLAG_NAMES[them]}: ${w.b}%)`, w.team === 'blue' ? 'flagFarBlue' : 'flagFarRed', { team: w.team, blue, red, a: w.a, b: w.b });
+    }
+    if (w.why === 'draw') return this.finish(`A draw: ${blue} to ${red} in captures and ${tags.blue} to ${tags.red} in tags`, 'flagDraw', { blue, red, a: tags.blue, b: tags.red });
+    this.finish(`Team ${FLAG_NAMES[w.team]} wins on tags, ${tags.blue} to ${tags.red} (captures ${blue} to ${red})`, 'flagTagsWon', { team: w.team, blue, red, a: tags.blue, b: tags.red });
   }
 
   /**
    * Flag events (server/flags.mjs step) for every page: the HUD's short line and its sound (`flag`), never a card. `team`
    * is the flag's, `name` who did it ('' for a flag home by itself); `why` for 'safe' (sent home: carried into a 'zone'
-   * where nobody fights, or a private 'home'; never where).
+   * where nobody fights, or a private 'home'; never where). 'seen' (the beacon came on) is the server's own: the view
+   * carries it, no page gets a line for it here.
    */
   flagEvents(events) {
-    for (const e of events) this.game.broadcast({ t: 'flag', ev: e.ev, team: e.team, name: e.name, ...(e.why ? { why: e.why } : {}) });
+    for (const e of events) if (e.ev !== 'seen') this.game.broadcast({ t: 'flag', ev: e.ev, team: e.team, name: e.name, ...(e.why ? { why: e.why } : {}) });
   }
 
   /** Every tick: the clock, and the time "it" has been it (while there). */
