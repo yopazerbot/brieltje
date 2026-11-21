@@ -238,12 +238,13 @@ const scattered = (one: THREE.BufferGeometry, count: number, kind: 'tuft' | 'lea
       side: THREE.DoubleSide,
     });
     // Whether what covers the ground is the woods' floor: the fields' kind of row (world/fields.ts, the woods' 9 of
-    // kind * 8 + hue, in a signed byte); none on the rest (their `row` reads 0).
+    // kind * 8 + hue, in a signed byte); or a rough plot, where blades grow (the cover crops' 8, its own number over
+    // 0.88); none on the rest (their `row` reads 0).
     this.coverPass = new THREE.ShaderMaterial({
       uniforms: { gtArea: this.area, gtBase: this.base, gtHeights: { value: this.heights.texture } },
       vertexShader: head
         .replace('varying float vY;', 'varying float vY;\n      attribute vec4 row;\n      varying float vWood;')
-        .replace('vY = w.y - gtBase;', 'vY = w.y - gtBase;\n        vWood = step(71.5, row.z * 127.0);'),
+        .replace('vY = w.y - gtBase;', 'vY = w.y - gtBase;\n        vWood = row.z * 127.0 > 71.5 ? 1.0 : row.z * 127.0 > 63.5 && row.w * 127.0 > 111.5 ? 0.5 : 0.0;'),
       fragmentShader: /* glsl */ `
         uniform sampler2D gtHeights;
         varying float vY;
@@ -252,7 +253,7 @@ const scattered = (one: THREE.BufferGeometry, count: number, kind: 'tuft' | 'lea
           float over = vY - texture2D(gtHeights, gl_FragCoord.xy / ${SIZE}.0).r;
           if (over > 0.5 || over < -0.5) discard;
           // Covered, how high over the relief (the highest of what lies there is kept: the depth test), and whether
-          // it is the woods' floor.
+          // it is the woods' floor (1) or a rough plot (0.5).
           gl_FragColor = vec4(1.0, over + 0.5, vWood, 1.0);
         }`,
       side: THREE.DoubleSide,
@@ -370,9 +371,13 @@ ${blades ? '          gtRoot += gtTurn(gtBlade.xy, gtPlace.z);\n' : ''}
             gs = mix(gs, gsHere, fine);
           }
           vGtLight = gs.rg;
-${blades ? `          float gtWild = clamp(1.0 - gs.a * 2.0, 0.0, 1.0);
-          float gtMown = smoothstep(0.52, 0.6, gs.a); // a garden mown in stripes (0.6 to 1), not plain grass (0.5)
-          float gtStripe = clamp((gs.a - 0.6) * 2.5, 0.0, 1.0);
+${blades ? `          // A rough plot (world/fields.ts: half green, no crop declared): its tussocks and dead straw stand as blades,
+          // taller and sparser than a lawn's, in clumps with gaps between; on its surface, not the relief under it.
+          float gtRough = step(0.5, gtCovered) * step(0.3, gtOver.b) * step(gtOver.b, 0.7);
+          float gtTuss = gtNoise(gtRoot / 0.75 + 3.1) * 0.65 + gtNoise(gtRoot / 2.3 - 7.7) * 0.35;
+          float gtWild = max(clamp(1.0 - gs.a * 2.0, 0.0, 1.0), gtRough);
+          float gtMown = smoothstep(0.52, 0.6, gs.a) * (1.0 - gtRough); // a garden mown in stripes (0.6 to 1), not plain grass (0.5)
+          float gtStripe = clamp((gs.a - 0.6) * 2.5, 0.0, 1.0) * (1.0 - gtRough);
           float gtSky = smoothstep(0.25, 0.6, gs.g);
           // How tall: a mown lawn 4 cm, plain grass 5.5, the edge along paving and pasture 7 to 9 (tussocks 12 to 14),
           // rough grass 18 to 30 (tussocks to 48), in clumps of a metre or two; shorter and thinner under trees;
@@ -381,17 +386,20 @@ ${blades ? `          float gtWild = clamp(1.0 - gs.a * 2.0, 0.0, 1.0);
           float gtClump = smoothstep(0.55, 0.75, gtNoise(gtRoot / 1.3));
           float gtTall = (gtShort + (0.30 - gtShort) * gtWild * gtWild * gtWild) * mix(1.0, mix(0.7, 1.6, gtClump), smoothstep(0.12, 0.5, gtWild))
             * (0.85 + 0.3 * gtMake.w) * mix(0.75, 1.0, gtSky) * (1.0 - smoothstep(0.05, 0.45, gtSnow));
+          // On a rough plot: domed tussocks, tallest in their middle, short sparse stems between them.
+          gtTall *= mix(1.0, mix(0.35, 1.15, smoothstep(0.38, 0.78, gtTuss)), gtRough);
           // The football pitch: its turf is in the ground (world/footballGround.ts), no blades inside the rail.
           vec2 gtQ = vec2(dot(gtRoot - gtPitch, gtPitchU), dot(gtRoot - gtPitch, gtPitchW));
           float gtInPitch = min(min(gtQ.x - gtRail.x, gtRail.y - gtQ.x), min(gtQ.y - gtRail.z, gtRail.w - gtQ.y));
           // Shown: on grass, inside the images, within reach (fewer further off, growing in at the edge), not on the
           // pitch. Up to the edge of what covers the ground: the blades hang over a paving's edge.
-          float gtShow = (1.0 - smoothstep(0.3, 0.75, gtCovered)) * step(0.9, gtGround.a)
+          float gtShow = max(1.0 - smoothstep(0.3, 0.75, gtCovered), gtRough) * step(0.9, gtGround.a)
             * step(max(abs(gtUv.x - 0.5), abs(gtUv.y - 0.5)), 0.49)
             * smoothstep(gtReach, gtReach * 0.6, gtFar)
             * step(gtPlace.w, mix(1.0, 0.3, smoothstep(gtReach * 0.25, gtReach * 0.9, gtFar)))
             * step(fract(gtPlace.w * 7.31), mix(0.6, 1.0, gtSky))
-            * (1.0 - smoothstep(-0.25, 0.25, gtInPitch));
+            * (1.0 - smoothstep(-0.25, 0.25, gtInPitch))
+            * (1.0 - gtRough * step(gtTuss, 0.3 + 0.25 * fract(gtPlace.w * 3.7)));
           // Wider further off: a blade a pixel wide or less flickers, and fewer of them have to cover as much.
           float gtWide = min(1.0 + gtFar / 8.0, 4.5);
           vec3 transformed = vec3(0.0, position.y * gtTall, 0.0);
@@ -404,11 +412,14 @@ ${blades ? `          float gtWild = clamp(1.0 - gs.a * 2.0, 0.0, 1.0);
           vec3 gtWash = washAt(gtRoot);
           transformed.xz += (gtWash.xy * 1.5 + gtTurn(vec2(0.8, 0.0), gtPlace.z) * gtWash.z) * transformed.y * position.y;
           transformed.y *= 1.0 - 0.6 * min(1.0, length(gtWash.xy) + 0.6 * gtWash.z) * position.y;
-          transformed += vec3(gtRoot.x, gtY + gtBase, gtRoot.y);
+          transformed += vec3(gtRoot.x, gtY + gtBase + (gtOver.g - 0.5) * gtRough, gtRoot.y);
           // Its colour: the ground's own, yellower or greener with the ground's slow variation, drier in rough grass,
           // each patch a little its own, lighter on a garden's light stripe as the ground is.
           vGtTint = mix(vec3(1.06, 1.0, 0.78), vec3(0.95, 1.02, 1.1), gs.b) * mix(vec3(1.0), vec3(1.25, 1.12, 0.7), gtWild * gtMake.y)
             * (0.92 + 0.16 * gtMake.z) * mix(vec3(1.0), vec3(1.15, 1.13, 1.08), gtStripe);
+          // A rough plot's own colours (world/fields.ts): olive blades and dead straw, more straw round a tussock's edge.
+          if (gtRough > 0.5) vGtTint = mix(vec3(1.0, 1.25, 2.1), vec3(2.3, 1.68, 4.5), step(gtMake.y, 0.3 + 0.35 * smoothstep(0.75, 0.4, gtTuss)))
+            * (0.82 + 0.36 * gtMake.z);
           // Pressed flat by a rotor's wash, the blades show their paler sides: a shimmering ring (world/rotorWash.ts).
           vGtTint *= 1.0 + 0.9 * min(1.0, length(gtWash.xy) + 0.3 * gtWash.z);
 ` : tufts ? `          float gtWild = clamp(1.0 - gs.a * 2.0, 0.0, 1.0);
@@ -443,7 +454,7 @@ ${blades ? `          float gtWild = clamp(1.0 - gs.a * 2.0, 0.0, 1.0);
           float gtGather = smoothstep(0.9, 0.5, gs.g) * smoothstep(0.1, 0.28, gs.g) * 0.95;
           // On the woods' floor, which has its litter of its own (world/forestFloor.ts): the freshest leaves on it,
           // fewer, in its colours, and few under the spruces.
-          float gtWood = step(0.5, gtCovered) * step(0.5, gtOver.b);
+          float gtWood = step(0.5, gtCovered) * step(0.75, gtOver.b);
           float gtSpruce = 0.86 * smoothstep(${(SPRUCE_WOOD[2] + 10).toFixed(1)}, ${(SPRUCE_WOOD[2] - 40).toFixed(1)}, distance(gtRoot, vec2(${SPRUCE_WOOD[0].toFixed(1)}, ${SPRUCE_WOOD[1].toFixed(1)})));
           gtGather = mix(gtGather, 0.4 * (1.0 - 0.85 * gtSpruce), gtWood);
           float gtShow = gtInside * step(gtPlace.w, gtGather) * smoothstep(gtReach, gtReach * 0.75, gtFar) * (1.0 - smoothstep(0.05, 0.3, gtSnow));
