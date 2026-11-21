@@ -615,7 +615,7 @@ const AIM: Record<WeaponId, [number, number, number]> = {
   sniper: [-0.1, 0, 1],
   bazooka: [-0.1, 0, 1],
   launcher: [-0.035, 0.06, 1.1],
-  laser: [-0.1, 0, 1],
+  laser: [-0.045, 0.05, 1.2],
 };
 
 /** From the hip the gun is drawn as with a 54 degree view instead of 72: its own depth this much shorter. */
