@@ -61,6 +61,14 @@ const str = (v, max) => (typeof v === 'string' ? v.replace(/[\u0000-\u001f]/g, '
 const int = (v, lo, hi) => (Number.isInteger(v) && v >= lo && v <= hi ? v : null);
 /** A table keyed by player names without the keys every object has (a player may be called "constructor"). */
 const table = () => Object.create(null);
+/**
+ * A player's connection on the host page's list (Yoshi, 21 Nov 2026: "...the local IP address of the LAN party
+ * participants so I can correlate with network logs"): its network address, as server/auth.mjs clientIp read it at the
+ * WebSocket's upgrade (game.mjs join: no header is read here), and since when it is connected. Only in the view the host
+ * page asks for with GET /api/host?addresses=1 (the admin's session, server.mjs); never in the plain view, which the hall
+ * screen's watch page reads too, and never in anything a player's page is sent. Nothing of it is kept anywhere.
+ */
+const connectionOf = (p) => ({ ip: p.ip ?? null, since: p.joinTime ?? null });
 
 export class Host {
   constructor(game) {
@@ -222,13 +230,15 @@ export class Host {
 
   // ------------------------------------------------------------------ what the host page shows
 
-  view() {
+  /** `addresses`: each player's connection too (connectionOf), for the host page's own call only (server.mjs). */
+  view({ addresses = false } = {}) {
     const now = Date.now();
     for (const [n, k] of this.knocking) if (now - k.at > KNOCK_MS || this.game.players.has(n)) this.knocking.delete(n);
     const person = (x, name, p) => ({
       name, role: p.role, team: this.teamIdOf(name), muted: this.muted.has(name), alive: p.alive, ping: p.rttAvg === null ? null : Math.round(p.rttAvg),
       points: this.scores[name]?.points ?? 0, kills: p.score.kills, deaths: p.score.deaths,
       inside: !!x.gate.insideOf(p), // inside a private home: the hall screen shows a card, never the picture
+      ...(addresses ? connectionOf(p) : {}),
     });
     const players = [...this.game.players.entries()].filter(([, p]) => !p.guard).map(([name, p]) => person(this.game, name, p)); // the people (the guards: `guards`)
     // The people in the rooms (a players' room, the Zombies duel's): on the host page with the same actions (act: where).

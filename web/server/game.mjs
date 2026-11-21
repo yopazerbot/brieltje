@@ -70,6 +70,7 @@ import { blastPoint } from './grenade.mjs';
 import { HELI_DOWN, HELI_SPEED, Helis } from './helis.mjs';
 import { VehicleDamage } from './vehicleDamage.mjs';
 import { Host } from './host.mjs';
+import { clientIp } from './auth.mjs';
 import { FlagGuards } from './flagGuards.mjs';
 import { truckSpec } from '../shared/assaultFields.mjs';
 import { monitor } from './monitor.mjs';
@@ -667,6 +668,9 @@ export class Game {
       // The browser that joined (its guest cookie's id, kept with the session): what a kick keeps out
       // (server/auth.mjs). Never the cookie this connection happens to carry: that one proves nothing.
       device: session.device ?? null,
+      // This connection's network address as clientIp read it at the upgrade, for the host page only (server/host.mjs
+      // connectionOf): in memory with the connection, never stored, never sent to a page.
+      ip: req?.headers && req.socket ? clientIp(req) : null,
       score, hp: HEALTH, alive: true, respawnAt: 0, protectedUntil: now + PROTECT_MS, nextHit: 0, weapons: this.loadout(name, { role: session.role }), joinTime: now, spawned: false,
       nades: Array(GRENADE.carry).fill(0), thrown: [],
       // The ticks: which the page reads, when its state was taken (`stamp`, the server's clock), whether
