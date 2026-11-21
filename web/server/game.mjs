@@ -965,6 +965,7 @@ export class Game {
       players: this.scoreList(), limit: KILL_LIMIT, points: POINTS,
       round: this.roundOver ? { winner: this.roundOver.winner, ms: Math.max(0, this.roundOver.until - now) } : null,
       mode: this.modes.view(now), peaceful: this.modes.peaceful,
+      paint: !!this.shownRules().paintball, // the paint look on: the scores page says "tags", not "kills"
       evening: this.host?.board() ?? null, // the LAN night's scoreboard (server/host.mjs)
     };
   }

@@ -201,7 +201,7 @@ import { churchPrisms, makeChurch } from '../shared/church.mjs';
 import CAFE_DATA from '../shared/sparrenhof.json';
 import HUTS_DATA from '../shared/tree_huts.json';
 import { cafePrisms, makeCafe } from '../shared/sparrenhof.mjs';
-import { carName, doorName, isGuard, lang, onLang, placeName, portalName, serverText, setLang, t, whoName } from './i18n';
+import { carName, doorName, isGuard, lang, onLang, placeName, plural, portalName, serverText, setLang, t, whoName } from './i18n';
 import { seat, tellHost } from './seat';
 import { gather, pace, playBegins, StartWarm } from './startWarm';
 import { onWatch, watch } from './watch';
@@ -4458,7 +4458,7 @@ renderer.setAnimationLoop((now: number) => {
   avatars.tick(dt, camera.position, driving || riding || horses.mounted >= 0 || bikes.mounted ? null : { x: player.x, z: player.z });
   // Watching: the camera on the player followed, and this page's own player with them (the place name, the map, what loads).
   if (watching && watchView) {
-    const at = watchView.update(dt, camera, avatars, (n) => online.get(n) ?? '#fbf6ea', (n) => t('watch.kills', { n: killsOf.get(n) ?? 0 }), (a, b) => world.clearance(a, b));
+    const at = watchView.update(dt, camera, avatars, (n) => online.get(n) ?? '#fbf6ea', (n) => paintball.on || rules.paintball ? plural(killsOf.get(n) ?? 0, 'watch.tag', 'watch.tags', { n: killsOf.get(n) ?? 0 }) : t('watch.kills', { n: killsOf.get(n) ?? 0 }), (a, b) => world.clearance(a, b));
     if (at) player.place(at.x, at.z, at.y, player.yaw, 0);
   }
   slideSound.update(player.slideSpeed); // the whoosh down the play tower's slide

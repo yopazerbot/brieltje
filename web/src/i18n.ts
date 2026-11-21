@@ -1291,6 +1291,7 @@ const en = {
   'srv.rules': '{name} turned {list}',
   'srv.newRoundBy': '{name} started a new round',
   'srv.newRound': 'New round: first to {n} kills',
+  'srv.newRound.paint': 'New round: first to tag the others {n} times',
   'srv.travelChatOff': 'The admin has turned travelling from the chat off. Walk to a portal.',
   'srv.travelPortalsOff': 'The admin has turned the portals off.',
   'srv.travelDriverOnly': 'Only the driver can take the car through.',
@@ -1325,6 +1326,8 @@ const en = {
   'watch.nobody': 'Waiting for players',
   'watch.down': 'down',
   'watch.kills': '{n} kills',
+  'watch.tag': '{n} tag',
+  'watch.tags': '{n} tags',
   'eteam.blue': 'Blue',
   'eteam.red': 'Red',
   'eteam.green': 'Green',
@@ -2010,7 +2013,7 @@ const nl = {
   'game.assault': 'Aanvallen en verdedigen',
   'game.flagCompactSub': 'Blauw bij de kerk, rood aan de Molenhoek (zo’n 200 m)',
   'game.flagVillageSub': 'Blauw bij de kerk, rood aan de Sparrenhof (1,7 km, met auto’s en fietsen)',
-  'game.teamsSub.paint': 'Twee teams, elk vanaf zijn eigen start (zijn huis, of waar de host koos); het eerste team dat de anderen 25 keer geraakt heeft, wint',
+  'game.teamsSub.paint': 'Twee teams, elk vanaf zijn eigen start (zijn huis, of waar de host koos); het eerste team dat de anderen 25 keer getikt heeft, wint',
   'game.stop': 'Spel stoppen',
   'game.stopSub': 'Terug naar vrij spelen',
   'game.stopAsk': 'Het spel voor iedereen stoppen?',
@@ -2380,7 +2383,7 @@ const nl = {
   'paint.splattered': 'bespatte',
   'paint.you': 'jou',
   'paint.goal': 'Wie eerst {n} keer raak schiet, wint de ronde · raak 100 · voltreffer +50',
-  'paint.teamsGoal': 'Het eerste team dat de anderen {n} keer geraakt heeft, wint · {ta} {h} – {b} {tb}',
+  'paint.teamsGoal': 'Het eerste team dat de anderen {n} keer getikt heeft, wint · {ta} {h} – {b} {tb}',
   'paint.tags': 'Raak',
   'paint.taggedCol': 'Geraakt',
   'paint.out': 'geraakt',
@@ -2745,6 +2748,7 @@ const nl = {
   'srv.rules': '{name} heeft de huisregels aangepast: {list}',
   'srv.newRoundBy': '{name} is een nieuwe ronde begonnen',
   'srv.newRound': 'Nieuwe ronde: wie eerst aan {n} kills is, wint',
+  'srv.newRound.paint': 'Nieuwe ronde: wie eerst {n} keer tikt, wint',
   'srv.travelChatOff': 'De beheerder heeft reizen via de chat uitgezet. Wandel naar een portaal.',
   'srv.travelPortalsOff': 'De beheerder heeft de portalen uitgezet.',
   'srv.travelDriverOnly': 'Alleen wie rijdt, kan de auto meenemen.',
@@ -2779,6 +2783,8 @@ const nl = {
   'watch.nobody': 'Wachten op spelers',
   'watch.down': 'neer',
   'watch.kills': '{n} kills',
+  'watch.tag': '{n} tik',
+  'watch.tags': '{n} tikken',
   'eteam.blue': 'Blauw',
   'eteam.red': 'Rood',
   'eteam.green': 'Groen',
@@ -2786,9 +2792,9 @@ const nl = {
   'srv.needTwo': 'Voor {kind} zijn minstens twee spelers nodig',
   'srv.hideStarted': '{name} is verstoppertje begonnen: {seeker} zoekt. Verstop je! (30 seconden)',
   'srv.teamsStarted': '{name} is Huis tegen bungalow begonnen: het eerste team aan {n} kills wint. De host bepaalt de teams.',
-  'srv.teamsStarted.paint': '{name} is Huis tegen bungalow begonnen: het eerste team dat de anderen {n} keer geraakt heeft, wint. De host bepaalt de teams.',
+  'srv.teamsStarted.paint': '{name} is Huis tegen bungalow begonnen: het eerste team dat de anderen {n} keer getikt heeft, wint. De host bepaalt de teams.',
   'srv.teamvteamStarted': '{name} is Team tegen team begonnen: het eerste team aan {n} kills wint. {team} start bij {place}, {team2} bij {place2}.',
-  'srv.teamvteamStarted.paint': '{name} is Team tegen team begonnen: het eerste team dat de anderen {n} keer geraakt heeft, wint. {team} start bij {place}, {team2} bij {place2}.',
+  'srv.teamvteamStarted.paint': '{name} is Team tegen team begonnen: het eerste team dat de anderen {n} keer getikt heeft, wint. {team} start bij {place}, {team2} bij {place2}.',
   'srv.teamStartHere': '{team} start nu hier, in het volgende teamspel.',
   'srv.startHome': 'Niet in een privéwoning of haar tuin: ga eerst naar buiten.',
   'srv.startOutside': 'Die plek ligt buiten de kaart.',
@@ -2821,8 +2827,8 @@ const nl = {
   'srv.flagHeliBase': 'Geen helikopter bij een basis: hij is terug naar zijn plek.',
   'srv.flagSuddenStart': 'De tijd is om bij {blue}–{red}: sudden death, wie nu een vlag binnenbrengt, wint (5 minuten)',
   'srv.flagWon': 'Team {team} wint · Blauw {blue} – {red} Rood',
-  'srv.flagTagsWon': 'Gelijk bij {blue}–{red}: team {team} wint op raken, {a}–{b}',
-  'srv.flagDraw': 'Gelijkspel: {blue}–{red} in vlaggen, {a}–{b} in raken',
+  'srv.flagTagsWon': 'Gelijk bij {blue}–{red}: team {team} wint met meer tikken, {a}–{b}',
+  'srv.flagDraw': 'Gelijkspel: {blue}–{red} in vlaggen en {a}–{b} in tikken',
   'srv.assaultStarted': '{name} startte Aanvallen en verdedigen: team {team} verdedigt de kerk, het andere team valt aan vanuit zijn kamp. Twee rondes.',
   'srv.assaultCaptured': '{name} bracht de vlag naar het kamp: team {team} deed er {s} s over',
   'srv.assaultHeld': 'De tijd is om: team {team} kreeg de vlag {n}% van de weg',
@@ -2831,8 +2837,8 @@ const nl = {
   'srv.assaultTime': 'Team {team} wint: de snelste verovering, {a} s tegen {b} s',
   'srv.assaultOnly': 'Team {team} wint: de enige verovering, in {a} s',
   'srv.assaultFar': 'Team {team} wint: hun vlag geraakte het verst, {a}% tegen {b}%',
-  'srv.assaultTags': 'Team {team} wint op raken, {a}–{b}',
-  'srv.assaultDraw': 'Gelijkspel: gelijk in veroveringen en in hoe ver de vlag geraakte, {a}–{b} in raken',
+  'srv.assaultTags': 'Team {team} wint met meer tikken, {a}–{b}',
+  'srv.assaultDraw': 'Gelijkspel: gelijk in veroveringen en in hoe ver de vlag geraakte, {a}–{b} in tikken',
   'srv.assaultTruck': 'Alleen de aanvallers rijden met de legertruck.',
   'srv.assaultBreakSeat': 'Niet tijdens de pauze: ronde 2 begint zo meteen.',
   'srv.asupBreak': 'Niet tijdens de pauze: ronde 2 begint zo meteen.',
@@ -3069,6 +3075,15 @@ export function setFriendly(on: boolean): void {
   if (on === friendly) return;
   friendly = on;
   applyStatic();
+  for (const fn of friendlyListeners) fn();
+}
+const friendlyListeners = new Set<() => void>();
+/**
+ * Call `fn` when the child-friendly words come or go (setFriendly). A game with the paint look says it started before
+ * the server's rules switch the words: the chat's lines are made again then ("tag", not "kills").
+ */
+export function onFriendly(fn: () => void): void {
+  friendlyListeners.add(fn);
 }
 const variant = (key: Key): Key => {
   const twin = `${key}.paint`;

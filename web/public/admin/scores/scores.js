@@ -12,8 +12,8 @@
   const $ = (id) => document.getElementById(id);
   const T = {
     nl: {
-      free: 'Vrij spel', hide: 'Verstoppertje', tag: 'Tikkertje', treasure: 'Schattenjacht', teams: 'Huis tegen bungalow', teamvteam: 'Team tegen team',
-      firstTo: 'Eerste tot {n} kills wint de ronde', hiding: 'Verstoppen', seeking: 'Zoeken', playing: 'Bezig', done: 'Afgelopen',
+      free: 'Vrij spel', hide: 'Verstoppertje', tag: 'Tikkertje', treasure: 'Schattenjacht', teams: 'Huis tegen bungalow', teamvteam: 'Team tegen team', flag: 'Pak de vlag', assault: 'Aanvallen en verdedigen',
+      firstTo: 'Eerste tot {n} kills wint de ronde', firstToPaint: 'Wie eerst {n} keer tikt, wint de ronde', tags: 'Tikken', tagged: 'Getikt', hiding: 'Verstoppen', seeking: 'Zoeken', playing: 'Bezig', done: 'Afgelopen',
       left: 'nog {t}', kills: 'Kills', deaths: 'Dood', points: 'Punten', timeIt: 'Tijd als tikker', coins: 'Munten',
       coinsLeft: '{n} munten liggen nog verstopt', fewest: 'Wie het minst lang tikker was, wint', seeks: 'zoekt', hidden: 'verstopt', it: 'tikker',
       house: 'Huis', bungalow: 'Bungalow', goal: 'eerste tot {n}', wins: '{name} wint de ronde!', next: 'Volgende ronde over {n} s', over: 'Afgelopen!',
@@ -29,8 +29,8 @@
       accounts: 'Spelers met een account · bijgewerkt om {time}', offline: 'Nu even niet op te halen',
     },
     en: {
-      free: 'Free play', hide: 'Hide and seek', tag: 'Tag', treasure: 'Treasure hunt', teams: 'House against bungalow', teamvteam: 'Team against team',
-      firstTo: 'First to {n} kills wins the round', hiding: 'Hiding', seeking: 'Seeking', playing: 'Playing', done: 'Over',
+      free: 'Free play', hide: 'Hide and seek', tag: 'Tag', treasure: 'Treasure hunt', teams: 'House against bungalow', teamvteam: 'Team against team', flag: 'Steal the flag', assault: 'Attack and defend',
+      firstTo: 'First to {n} kills wins the round', firstToPaint: 'First to {n} tags wins the round', tags: 'Tags', tagged: 'Tagged', hiding: 'Hiding', seeking: 'Seeking', playing: 'Playing', done: 'Over',
       left: '{t} left', kills: 'Kills', deaths: 'Deaths', points: 'Points', timeIt: 'Time as it', coins: 'Coins',
       coinsLeft: '{n} coins still hidden', fewest: 'Least time as it wins', seeks: 'seeks', hidden: 'hidden', it: 'it',
       house: 'House', bungalow: 'Bungalow', goal: 'first to {n}', wins: '{name} wins the round!', next: 'Next round in {n} s', over: 'Game over!',
@@ -127,9 +127,9 @@
     const mode = board.mode;
     const kind = mode.kind || 'free';
     const left = mode.ms !== undefined ? mode.ms - (Date.now() - boardAt) : 0;
-    $('mode-title').textContent = t(kind === 'teams' && mode.open ? 'teamvteam' : kind); // the teams game from the host's starts: Team against team
+    $('mode-title').textContent = t(kind === 'teams' && mode.open ? 'teamvteam' : kind === 'flag' && mode.flag?.assault ? 'assault' : kind); // the teams game from the host's starts: Team against team; Attack and defend is a flag game of its own
     const z = mode.zombies;
-    $('mode-sub').textContent = kind === 'free' ? t('firstTo', { n: board.limit })
+    $('mode-sub').textContent = kind === 'free' ? t(paint() ? 'firstToPaint' : 'firstTo', { n: board.limit })
       : kind === 'zombies' && z ? [t('wave', { n: z.wave }), mode.phase === 'break' ? `${t('break')} · ${t('left', { t: clock(left) })}` : mode.phase === 'wave' ? t('zleft', { n: z.left }) : t('done')].join(' · ')
       : [t(mode.phase) ?? '', mode.phase !== 'done' ? t('left', { t: clock(left) }) : ''].filter(Boolean).join(' · ');
     const players = board.players;
@@ -153,13 +153,16 @@
     banner(kind, mode);
   }
 
+  /** The paint look on (the game's look, or child-friendly for everyone): "tags", never "kills" (server/game.mjs board). */
+  const paint = () => board?.paint === true || board?.mode?.look === 'paint';
+
   /** The ranking for free play, tag, the treasure hunt, hide and seek and Zombies. */
   function ranking(kind, mode, players) {
     const box = el('div', 'rows');
     if (kind === 'tag') {
       const times = mode.times || {};
       const list = [...players].sort((a, b) => (times[a.name] ?? 0) - (times[b.name] ?? 0));
-      box.append(head([t('timeIt'), t('kills')]));
+      box.append(head([t('timeIt'), t(paint() ? 'tags' : 'kills')]));
       list.forEach((p, i) => box.append(row(i + 1, p, [`${Math.round(times[p.name] ?? 0)} s`, p.kills], { lead: true, it: p.name === mode.it, note: p.name === mode.it ? t('it') : '' })));
       const wrap = el('div');
       wrap.append(box, el('div', 'note', t('fewest')));
@@ -195,7 +198,7 @@
     }
     // Free play: by kills, then fewest deaths, then points; a bar towards the round's limit.
     const list = [...players].sort((a, b) => b.kills - a.kills || a.deaths - b.deaths || b.points - a.points);
-    box.append(head([t('kills'), t('deaths'), t('points')]));
+    box.append(head(paint() ? [t('tags'), t('tagged'), t('points')] : [t('kills'), t('deaths'), t('points')]));
     list.forEach((p, i) => box.append(row(i + 1, p, [p.kills, p.deaths, p.points], { lead: p.kills > 0, out: !p.alive, note: p.alive ? '' : t('out'), bar: p.kills / board.limit })));
     return box;
   }

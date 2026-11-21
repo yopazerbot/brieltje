@@ -1,4 +1,4 @@
-import { onLang, t } from '../i18n';
+import { onFriendly, onLang, t } from '../i18n';
 import { typing } from '../keys';
 import { compactHud } from './compact';
 
@@ -25,6 +25,12 @@ export class Chat {
         if (text) line.textContent = text();
       }
       this.input.placeholder = t(this.alone ? 'chat.placeholderAlone' : 'chat.placeholder');
+    });
+    onFriendly(() => { // the paint look's words ("tag", not "kills"), also in the lines already there
+      for (const line of this.log.children) {
+        const text = this.texts.get(line);
+        if (text) line.textContent = text();
+      }
     });
     this.input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
