@@ -4419,7 +4419,9 @@ renderer.setAnimationLoop((now: number) => {
       if (Math.hypot(x - player.x, z - player.z) < 45) teammates.push({ name: kind === 'claymore' ? mineName() : t(kind === 'nades' && paintball.on ? 'loot.nadesPaint' : kind === 'rifle' && paintball.on ? 'paint.rifle' : kind === 'laser' && paintball.on ? 'paint.laser' : LOOT_LABELS[kind]), x, y: y - 1.2, z, color: '' });
     }
   }
-  tactics.update(camera, !menu.open && combat.alive && cooperative, teammates, net.connected);
+  // A team game: fewer, nearer names, and a teammate carrying a flag always (ui/tactics.ts).
+  const carried = games.flagOn ? [games.view.flag?.flags.blue, games.view.flag?.flags.red].find((f) => f?.at === 'carried' && !!f.by && games.friend(f.by))?.by ?? null : null;
+  tactics.update(camera, !menu.open && combat.alive && cooperative, teammates, net.connected, cooperative && !games.zombies ? { carrier: carried } : null);
   cats.update(dt);
   life.update(dt, camera.position);
   villageSmoke?.follow(dt, camera.position, !phone && quality !== 'low');
