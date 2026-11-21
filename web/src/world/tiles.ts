@@ -25,6 +25,26 @@ import type { Surroundings } from './houseData';
  * each set's meshes draw only the tiles round the map's middle (shadowAt).
  */
 
+/**
+ * On a phone or tablet (a coarse pointer), the merged tiles' vertex colours and custom attributes leave the processor's
+ * memory once the graphics chip has them: a phone's browser counts both, and the village's start ran out of memory on
+ * an iPhone. After the upload nothing reads them: three's raycast (shots, walking into things) reads only the position,
+ * the normal, the uvs and the index, which stay; the merged tiles are never merged, rebuilt or uploaded again (a preset
+ * change only shows, hides or swaps materials; a lost context is not restored, main.ts says so on screen); their LOD
+ * and shadow work only moves the draw range. Static, plain (not instanced, not interleaved) attributes only.
+ */
+const FREE_AFTER_UPLOAD = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+const KEEP_ON_CPU = new Set(['position', 'normal', 'uv', 'uv1']);
+function dropArray(this: { array: unknown }): void {
+  this.array = null;
+}
+function freeAfterUpload(geometry: THREE.BufferGeometry): void {
+  for (const [name, a] of Object.entries(geometry.attributes)) {
+    if (KEEP_ON_CPU.has(name) || !(a instanceof THREE.BufferAttribute) || a instanceof THREE.InstancedBufferAttribute || a.usage !== THREE.StaticDrawUsage) continue;
+    a.onUpload(dropArray);
+  }
+}
+
 export const TILE = 200;
 const CX = 4.45;
 const CZ = -3;
@@ -220,6 +240,7 @@ export class Tiles {
       const offsets = [0];
       for (const geos of per) offsets.push(offsets[offsets.length - 1] + geos.reduce((s, g) => s + size(g), 0));
       const mesh = new THREE.Mesh(geometry, piece.material);
+      if (FREE_AFTER_UPLOAD) freeAfterUpload(geometry);
       style(mesh, piece);
       const run: Run = { mesh, offsets, small: piece.small };
       set.runs.push(run);
