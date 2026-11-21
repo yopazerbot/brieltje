@@ -185,10 +185,7 @@
     const freeze = $('freeze');
     freeze.textContent = v.frozen ? `▶ Let everyone go (${clock(Date.now() - frozenSince)})` : '⏸ Freeze everyone';
     freeze.classList.toggle('on', !!v.frozen);
-    const limit = $('limit');
-    limit.max = String(v.most);
-    if (document.activeElement !== limit) limit.value = String(v.max);
-    $('limit-value').textContent = limit.value;
+    showLimit();
     $('chat').textContent = v.chatOff ? '💬 Chat is off' : '💬 Chat is on';
     $('chat').classList.toggle('off', v.chatOff);
     if (document.activeElement !== $('words')) $('words').value = v.words.join('\n');
@@ -562,6 +559,31 @@
     $('g-minutes').disabled = kind === 'zombies' || (kind === 'duel' && $('g-duel').value === 'final');
     $('g-duel-label').hidden = kind !== 'duel';
   };
+  // ---- How many may play at once: any whole number from 2 up, the host's alone (server/game.mjs: no ceiling in the
+  // code). Past what was measured as comfortable on the host's computer, a line says so; it never refuses a number.
+  // TESTED: tools/dev/crowd.mjs and a page among scripted players, 21 Nov 2026 (see DECISIONS.md).
+  const TESTED = 60;
+  const limitOf = (text) => (/^\s*\d+\s*$/.test(text) && Number.isSafeInteger(Number(text)) && Number(text) >= 2 ? Number(text) : null);
+  /** The field as the server has it (unless the host is typing in it), and its line. */
+  function showLimit() {
+    const limit = $('limit');
+    if (document.activeElement !== limit) limit.value = String(v.max);
+    limitNote();
+  }
+  /** The line under the field: past TESTED, what that means; a number the field can't take, what it takes. */
+  function limitNote() {
+    const text = $('limit').value;
+    const n = limitOf(text);
+    const note = $('limit-note');
+    note.textContent = n === null ? (text.trim() ? 'A whole number, 2 or more.' : '') : n > TESTED ? `Tested up to ${TESTED} players on this PC. Above that the game may stutter.` : '';
+    note.classList.toggle('bad', n === null);
+    note.hidden = !note.textContent;
+  }
+  function setLimit() {
+    const n = limitOf($('limit').value);
+    if (n === null || n === v?.max) return;
+    act({ op: 'limit', max: n }, `${n} players at once`);
+  }
   function announce(text) {
     act({ op: 'announce', text, secs: Number($('announce-secs').value) }, `Announced: ${text}`);
     recent = [text, ...recent.filter((x) => x !== text)].slice(0, 4);
@@ -586,8 +608,8 @@
   const doorsToggle = () => act({ op: 'lock', on: !v.locked }, v.locked ? 'Doors open' : 'Doors locked: newcomers wait at the door');
   $('doors').addEventListener('click', doorsToggle);
   $('chip-doors').addEventListener('click', doorsToggle);
-  $('limit').addEventListener('input', () => ($('limit-value').textContent = $('limit').value));
-  $('limit').addEventListener('change', () => act({ op: 'limit', max: Number($('limit').value) }, `${$('limit').value} players at once`));
+  $('limit').addEventListener('input', limitNote);
+  $('limit').addEventListener('change', setLimit);
   $('freeze').addEventListener('click', () => act({ op: 'freeze', on: !v.frozen, text: $('freeze-text').value }, v.frozen ? 'Everyone can move again' : 'Everyone stands still'));
   $('announce-form').addEventListener('submit', (e) => {
     e.preventDefault();

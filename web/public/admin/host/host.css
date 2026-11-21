@@ -76,7 +76,7 @@
 .bar { display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; }
 .bar-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 #freeze-text { flex: 1 1 200px; }
-.bar-row .limit { margin-left: auto; }
+.bar-row .limit-box { margin-left: auto; }
 .announce input[type="text"] { flex: 1 1 260px; }
 .quick { display: flex; flex-wrap: wrap; gap: 6px; flex-basis: 100%; }
 .quick .q {
@@ -86,13 +86,16 @@
 .quick .q:hover { background: rgba(247, 185, 40, 0.2); }
 .host #chat.off { color: #ffd2cd; box-shadow: 0 4px 0 var(--edge), inset 0 0 0 2px #ff8a80; }
 .limit { display: inline-flex; align-items: center; gap: 8px; font-size: 15px; color: var(--soft); }
-.limit b { min-width: 2ch; font-family: var(--display); font-size: 18px; color: var(--chalk); }
-.limit input { width: 140px; accent-color: var(--sun); }
+/* How many may play: a number field, a line under it past what was tested (host.js limitNote). */
+.limit-box { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; max-width: 100%; }
+.limit input { width: 9ch; font-family: var(--display); font-size: 18px; font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
+.limit-note { max-width: 34ch; font-size: 13px; line-height: 1.3; text-align: right; color: var(--sun); }
+.limit-note.bad { color: #ff9d94; }
 
 .cols { display: grid; grid-template-columns: 1.1fr 1fr 1fr; gap: 16px; align-items: start; }
 .col.stack { display: flex; flex-direction: column; gap: 16px; }
 @media (max-width: 1150px) { .cols { grid-template-columns: 1fr 1fr; } .cols > :last-child { grid-column: 1 / -1; } }
-@media (max-width: 720px) { .cols { grid-template-columns: 1fr; } .host-head .btn { padding: 8px 12px; font-size: 14px; } .bar-row .limit { margin-left: 0; } }
+@media (max-width: 720px) { .cols { grid-template-columns: 1fr; } .host-head .btn { padding: 8px 12px; font-size: 14px; } .bar-row .limit-box { margin-left: 0; align-items: flex-start; } .limit-note { text-align: left; } }
 .row { display: flex; flex-wrap: wrap; gap: 10px; margin: 10px 0; }
 
 /* People: found, sorted, one line each, their actions in one menu. */

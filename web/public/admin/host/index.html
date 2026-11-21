@@ -46,8 +46,10 @@
         <input type="text" id="freeze-text" maxlength="120" placeholder="Why everyone stands still (optional)" />
         <button class="btn ghost" type="button" id="bring-all">Bring everyone to me</button>
         <button class="btn ghost" type="button" id="chat"></button>
-        <label class="limit"><span>Players at once</span> <b id="limit-value"></b>
-          <input type="range" id="limit" min="2" max="32" step="1" /></label>
+        <!-- How many may play at once: any whole number from 2 up (server/game.mjs: no ceiling). A line under it past what was tested (host.js limitField). -->
+        <div class="limit-box"><label class="limit"><span>Players at once</span>
+          <input type="number" id="limit" min="2" step="1" inputmode="numeric" aria-describedby="limit-note" /></label>
+          <small class="limit-note" id="limit-note" hidden></small></div>
       </div>
       <form class="bar-row announce" id="announce-form">
         <input type="text" id="announce" maxlength="120" placeholder="Announce on every screen  ( / )" />
