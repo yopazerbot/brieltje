@@ -151,7 +151,10 @@
   // When a figure is fine, busy or too much (a figure without limits is shown, not judged).
   const LIMITS = {
     tickMs: [10, 25], cpu: [60, 85], lagMs: [50, 120], mbitOut: [20, 50], pingHigh: [120, 250], memMB: [700, 1200],
+    poorShare: [1, 25], // the players' connections tile: any poor is orange, a quarter or more red
   };
+  /** The server's verdict comes from its own figures only: one slow phone is not the server in trouble. */
+  const SERVER = ['tickMs', 'cpu', 'lagMs', 'mbitOut', 'memMB'];
   const level = (key, value) => {
     const l = LIMITS[key];
     if (!l || value === null || value === undefined) return 0;
@@ -164,7 +167,7 @@
   function render() {
     const s = v.server;
     const last = s?.samples.at(-1);
-    const worst = last ? Math.max(...Object.keys(LIMITS).map((k) => level(k, last[k]))) : 0;
+    const worst = last ? Math.max(...SERVER.map((k) => level(k, last[k]))) : 0;
 
     // The chips.
     $('chip-people').textContent = `👥 ${v.players.length} / ${v.max}`;
@@ -419,17 +422,26 @@
     return grade(b) - grade(a) || rtt(b) - rtt(a) || a.name.localeCompare(b.name);
   }
 
+  /** The players' connections together (the admin's own left out): how many are graded, poor, on a slow device; the averages. */
+  function linkCounts() {
+    const graded = [...v.players, ...(v.away ?? [])].filter((p) => p.role !== 'admin' && p.link && p.link.grade !== null);
+    return {
+      graded: graded.length,
+      poor: graded.filter((p) => p.link.grade >= 2).length,
+      devices: graded.filter((p) => p.link.slow === 'device' || p.link.slow === 'both').length,
+      means: graded.map((p) => p.link.mean).filter((m) => typeof m === 'number').sort((a, b) => a - b),
+    };
+  }
+
   /** Above the list: the server's own delay, if any, and how many have a poor connection (nothing when all are good). */
   function drawLinkLines() {
     const say = (id, text) => $(id).textContent !== text && ($(id).textContent = text); // a status line speaks only when it changes
     const busy = !!v.load?.busy;
     $('link-busy').hidden = !busy;
     say('link-busy', busy ? 'The server is busy: connections may look worse than they are. Its own delay is not counted against anyone.' : '');
-    const graded = [...v.players, ...(v.away ?? [])].filter((p) => p.role !== 'admin' && p.link && p.link.grade !== null);
-    const poor = graded.filter((p) => p.link.grade >= 2).length;
-    const devices = graded.filter((p) => p.link.slow === 'device' || p.link.slow === 'both').length;
+    const { graded, poor, devices } = linkCounts();
     const parts = [];
-    if (poor) parts.push(`${poor} of ${graded.length} ${poor === 1 ? 'has' : 'have'} a poor connection.`);
+    if (poor) parts.push(`${poor} of ${graded} ${poor === 1 ? 'has' : 'have'} a poor connection.`);
     if (devices) parts.push(`${devices} ${devices === 1 ? 'device is' : 'devices are'} slow.`);
     $('link-line').hidden = !parts.length;
     say('link-line', parts.join(' '));
@@ -533,6 +545,9 @@
     if (!pop.hidden && !pop.contains(e.target) && !e.target.closest?.('.more')) pop.hidden = true;
   });
 
+  /** The share of players with a poor connection at each of the server's samples, since this page opened (at most 15 minutes). */
+  const connHistory = [];
+
   /** The server's verdict, its figures each with the last fifteen minutes, and the computer it runs on. */
   function drawServer(worst) {
     const s = v.server;
@@ -545,25 +560,44 @@
       $('meters').replaceChildren();
       return;
     }
-    const busy = Object.keys(LIMITS).filter((k) => level(k, last[k]) === worst && worst > 0);
-    const NAMES = { tickMs: 'game tick', cpu: 'processor', lagMs: 'delays', mbitOut: 'network', pingHigh: 'a slow connection', memMB: 'memory' };
+    const busy = SERVER.filter((k) => level(k, last[k]) === worst && worst > 0);
+    const NAMES = { tickMs: 'game tick', cpu: 'processor', lagMs: 'delays', mbitOut: 'network', memMB: 'memory' };
     health.className = `health ${LEVELS[worst].cls}`;
     health.replaceChildren(el('b', { text: `${LEVELS[worst].icon} ${LEVELS[worst].word}` }), el('span', { text: worst ? ` · look at: ${busy.map((k) => NAMES[k]).join(', ')}` : ' · plenty of room left' }));
+    // The players' connections (server/hostLink.mjs grades, from the network's own ping): their own tile, never part of
+    // the server's verdict. Many poor at once while the server is fine: the Wi-Fi is the likely cause.
+    const c = linkCounts();
+    const share = c.graded ? Math.round((c.poor / c.graded) * 100) : null;
+    if (connHistory.at(-1)?.at !== last.at) {
+      connHistory.push({ at: last.at, poorShare: share });
+      if (connHistory.length > 180) connHistory.shift();
+    }
+    const mid = c.means.length ? Math.round(c.means[c.means.length >> 1]) : null;
+    const connNote = !c.graded ? 'nobody playing'
+      : c.poor * 2 > c.graded && c.graded >= 3 && !worst ? 'Most players at once: check the Wi-Fi'
+        : `round trip: middle ${mid} ms · slowest ${Math.round(c.means.at(-1))} ms`;
     const meters = [
       { key: 'tickMs', title: 'Game tick', value: last.tickMs, unit: 'ms', note: `of ${s.tickBudgetMs} ms · slowest ${last.tickMaxMs} ms` },
       { key: 'cpu', title: 'Processor', value: last.cpu, unit: '%', note: 'of one core (the game uses one)' },
       { key: 'lagMs', title: 'Delays', value: last.lagMs, unit: 'ms', note: 'how late the server answers, at worst' },
       { key: 'mbitOut', title: 'Network out', value: last.mbitOut, unit: 'Mbit/s', note: `${last.kbOutPerSec} KB/s · ${last.outPerSec} messages/s` },
-      { key: 'pingHigh', title: 'Slowest ping', value: last.pingHigh, unit: 'ms', note: last.pingMid === null ? 'nobody playing' : `middle ${last.pingMid} ms · fastest ${last.pingLow} ms` },
+      { key: 'poorShare', title: 'Players\' connections', value: c.graded ? `${c.poor} of ${c.graded}` : null, unit: c.graded ? 'poor' : '', level: level('poorShare', share), note: connNote, history: connHistory, sparkUnit: '% poor', sort: true },
       { key: 'memMB', title: 'Memory', value: last.memMB, unit: 'MB', note: `${last.heapMB} MB in use by the game` },
     ];
-    if (stale('meters', [samples.length, last.at])) {
+    if (stale('meters', [samples.length, last.at, c.poor, c.graded, connNote])) {
       $('meters').replaceChildren(...meters.map((mt) => {
-        const lv = level(mt.key, mt.value);
-        return el('div', { class: `meter lv${lv}` },
+        const lv = mt.level ?? level(mt.key, mt.value);
+        // The connections tile sorts the list by connection, worst first, and goes there.
+        const toList = () => {
+          sortBy = 'link';
+          store.set('sort', sortBy);
+          render();
+          $('people').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        };
+        return el('div', { class: `meter lv${lv}${mt.sort ? ' to-list' : ''}`, ...(mt.sort ? { role: 'button', tabindex: '0', title: 'Sort the list by connection, worst first', on: { click: toList, keydown: (e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), toList()) } } : {}) },
           el('div', { class: 'meter-head' }, el('span', { text: mt.title }), el('i', { class: 'state', text: LEVELS[lv].icon, title: LEVELS[lv].word })),
           el('div', { class: 'meter-value' }, el('b', { text: mt.value === null ? '–' : String(mt.value) }), el('small', { text: ` ${mt.unit}` })),
-          spark(samples, mt.key, mt.title, mt.unit, s.every),
+          spark(mt.history ?? samples, mt.key, mt.title, mt.sparkUnit ?? mt.unit, s.every),
           el('div', { class: 'meter-note', text: mt.note }),
         );
       }));
