@@ -111,6 +111,7 @@ const ROLE: Record<string, Role> = {
   Steel: 'trim', Brass: 'trim', Dark: 'deep', Grip: 'deep', Glass: 'lens',
   // The laser rifle's own (lasergun.glb): its lower and stock the paint, its upper and shroud the trim.
   LaserPolymer: 'body', LaserAnodised: 'trim', LaserFin: 'trim', LaserAccent: 'deep', LaserGlass: 'lens',
+  PistolSlide: 'trim', // the pistol's own (gun-pistol.glb): its slide, as the steel slide it had
 };
 const TOY: Record<WeaponId, Record<Role, string>> = {
   pistol: { body: GUN_PAINT.pistol, trim: '#ffd23f', deep: '#2f6fe0', lens: '#8fe9ff' },
@@ -248,7 +249,12 @@ function gloveMaps(m: THREE.MeshStandardMaterial): void {
  * is taken from that file. If its file does not come it is taken from weapons.glb when it is in there; the laser rifle
  * is not, and stays a block gun.
  */
-const GUN_FILES: Partial<Record<WeaponId, string>> = { laser: '/models/lasergun.glb', bazooka: '/models/gun-bazooka.glb', launcher: '/models/gun-launcher.glb' };
+const GUN_FILES: Partial<Record<WeaponId, string>> = {
+  laser: '/models/lasergun.glb',
+  pistol: '/models/gun-pistol.glb',
+  bazooka: '/models/gun-bazooka.glb',
+  launcher: '/models/gun-launcher.glb',
+};
 const gunLoader = new GLTFLoader();
 const ownFiles = (Object.entries(GUN_FILES) as [WeaponId, string][]).map(([w, url]) => gunLoader.loadAsync(url).then((g) => [w, g] as const, () => [w, null] as const));
 export const gunsReady: Promise<boolean> = gunLoader.loadAsync('/models/weapons.glb').then(
