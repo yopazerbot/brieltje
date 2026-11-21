@@ -252,12 +252,16 @@ body.append(ring("rscrew", -0.0132, -0.0115, 0.0024, M["Steel"], (0, -0.0570, 0.
 # a window at each end, the dot on the back of the front one; the elevation cap on top and the windage cap on the
 # right, each on its boss, with click ridges; a ridged brightness knob on the left; a sunshade's flare at the front.
 OZ = DOT[2]
-optic.append(block("oclamp", -0.0128, 0.0128, -0.0080, 0.0240, 0.0790, 0.0855, M["Dark"], 0.0008, 1))
+# Aimed, you look at the mount's back under the tube: the clamp's edges broad and bevelled to catch the light, the riser
+# a tapered neck with a window through it, its back face sloping away from you.
+optic.append(block("oclamp", -0.0128, 0.0128, -0.0080, 0.0240, 0.0790, 0.0855, M["Dark"], 0.0016, 2))
 for s in (-1, 1):
     optic.append(block("ojaw", s * 0.0108, s * 0.0130, -0.0080, 0.0240, 0.0752, 0.0800, M["Dark"], 0.0004, 1))
 optic.append(ring("onut", 0.0128, 0.0156, 0.0044, M["Steel"], (0, 0.0080, 0.0778), 6, "x", 0.0004))
 optic.append(ring("obolt", -0.0146, -0.0128, 0.0030, M["Dark"], (0, 0.0080, 0.0778), 12, "x", 0.0003))
-optic.append(block("oriser", -0.0095, 0.0095, -0.0030, 0.0150, 0.0845, OZ - 0.0180, M["Dark"], 0.0006, 1))
+optic.append(xprism("oriser", [(-0.0110, 0.0845), (0.0110, 0.0845), (0.0072, OZ - 0.0180), (-0.0072, OZ - 0.0180)], -0.0030, 0.0150, M["Dark"], 0.0006, 1,
+                    cuts=[dark(box(-0.02, 0.02, 0.0020, 0.0100, 0.0860, OZ - 0.0196))]))
+optic.append(prism("oriserback", [(-0.0030, 0.0845), (-0.0030, OZ - 0.0180), (-0.0072, 0.0845)], 0.0090, M["Dark"], 0.0004, 1))
 optic.append(lathe("oring", [(-0.0040, 0.0184), (-0.0040, 0.0204), (0.0160, 0.0204), (0.0160, 0.0184)], M["Dark"], 24, (0, 0, OZ), loop=True))
 for s in (-1, 1):
     for y in (0.0010, 0.0110):

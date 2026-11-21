@@ -610,7 +610,7 @@ const HIP: Record<WeaponId, [number, number, number]> = {
  */
 const AIM: Record<WeaponId, [number, number, number]> = {
   pistol: [-0.085, 0, 1.25],
-  rifle: [-0.088, 0, 1],
+  rifle: [-0.04, 0.07, 1.2],
   shotgun: [-0.04, 0.11, 1.3],
   sniper: [-0.1, 0, 1],
   bazooka: [-0.1, 0, 1],
