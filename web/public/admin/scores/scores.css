@@ -137,6 +137,11 @@ body .hall-sound { left: auto; right: 4vmin; bottom: 7.4vmin; } /* hall.css come
 .won-title { font-family: var(--display); font-size: 1.8vmin; font-weight: 600; color: var(--accent); white-space: nowrap; }
 .won-name { font-family: var(--display); font-size: 2.8vmin; font-weight: 700; color: var(--team, var(--ink)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; unicode-bidi: isolate; }
 .won small { font-size: 1.6vmin; color: var(--muted); white-space: nowrap; }
+.won-row.slim { margin-bottom: 1.4vmin; }
+.won-row.slim h2 { display: none; }
+.won-row.slim .won { display: flex; align-items: baseline; gap: 1vmin; padding: 0.5vmin 1.4vmin; }
+.won-row.slim .won-name { font-size: 2.2vmin; }
+.won-row.slim .won small { display: none; }
 .tonight .cols.two { display: grid; grid-template-columns: 1fr 1fr; gap: 0 3vmin; }
 .tonight .row { grid-template-columns: 5vmin 2vmin 1fr repeat(3, 11vmin); padding: 0.8vmin 1.8vmin; border-radius: 1.6vmin; box-shadow: 0 0.45vmin 0 var(--edge); }
 .tonight .row.p1 { box-shadow: 0 0.45vmin 0 var(--edge), inset 0 0 0 0.3vmin rgba(247, 185, 40, 0.75); }

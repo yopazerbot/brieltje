@@ -298,7 +298,7 @@
       }
     }
     if (!chips.length) return null;
-    const box = el('section', 'won-row');
+    const box = el('section', `won-row${ev.players.length > 16 ? ' slim' : ''}`); // a long list below: each card on one line
     box.append(el('h2', '', t('awardsTonight')));
     const row = el('div', 'won-list');
     row.append(...chips);
