@@ -613,7 +613,7 @@ const AIM: Record<WeaponId, [number, number, number]> = {
   rifle: [-0.04, 0.07, 1.2],
   shotgun: [-0.04, 0.11, 1.3],
   sniper: [-0.1, 0, 1],
-  bazooka: [-0.1, 0, 1],
+  bazooka: [-0.09, 0.05, 1.3],
   launcher: [-0.035, 0.06, 1.1],
   laser: [-0.045, 0.05, 1.2],
 };
@@ -1113,8 +1113,9 @@ export class Weapon {
       _a.copy(loaded.sight).multiplyScalar(0.25).applyAxisAngle(X_AXIS, m.tilt);
       m.ads.setX(-_a.x).setY(-_a.y);
       // The bazooka lies on your shoulder, the tube beside your face: held up to its side sight the tube fills
-      // half the view. So aiming holds it lower, and you look along its top with the crosshair.
-      if (w === 'bazooka') m.ads.set(0.012, -0.06, -0.1);
+      // half the view. So aiming holds it lower, and you look along its top with the crosshair (its AIM: how far
+      // ahead, and turned a little muzzle up, so its top runs away from you towards the crosshair).
+      if (w === 'bazooka') m.ads.set(0.012, -0.065, m.ads.z);
       const tip = model.getObjectByName('muzzle')!;
       m.muzzle.position.copy(tip.position);
       m.flash.position.copy(tip.position);
