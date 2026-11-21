@@ -14,8 +14,9 @@ corners):
   oblong lobes almost to its middle. By late November most fronds are dead: russet brown, arching
   over or collapsed flat. BrackenGreen (upright, yellow-green, the last live ones), BrackenArch
   (brown, arching over), BrackenFlat (brown, collapsed on the ground).
-- Bramble (Rubus fruticosus): canes of 1 to 2 m that arch out and come back to the ground, leaves
-  of three or five leaflets, dark green with some red and purple ones; a mound about 0.75 m high.
+- Bramble (Rubus fruticosus): purple-red thorny canes of 1 to 2 m that arch out and come back to the
+  ground, half bare by late November; leaves of three or five leaflets, dark green, many turned red
+  and purple, a few dead; a tangle about 0.4 to 0.8 m high.
   Bramble1, Bramble2.
 - Shrubs of about 1.2 m: Holly (dense, dark evergreen, wavy spiny leaves, a few red berries),
   Hazel (several straight stems from one foot, nearly bare, a few yellow leaves and the catkins
@@ -404,12 +405,36 @@ def bracken(look, seed, near):
 # --------------------------------------------------------------------------------------------- bramble
 BRAMBLE_LEAF = [lin("#2c4320"), lin("#34502a"), lin("#3a5226"), lin("#2a3c1e")]
 BRAMBLE_TURNED = [lin("#5a2626"), lin("#4a2434"), lin("#664022"), lin("#53302a")]
+BRAMBLE_DEAD = [lin("#5e4a30"), lin("#4e3a26")]  # the odd leaf dead on its cane, dull brown
 LEAFLET = [(0.4, 0.3, 0.0)]  # ovate, broadest below the middle, pointed
 
 
 def bramble(seed, near):
+    """A bramble at the end of November: a tangle of purple-red canes arching out and back down to root at their
+    tips, thorny, and half bare: the old leaves low on the canes fallen, the rest dark green, many turned red and
+    purple, some dead. Far: the same arches, thick enough to stay on screen, and one leaf in five as a bigger
+    diamond; no solid heap under it (that read as a flat dark green mound from every distance)."""
     rng = random.Random(seed)
-    m = Mesh(f"Bramble{seed}", near, keep=0.25, grow=1.0, thin=0.02, seed=seed)
+    m = Mesh(f"Bramble{seed}", near, keep=0.2, grow=1.45, thin=0.02, seed=seed)
+
+    def thorns(pts, radius):
+        """Prickles along a cane (near only): small hooked triangles every 6 cm, turning round it, pale red."""
+        if not m.near:
+            return
+        length = sum((pts[i + 1] - pts[i]).length for i in range(len(pts) - 1))
+        count = int(length / 0.06)
+        for k in range(count):
+            u = (k + 0.5) / count
+            p, t = at_along(pts, u)
+            ref = UP if abs(t.z) < 0.9 else Vector((1, 0, 0))
+            a = k * 2.4
+            out = (t.cross(ref).normalized() * math.cos(a) + t.cross(t.cross(ref)).normalized() * math.sin(a)).normalized()
+            r = radius * (1.0 - 0.5 * u)
+            base = p + out * (r * 0.8)
+            col = lin("#a0605a")
+            ids = [m.v(base - t * 0.003, scale(col, 0.8)), m.v(base + t * 0.003, scale(col, 0.8)),
+                   m.v(base + out * 0.005 - t * 0.0025, col)]
+            m.face(ids, out.cross(t))
 
     def compound(p, t, sign, size, turned):
         """A leaf of three or five leaflets on a short stalk out to the side and up, turned to the light."""
@@ -418,7 +443,8 @@ def bramble(seed, near):
         out = (side * sign + UP * 0.5).normalized()
         centre = p + out * 0.045
         five = rng.random() < 0.45
-        base_c = vary((BRAMBLE_TURNED if turned else BRAMBLE_LEAF)[rng.randrange(4)], rng, 0.1)
+        pick = rng.randrange(4)
+        base_c = vary(BRAMBLE_DEAD[pick % 2] if turned == 2 else (BRAMBLE_TURNED if turned else BRAMBLE_LEAF)[pick], rng, 0.1)
         tip_c = scale(base_c, 1.18)
         fan = (side * sign * 0.7 + t * 0.5).normalized()
         fan.z = 0.1 + 0.25 * rng.random()
@@ -441,57 +467,68 @@ def bramble(seed, near):
                  curl=0.15, fold=0.2, base_id=shared)
 
     canes = []
-    # Long canes arching out and back to the ground, short ones in the middle filling the mound.
-    for c in range(8):
-        a = 2 * math.pi * (c + rng.random() * 0.7) / 8
-        canes.append((a, rng.uniform(0.75, 1.15), rng.uniform(0.5, 0.75), True))
+    # Long canes arching out and back down to root at their tips, crossing one another; short ones in the middle,
+    # the old canes of last year standing stiff and nearly bare.
+    for c in range(11):
+        a = 2 * math.pi * (c + rng.random() * 0.8) / 11
+        canes.append((a, rng.uniform(0.7, 1.25), rng.uniform(0.4, 0.8), True))
     for c in range(5):
-        canes.append((rng.random() * 2 * math.pi, rng.uniform(0.15, 0.35), rng.uniform(0.45, 0.7), False))
+        canes.append((rng.random() * 2 * math.pi, rng.uniform(0.15, 0.4), rng.uniform(0.35, 0.65), False))
     for a, reach, height, long in canes:
         h = Vector((math.cos(a), math.sin(a), 0))
-        start = h * rng.uniform(0.0, 0.1)
+        # Each arch swings a little sideways along its length: the canes cross and tangle.
+        swing = Vector((-h.y, h.x, 0)) * rng.uniform(-0.25, 0.25)
+        start = h * rng.uniform(0.0, 0.12)
         segs = 6
         pts = []
         for i in range(segs + 1):
             s = i / segs
             # Up steeply, over and down: a long cane's end bends back to the ground; a short one stays up.
-            z = height * math.sin(math.pi * (s * 0.92 + 0.04 if long else s * 0.55)) ** 0.75
-            pts.append(start + h * (reach * s) + Vector((0, 0, z + 0.005)))
+            z = height * math.sin(math.pi * (s * 0.94 + 0.03 if long else s * 0.55)) ** 0.7
+            pts.append(start + h * (reach * s) + swing * (s * s) + Vector((0, 0, z + 0.005)))
         cane_c = vary(lin("#5a3434") if rng.random() < 0.75 else lin("#46522c"), rng, 0.1)
         cane_col = lambda p, d, t, c=cane_c: scale(c, 0.75 + 0.3 * t)  # noqa: E731
         if m.near:
-            tube(m, pts, [0.008 - 0.004 * i / segs for i in range(segs + 1)], 3, cane_col)
+            tube(m, pts, [0.009 - 0.005 * i / segs for i in range(segs + 1)], 3, cane_col)
+            thorns(pts, 0.009)
         elif long:
-            # Far: the long canes as three-sided arches of two pieces, thick enough to stay on screen.
+            # Far: the long canes as three-sided arches, thick enough to stay on screen; the longest of three pieces
+            # (two read as stiff legs), the others of two.
             m.near = True
-            tube(m, [pts[0], pts[segs // 2], pts[-1]], [0.014, 0.012, 0.008], 3, cane_col)
+            if reach > 0.95:
+                tube(m, [pts[0], pts[2], pts[4], pts[6]], [0.02, 0.017, 0.013, 0.009], 3, cane_col)
+            else:
+                tube(m, [pts[0], pts[3], pts[6]], [0.02, 0.015, 0.009], 3, cane_col)
             m.near = False
-        # The leaves: one every 10 cm or so along the cane, alternately to either side.
+        # The leaves: one every 10 cm or so along the cane, alternately to either side. Half bare: low on the cane
+        # (the older part) most have fallen, on its outer half more stay.
         length = sum((pts[i + 1] - pts[i]).length for i in range(segs))
         count = max(2, int(length * 0.85 / 0.1))
-        turned_cane = rng.random() < 0.3
+        turned_cane = rng.random() < 0.4
         for k in range(count):
             u = 0.1 + 0.88 * (k + 0.5) / count
             p, t = at_along(pts, u)
-            turned = (turned_cane and rng.random() < 0.6) or rng.random() < 0.1
-            compound(p, t, 1 if k % 2 else -1, rng.uniform(0.85, 1.15) * (1.0 if long else 0.85), turned)
+            stays = rng.random() < (0.25 + 0.5 * u if long else 0.3)
+            r = rng.random()
+            turned = 2 if r < 0.12 else 1 if (turned_cane and r < 0.65) or r < 0.25 else 0
+            size = rng.uniform(0.85, 1.15) * (1.0 if long else 0.85)
+            if stays:
+                compound(p, t, 1 if k % 2 else -1, size, turned)
         if not long:
             continue
-        # Side shoots near the top of the arch, their leaves bunched: the mound's thick crown.
+        # Side shoots near the top of the arch, their leaves bunched: what is left of the mound's crown.
         for k in range(2):
-            p, t = at_along(pts, 0.28 + 0.16 * k)
+            p, t = at_along(pts, 0.3 + 0.16 * k)
             sd = (t.cross(UP).normalized() * (1 if k else -1) + UP * 0.8 + t * 0.3).normalized()
             shoot = [p, p + sd * 0.12, p + sd * 0.22 + Vector((0, 0, -0.03))]
             tube(m, shoot, [0.005, 0.004, 0.003], 3, cane_col)
             for j in range(3):
                 q, tt = at_along(shoot, 0.35 + 0.3 * j)
-                compound(q, tt, 1 if j % 2 else -1, rng.uniform(0.8, 1.05), turned_cane and rng.random() < 0.5)
-    if not m.near:
-        # Far: a low dark heap under it all, the shade inside a thicket, so the far copy reads as a mound.
-        top = m.v(Vector((0.05, -0.03, 0.3)), lin("#26341a"))
-        rim = [m.v(Vector((math.cos(a) * 0.75, math.sin(a) * 0.75, 0.02)), lin("#141c0e")) for a in (2 * math.pi * i / 6 for i in range(6))]
-        for i in range(6):
-            m.face((rim[i], rim[(i + 1) % 6], top), UP)
+                stays = rng.random() < 0.7
+                turned = 1 if turned_cane and rng.random() < 0.5 else 0
+                size = rng.uniform(0.8, 1.05)
+                if stays:
+                    compound(q, tt, 1 if j % 2 else -1, size, turned)
     return m
 
 
