@@ -1024,7 +1024,9 @@ test('where a team comes back: away from opponents (teammates don\'t count), nev
   const at = (n, i) => s.put(n, spawns[i][0], spawns[i][1], spawns[i][2]);
   const pick = () => {
     const p = f.baseSpot(b0);
-    return spawns.findIndex(([x, z]) => x === p.x && z === p.z);
+    // The spot picked: the one it is on, or beside when someone stands on it (server/flags.mjs placesRound: never on top).
+    const d = spawns.map(([x, z]) => Math.hypot(x - p.x, z - p.z));
+    return d.indexOf(Math.min(...d));
   };
   const picks = (n) => new Set(Array.from({ length: n }, pick));
   // Nobody near: the opponents at their own base (as before: any spot, at random); a teammate on a spot changes nothing.

@@ -45,6 +45,27 @@ const BOUNDS = loadBounds(JSON.parse(readFileSync(new URL('../shared/bounds.json
 const BIKES = JSON.parse(readFileSync(new URL('../shared/bike.json', import.meta.url), 'utf8')).bikes;
 /** Each field's edge, worked out once (game.mjs fence while the game is played). */
 const EDGES = Object.fromEntries(Object.values(FIELDS).map((f) => [f.id, fieldEdge(f, BOUNDS)]));
+/**
+ * A base's start places for a big team (baseSpot): its own six first, then a ring of six places 1.5 m round each, then
+ * twelve 2.9 m round each: about a hundred, 1.5 m apart, each on open ground at the base's height (game.mjs standAt)
+ * inside the field. `free`: m from anyone for a place to count as free. Worked out once a base (the ground never changes).
+ */
+const SPREAD = { rings: [[0, 1], [1.5, 6], [2.9, 12]], free: 1.2 };
+const ROUND = new WeakMap();
+function placesRound(base, game, edge) {
+  if (!ROUND.has(base)) {
+    // No further from the stand than its own furthest start place: the base, not beyond it.
+    const fromStand = (x, z) => Math.hypot(x - base.stand[0], z - base.stand[1]);
+    const reach = Math.max(...base.spawns.map(([x, z]) => fromStand(x, z)));
+    ROUND.set(base, SPREAD.rings.map(([r, n]) => base.spawns.flatMap(([x, z, y]) => Array.from({ length: n }, (_, k) => {
+      if (!r) return { x, z, y };
+      const q = { x: Math.round((x + r * Math.cos((k / n) * 2 * Math.PI)) * 100) / 100, z: Math.round((z + r * Math.sin((k / n) * 2 * Math.PI)) * 100) / 100 };
+      const ground = game.standAt?.(q.x, q.z);
+      return ground?.ok && Math.abs(ground.y - y) < 0.6 && edge.inside(q.x, q.z) && fromStand(q.x, q.z) <= reach ? { ...q, y: Math.round(ground.y * 100) / 100 } : null;
+    }).filter(Boolean))));
+  }
+  return ROUND.get(base);
+}
 /** ms: the default clock. */
 export const FLAG_MS = 12 * 60_000;
 /** ms of sudden death after a level clock. */
@@ -147,7 +168,7 @@ export class FlagGame {
    * ({ spawn, x, y, z, face }), or null for a player on no team. The spots are ranked by the nearest opponent within
    * FOE_R m (teammates don't count: coming back beside your own team is fine), a spot where a teammate was tagged in the
    * last DOWN_MS last of all, and one of the best (up to three, within 3 m of the best) picked at random. Nobody near:
-   * any spot, at random, as before.
+   * any spot, at random, as before. Someone already on the spot picked: the nearest free place round it (a big team).
    * The server's choice alone: no page asks for a spot.
    */
   baseSpot(name) {
@@ -155,7 +176,8 @@ export class FlagGame {
     if (!team) return null;
     const base = this.baseOf(team);
     const now = Date.now();
-    const foes = [...this.game.players].filter(([n, o]) => n !== name && o.alive && o.state && this.teams[n] === other(team)).map(([, o]) => o.state);
+    const alive = [...this.game.players].filter(([n, o]) => n !== name && o.alive && o.state);
+    const foes = alive.filter(([n]) => this.teams[n] === other(team)).map(([, o]) => o.state);
     const downs = this.downs.filter((d) => d.team === team && now - d.at < DOWN_MS);
     const ranked = base.spawns.map(([x, z, y]) => {
       const foe = Math.min(FOE_R, ...foes.map((o) => Math.hypot(o.x - x, o.z - z)));
@@ -163,7 +185,14 @@ export class FlagGame {
       return { x, z, y, d: foe - (hot ? 1000 : 0) + Math.random() * 0.01 };
     }).sort((a, b) => b.d - a.d);
     const best = ranked.filter((q, i) => i < 3 && q.d >= ranked[0].d - 3); // the spots a few metres apart: only the clearly best
-    const s = best[Math.floor(Math.random() * best.length)];
+    const spot = best[Math.floor(Math.random() * best.length)];
+    // Someone already stands on it (a teammate, a team of 30 at six spots): the nearest free place of the base's (its six
+    // and the rings round them, placesRound; the nearer metre first, then the side away from the opponents), never on top
+    // of anyone. None free: on it, as before.
+    const taken = (q) => alive.some(([, o]) => Math.hypot(o.state.x - q.x, o.state.z - q.z) < SPREAD.free);
+    const near = (q) => Math.round(Math.hypot(q.x - spot.x, q.z - spot.z));
+    const away = (q) => Math.min(FOE_R, ...foes.map((o) => Math.hypot(o.x - q.x, o.z - q.z)));
+    const s = !taken(spot) ? spot : placesRound(base, this.game, this.edge).flat().filter((q) => !taken(q)).sort((a, b) => near(a) - near(b) || away(b) - away(a))[0] ?? spot;
     return { spawn: 0, x: s.x, y: s.y, z: s.z, face: [base.stand[0], base.stand[1]] };
   }
 

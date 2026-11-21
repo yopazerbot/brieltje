@@ -149,7 +149,8 @@ export class AssaultGame extends FlagGame {
       const others = [...g.players].filter(([n, o]) => n !== name && o.alive && o.state).map(([, o]) => o.state);
       const room = (q) => Math.min(Infinity, ...others.map((o) => Math.hypot(o.x - q.x, o.z - q.z)));
       const free = spots.sort((a, b) => room(b) - room(a));
-      if (free.length) return { spawn: 0, x: free[0].x, y: free[0].y, z: free[0].z, face: [stand[0], stand[1]] };
+      // All six taken (a big team back at once): the camp's places, spread (flags.mjs baseSpot).
+      if (free.length && room(free[0]) >= 1.2) return { spawn: 0, x: free[0].x, y: free[0].y, z: free[0].z, face: [stand[0], stand[1]] };
     }
     const spot = super.baseSpot(name);
     return spot ? { ...spot, face: [stand[0], stand[1]] } : null;
