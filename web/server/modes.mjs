@@ -329,6 +329,19 @@ export class Modes {
    * `look`, see LOOKS (checked again here). A game started otherwise (the menu, another one over it) has no look.
    */
   start(kind, by, place = 'house', opts = {}) {
+    return this.corked(() => this.begin(kind, by, place, opts)); // by any route: the host's, the admin's menu, a room's
+  }
+
+  /**
+   * `fn` with every page's socket corked while it tells them all (game.mjs corked): the same messages in the same
+   * order, one write per socket as it ends. A start, the end, the switch to free play after a result.
+   */
+  corked(fn) {
+    return this.game.corked ? this.game.corked(fn) : fn();
+  }
+
+  /** The game started (start), its sockets corked. */
+  begin(kind, by, place = 'house', opts = {}) {
     this.game.flagGuards?.clear(); // Steal the flag's guards go with any change of game (server/flagGuards.mjs)
     const now = Date.now();
     const ms = (fixed) => (opts.minutes ? opts.minutes * 60_000 : fixed);
@@ -481,12 +494,14 @@ export class Modes {
 
   /** The game is over: its result (as for `say`) shows in the bar for a while and goes in the chat. */
   finish(result, code, args) {
-    this.game.flagGuards?.clear(); // the guards go before the evening's points are given out (server/flagGuards.mjs)
-    const long = this.state.kind === 'zombies'; // the end screen: the wave, everyone's zombies and the best ever
-    this.game.host?.gameOver(this.state, code, args); // the evening's scoreboard (server/host.mjs)
-    this.state = { ...this.state, phase: 'done', until: Date.now() + (long ? ZOMBIES_DONE_MS : DONE_MS), result, resultCode: code, resultArgs: args };
-    this.say(result, code, args);
-    this.send();
+    return this.corked(() => {
+      this.game.flagGuards?.clear(); // the guards go before the evening's points are given out (server/flagGuards.mjs)
+      const long = this.state.kind === 'zombies'; // the end screen: the wave, everyone's zombies and the best ever
+      this.game.host?.gameOver(this.state, code, args); // the evening's scoreboard (server/host.mjs)
+      this.state = { ...this.state, phase: 'done', until: Date.now() + (long ? ZOMBIES_DONE_MS : DONE_MS), result, resultCode: code, resultArgs: args };
+      this.say(result, code, args);
+      this.send();
+    });
   }
 
   /**
@@ -667,16 +682,19 @@ export class Modes {
     if (s.kind === 'flag' && s.phase === 'playing') return this.flagTick(now);
     if (now < s.until) return;
     if (s.phase === 'done') {
-      const teams = s.kind === 'teams' || s.kind === 'flag';
-      if (s.kind === 'zombies') s.z.stop();
-      if (s.kind === 'flag') s.f.unpark(now); // its parked vehicles go once its result has shown
-      this.state = { kind: 'free' };
-      if (s.kind === 'zombies') this.game.gunsBack?.(); // every gun, back
-      if (teams) {
-        this.game.teamsChanged(this.names(), false);
-        this.game.freshRound(); // the kills of the teams game would end the next round at once
-      }
-      return this.send();
+      // Free play once the result has shown: thirty players back in their own colours and told at once (corked).
+      return this.corked(() => {
+        const teams = s.kind === 'teams' || s.kind === 'flag';
+        if (s.kind === 'zombies') s.z.stop();
+        if (s.kind === 'flag') s.f.unpark(now); // its parked vehicles go once its result has shown
+        this.state = { kind: 'free' };
+        if (s.kind === 'zombies') this.game.gunsBack?.(); // every gun, back
+        if (teams) {
+          this.game.teamsChanged(this.names(), false);
+          this.game.freshRound(); // the kills of the teams game would end the next round at once
+        }
+        return this.send();
+      });
     }
     if (s.kind === 'teams') {
       const { house, bungalow } = s.score;

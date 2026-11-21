@@ -213,7 +213,7 @@ test('a host queueing Attack and defend over and over makes at most one countdow
   s.act({ op: 'stop' });
 });
 
-test('a start, the round change, round 2, the end and a Stop tell every page with its socket corked: one write each, the same messages', (t) => {
+test('a start, the round change, round 2, the end, free play after it, a start from the menu and a Stop tell every page with its socket corked: one write each, the same messages', (t) => {
   const s = setup(t);
   // Every page's socket: corked how deep now, and what it was sent while corked or not.
   const socks = [];
@@ -244,6 +244,13 @@ test('a start, the round change, round 2, the end and a Stop tell every page wit
     s.game.modes.state.until = s.now();
     step(label, () => s.tick());
   }
+  // Its result shown, free play: everyone back in their own colours, told at once.
+  s.game.modes.state.until = s.now();
+  step('free play after the result', () => s.tick());
+  assert.equal(s.game.modes.state.kind, 'free');
+  // A start from the admin's own menu (no countdown), and the host's Stop.
+  step('a start from the admin\'s menu', () => s.game.handle('admin', s.game.players.get('admin'), JSON.stringify({ t: 'mode', kind: 'zombies', place: 'sparrenhof' })));
+  assert.equal(s.game.modes.state.kind, 'zombies');
   step('Stop', () => s.act({ op: 'stop' }));
   assert.equal(s.game.modes.state.kind, 'free');
   // A message on its own (a tick, a chat line) is written at once, as before.
