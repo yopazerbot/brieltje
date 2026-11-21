@@ -62,6 +62,7 @@ import { DROP, dropFrom, HOME_DROP } from '../shared/parachute.mjs';
 import { BikeHits } from './bikeHits.mjs';
 import { BrookSpirit } from './brookSpirit.mjs';
 import { CarSeats, SEAT_REFUSED } from './carSeats.mjs';
+import { CarSmash } from './carSmash.mjs';
 import { Football } from './football.mjs';
 import { GoalTracker, readGoals } from './goals.mjs';
 import { blastPoint } from './grenade.mjs';
@@ -504,6 +505,7 @@ export class Game {
       ground: (x, z) => HOUSE.ground + TERRAIN.height(x, z), area: AREA, map: BOUNDS.map, carSpec, mono,
       inside: indoorBlocks([...HOUSE.prisms, ...(HOUSE.surroundings?.prisms ?? [])], HOUSE.rooms.map((r) => r.name)),
     });
+    this.carSmash = new CarSmash(this, { carSpec }); // a parked car a driven one runs into is dented (server/carSmash.mjs)
     // Horses: on their walks until someone rides one; left where they are got off (until a restart).
     this.horses = HORSES.herd.map((_, i) => ({ i, x: 0, z: 0, yaw: 0, speed: 0, rider: null, parked: false }));
     this.horseHomes = new Map(); // a parked horse's index: the home it was left in (homeOf)
@@ -1114,6 +1116,7 @@ export class Game {
         Object.assign(car, { x: next.x, y: next.y, z: next.z, yaw: next.yaw, s: next.s });
         this.carAt[car.id] = player.stamp;
         this.bikeHits.strike(name, player, car, before); // a free bike in its way is knocked aside (no message of its own)
+        this.carSmash.moved(name, car, now); // a parked car it came against is dented (no message of its own)
       }
       if (flyer) this.helis.moved(name, player, heli, next, m, where(m), now); // the machine and everyone aboard go along
       if (horse) {
