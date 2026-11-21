@@ -20,6 +20,18 @@ In team games, press V to mark your position for teammates for eight seconds; th
 
 The whole project was made with AI. Yoshi Parlevliet, a cybersecurity consultant rather than a game developer, directed development and used both [OpenAI Codex](https://openai.com/codex/) and [Claude Code](https://claude.com/claude-code) to build the game, the data tools and the Blender scripts. Every choice and the reason for it is in [DECISIONS.md](DECISIONS.md).
 
+## Recent updates — 21 November 2026
+
+- **A horde that comes in groups.** In Zombies, a wave arrives in bunches from two or three sides at once, with peaks and short rests. Zombies far off and out of sight hurry, so a group arrives together.
+- **Cars that show what happened.** Dents where they were hit, cracked glass, broken lamps, steam from a hard crash and mud up the sides. Hedges give way; a pond holds a car.
+- **The helicopter moves the air.** Its rotor blows dust, leaves and grass about. It has lamps and a sound that carries across the village.
+- **Weather you can stand in.** One wind moves the trees, the grass, the rain, the snow and the smoke. Rain and snow stop at roofs, the ground under a carport stays dry, and you can watch the rain from indoors.
+- **Longer shadows.** On High the sun's shadows reach 100 m. At dusk they lie long across fields, streets and house walls, on every preset.
+- **Houses with more to see.** Roof tiles in relief, boards under the eaves, porch lamps, and lit windows that differ from house to house at night.
+- **The woods and the fields.** A forest floor with sun flecks and fallen leaves, late-autumn crowns, tree lines fading into haze, tree nurseries with rows of young trees, and rough plots with tall tussocks.
+- **A grenade launcher to win.** Beat the Brook Spirit together and it leaves a grenade launcher behind. The server decides who gets it.
+- **Paint that sticks.** In the paint games, splats show on players, zombies, cars and helicopters.
+
 ## Recent updates — 20 November 2026
 
 - **The Brook Spirit.** A boss in the wood by the brook: a floating spirit of mist with a lantern heart, sculpted in Blender. It wakes when you step into its wood with a gun. Shoot the heart when it opens, shoot out the lanterns among the trees when its shell shuts, and walk out of its attacks. Alone or together; the server decides every hit.
