@@ -221,7 +221,7 @@ export class Helis {
     // still go off counts too (game.mjs nadeLive): thrown, then aboard before its bang.
     if (now - Math.max(p.hurtAt ?? -Infinity, p.hitAt ?? -Infinity) < this.calmMs || g.nadeLive(p, now)) return no('heliFight', 'Not right after a fight. Wait a few seconds.');
     const st = p.state;
-    if (!p.alive || !st || g.carOf(name) || g.horseOf(name) || g.bikeOf(name) || this.of(name) || st.flying || g.dropping(p, now) || g.host?.holds(p)) return no();
+    if (!p.alive || !st || g.carOf(name) || g.horseOf(name) || g.bikeOf(name) || this.of(name) || st.flying || g.dropping(p, now) || g.lan?.holds(p)) return no();
     if (!this.slow(h, now)) return no();
     if (this.reach(h, st.x, st.z) > DATA.reach + 1 || Math.abs(st.y - h.y) > 1.5) return no();
     const seat = h.seats.indexOf(null);
@@ -299,7 +299,7 @@ export class Helis {
     const h = this.of(name);
     if (!h) return;
     const seat = h.seats.indexOf(name);
-    if (seat < 1 || h.seats[0] || !p.alive || g.host?.holds(p) || g.fenced() || !g.rules.heli) return;
+    if (seat < 1 || h.seats[0] || !p.alive || g.lan?.holds(p) || g.fenced() || !g.rules.heli) return;
     h.seats[seat] = null;
     h.seats[0] = name;
     Object.assign(p.state, { x: h.x, y: h.y, z: h.z });

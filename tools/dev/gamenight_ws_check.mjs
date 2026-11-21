@@ -12,7 +12,8 @@
 // player's own call to the host's controls is refused. Last, a players' Zombies room (server/rooms.mjs) with two guests:
 // the host's countdown shows in it, no room opens during the countdown or the game, both are in the host's game in the
 // house from its start; in a room again, the host's Stop in free play brings both back (pages that follow the server's
-// closes as src/net/client.ts does).
+// closes as src/net/client.ts does). Then those two play the Zombies duel, one per team: the host's freeze, mute, a move
+// (refused with its code), bring (out of the duel to the host, not taken back) and kick reach them in its rooms.
 //
 // --stall: instead of the evening, how long the server is held in each game's countdown, at its start and stop (and
 // Attack and defend's round change, end and the switch to free play once its result has shown, played through with
@@ -486,6 +487,7 @@ const roomPage = async (name) => {
     ws.on('message', (d) => {
       const m = JSON.parse(String(d));
       if (m.t === 'ping') return ws.send(JSON.stringify({ t: 'pong', n: m.n }));
+      if (m.t === 'welcome') p.where = m.room ? 'room' : 'house'; // where the server put it (the duel's route too)
       if (m.t !== 's') p.log.push({ ...m, in: p.where });
     });
     ws.on('close', (code) => {
@@ -548,7 +550,48 @@ v = await view();
 ok('both are back in the house, in free play, the room gone', pair.every((p) => p.where === 'house' && p.log.some((m) => m.code === 'roomsHostStop') && p.of('welcome').at(-1)?.room === null) && v.mode.kind === 'free' && v.rooms === 0 && pair.every((p) => v.players.some((q) => q.name === p.name)),
   JSON.stringify(pair.map((p) => [p.where, p.closes])));
 ok('no room left in the list', (await call('GET', '/api/rooms', null, adminCookie)).data?.rooms?.length === 0);
-for (const p of pair) p.ws.close();
+
+// ---- The host's freeze, mute, move, bring and kick on players in the Zombies duel's rooms. The evening's simple pages
+// leave first (they don't follow the duel's move); the two pages that follow, one on each team, play the duel.
+for (const p of players) p.ws.close();
+await sleep(800);
+ok('the host puts one on blue and one on red', (await act({ op: 'move', name: pair[0].name, team: 0 }))?.ok === true && (await act({ op: 'move', name: pair[1].name, team: 1 }))?.ok === true);
+const duelStart = await act({ op: 'start', kind: 'duel', duel: 'warmup', minutes: 2 });
+ok('the host starts the Zombies duel', duelStart?.ok === true, JSON.stringify(duelStart));
+await sleep(13_000);
+const inDuel = (p) => !!p.of('welcome').at(-1)?.room?.duel;
+ok('both are in the duel\'s rooms', pair.every(inDuel), JSON.stringify(pair.map((p) => [p.closes, p.of('welcome').at(-1)?.room])));
+v = await view();
+ok('the host page lists them, in the duel', pair.every((p) => v.away?.some((q) => q.name === p.name && q.where?.startsWith('duel-'))), JSON.stringify(v.away));
+ok('the host freezes everyone', (await act({ op: 'freeze', on: true, text: 'Stop!' }))?.ok === true);
+await sleep(600);
+ok('the freeze reaches both duel rooms', pair.every((p) => p.of('freeze').at(-1)?.on === true && p.of('freeze').at(-1)?.in === 'room'));
+await act({ op: 'freeze', on: false });
+await sleep(600);
+ok('and its end', pair.every((p) => p.of('freeze').at(-1)?.on === false));
+ok('the host mutes one in a duel room', (await act({ op: 'mute', name: pair[0].name, on: true }))?.ok === true);
+await sleep(500);
+ok('they are told, in the room', pair[0].log.some((m) => m.code === 'youMuted' && m.in === 'room'));
+await act({ op: 'mute', name: pair[0].name, on: false });
+const moved = await call('POST', '/api/host', { op: 'move', name: pair[0].name, team: 1 }, adminCookie);
+ok('a move during the duel is refused with its code', moved.r.status === 400 && moved.data?.code === 'duelMove', JSON.stringify(moved.data));
+const theirOps = await Promise.all([{ op: 'freeze', on: true }, { op: 'bring', name: pair[1].name }, { op: 'kick', name: pair[1].name }, { op: 'mute', name: pair[1].name, on: true }].map((b) => call('POST', '/api/host', b, pair[0].cookie)));
+ok('a player\'s own freeze, bring, kick and mute are refused', theirOps.every((x) => x.r.status === 403) && inDuel(pair[1]));
+const hostAt = hall.seen.get('admin') ?? { x: 4.5, z: 14 }; // where the server has the host (the hall screen's ticks)
+const fourAt = pair[0].closes.filter((c) => c === 4006).length;
+ok('the host brings one out of the duel', (await act({ op: 'bring', name: pair[0].name }))?.ok === true);
+await sleep(1500);
+const by = pair[0].log.filter((m) => m.t === 'respawn' && m.name === pair[0].name).at(-1);
+ok('they are in the house, by the host', pair[0].where === 'house' && pair[0].closes.filter((c) => c === 4006).length === fourAt + 1 && pair[0].log.some((m) => m.code === 'hostBrings') && !!by && Math.hypot(by.x - hostAt.x, by.z - hostAt.z) < 4,
+  JSON.stringify({ closes: pair[0].closes, by, hostAt }));
+await sleep(1500);
+ok('and the duel does not take them back', pair[0].of('welcome').at(-1)?.room === null && pair[0].where === 'house');
+ok('the host kicks the other out of the duel room', (await act({ op: 'kick', name: pair[1].name }))?.ok === true);
+await sleep(800);
+ok('their connection ends (4001)', pair[1].closes.includes(4001));
+await act({ op: 'stop' });
+await sleep(12_000); // the duel's result, then its rooms close
+for (const p of pair) p.ws?.close();
 
 for (const p of [admin, hall, ...players]) p.ws.close();
 await act({ op: 'reset' });

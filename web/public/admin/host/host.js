@@ -260,7 +260,7 @@
   /** The people: found by what is typed, sorted as chosen, each with their team and one menu of actions. */
   function drawPeople() {
     const find = $('find').value.trim().toLowerCase();
-    const list = v.players.filter((p) => !find || p.name.includes(find));
+    const list = [...v.players, ...(v.away ?? [])].filter((p) => !find || p.name.includes(find)); // the rooms' players too, tagged
     const by = { name: (a, b) => a.name.localeCompare(b.name), points: (a, b) => b.points - a.points || b.kills - a.kills, ping: (a, b) => (b.ping ?? -1) - (a.ping ?? -1) }[sortBy];
     list.sort((a, b) => (a.role === 'admin') - (b.role === 'admin') || by(a, b));
     const teamIds = v.teams.list.slice(0, v.teams.count);
@@ -271,14 +271,15 @@
     }
     $('people-list').replaceChildren(...list.map((p) => {
       const me = p.role === 'admin';
+      const inDuel = p.where?.startsWith('duel'); // the duel plays them for the team they had at its start: no move during it
       const team = teamIds.length && !me
-        ? el('select', { 'aria-label': `Team of ${p.name}`, on: { change: (e) => act({ op: 'move', name: p.name, team: Number(e.target.value) }) } },
+        ? el('select', { 'aria-label': `Team of ${p.name}`, disabled: inDuel, title: inDuel ? 'In the Zombies duel: move them once it is over' : '', on: { change: (e) => act({ op: 'move', name: p.name, team: Number(e.target.value) }) } },
           ...teamIds.map((t, i) => el('option', { value: String(i), selected: p.team === t.id, text: TEAM_NAMES[t.id] })))
         : null;
       if (team) team.style.borderLeftColor = teamIds.find((t) => t.id === p.team)?.color ?? 'transparent';
       const ping = p.ping === null ? '' : `${p.ping} ms`;
       return el('li', { class: p.alive ? '' : 'down' },
-        el('span', { class: 'who' }, el('b', { text: p.name }), me ? el('small', { text: ' (you)' }) : null, p.muted ? el('small', { class: 'tag', text: 'muted' }) : null),
+        el('span', { class: 'who' }, el('b', { text: p.name }), me ? el('small', { text: ' (you)' }) : null, p.where ? el('small', { class: 'tag', text: p.where === 'room' ? 'Zombies room' : `duel ${p.where.slice(5)}` }) : null, p.muted ? el('small', { class: 'tag', text: 'muted' }) : null),
         el('span', { class: `meta${level('pingHigh', p.ping) ? ` lv${level('pingHigh', p.ping)}` : ''}`, text: `${p.points} pts${ping ? ` · ${ping}` : ''}` }),
         team ?? el('span'),
         me ? el('span') : el('button', { class: 'btn ghost small more', type: 'button', 'aria-label': `Actions for ${p.name}`, 'aria-haspopup': 'menu', text: '⋯', on: { click: (e) => openMenu(e.currentTarget, p) } }),

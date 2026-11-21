@@ -93,7 +93,7 @@ export class Rooms {
       if (p) p.ws.close(4000, 'Logged in somewhere else');
     }
     this.duel.joined(name, game);
-    this.main.host?.tellCountdown(game, name); // the host's countdown, wherever they came in (server/host.mjs)
+    this.main.host?.cameIn(game, name); // the host's countdown and freeze, wherever they came in (server/host.mjs)
   }
 
   /** A better Zombies run was kept (server/game.mjs zombieRun). */

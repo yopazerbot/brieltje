@@ -986,7 +986,7 @@ export class Game {
     }
     if (!m || typeof m !== 'object') return;
     if (m.t === 'state' ? ++player.states > 30 : ++player.others > 40) return;
-    if ((this.modes.noShooting || this.host?.holds(player)) && ['hit', 'vhit', 'rocket', 'nade', 'boom', 'shot', 'crack', 'vil', 'sphit', 'gl'].includes(m.t)) return; // no fighting during a party game or a freeze
+    if ((this.modes.noShooting || this.lan?.holds(player)) && ['hit', 'vhit', 'rocket', 'nade', 'boom', 'shot', 'crack', 'vil', 'sphit', 'gl'].includes(m.t)) return; // no fighting during a party game or a freeze
     // A room changes nothing of the open world and holds its players at its place (server/rooms.mjs).
     if (this.room && ROOM_REFUSED.has(m.t)) return;
     if (this.room?.duel && (m.t === 'mode' || m.t === 'zwave')) return; // a duel room's game is the host's alone (server/duel.mjs)
@@ -1096,13 +1096,13 @@ export class Game {
       const fell = !player.alive ? this.modes.zombies?.fell.get(name) : null;
       if (fell) Object.assign(next, fell);
       // Frozen by the host: where they stood (looking round is still theirs; a fall still comes down).
-      if (this.host?.holds(player)) Object.assign(next, { x: prev.x, z: prev.z });
+      if (this.lan?.holds(player)) Object.assign(next, { x: prev.x, z: prev.z });
       // The pilot's machine: never under the server's floor, never with its cabin in a code-locked home (whoever flies).
       if (flyer) this.helis.pose(heli, prev, next);
       player.state = next;
       if (driving) this.carSeats.carry(car, prev, next, now); // never into a home the passenger may not enter; the passenger goes along
       // The routes and the gnomes (server/goals.mjs), from this step as the server has it, and the way of moving by its own lists.
-      const free = player.alive && !next.flying && !drop && !heli && !this.modes.active && !this.host?.holds(player); // nor from a helicopter's seat
+      const free = player.alive && !next.flying && !drop && !heli && !this.modes.active && !this.lan?.holds(player); // nor from a helicopter's seat
       this.goals?.moved(name, prev, next, !free ? null : driving ? 'car' : bike ? 'bike' : !inCar && !horse ? 'foot' : null, { gapMs: secs * 1000, seek: free && !(inCar && !driving) }); // a car's passenger finds no gnome
       if (drop) this.dropCheck(player, now); // on the ground, or not coming down: the drop ends
       this.stampState(player, m.ct);
@@ -1146,7 +1146,7 @@ export class Game {
       const text = words.clean(String(m.text || '').replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 200));
       if (!text || now - player.lastChat < 700) return;
       player.lastChat = now;
-      const silenced = this.host?.silenced(name, player);
+      const silenced = this.lan?.silenced(name, player);
       if (silenced) return this.send(player.ws, { t: 'system', text: silenced === 'muted' ? 'The host muted your chat' : 'The host turned the chat off', code: silenced === 'muted' ? 'youMuted' : 'chatOffAll' });
       this.broadcast({ t: 'chat', from: name, color: player.color, text });
     } else if (m.t === 'unstuck') {
@@ -2834,6 +2834,11 @@ export class Game {
   /** The most the admin can allow at once (the host page's limit slider). */
   get most() {
     return MAX_PLAYERS;
+  }
+
+  /** The host's evening rules here (server/host.mjs: freeze, mute, chat off): the open world's host, in a room too. */
+  get lan() {
+    return this.host ?? this.hub?.main?.host ?? null;
   }
 
   /**

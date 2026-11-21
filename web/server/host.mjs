@@ -5,7 +5,9 @@
 // admin's session and the same-origin JSON check (server.mjs), and each is checked here again (types, ranges, rate).
 // The host's announcements, countdown, start and Stop reach the rooms too (21 Nov 2026): the countdown shows in every
 // room, the players' rooms close for the host's game in the house and at Stop (everyone in the house), and none opens
-// meanwhile; a Zombies duel still on ends for it as Stop ends it.
+// meanwhile; a Zombies duel still on ends for it as Stop ends it. Freeze, mute, chat off, kick, move and bring reach a
+// player wherever they play (where; game.mjs lan): bring takes them out of a room to the host (fetch), and a move in
+// the Zombies duel is refused with a code (its rooms play the teams as they were at its start).
 //
 // - The doors: locked, a newcomer waits outside (the page tries again every few seconds) until the host lets them in;
 //   whoever already played this evening comes back in on their own.
@@ -43,7 +45,8 @@ const COUNTDOWN_MS = 10_000;
  * (gather), so their players are in the house when it begins (a page connects again in well under a second).
  */
 export const GATHER_MS = 3_000;
-const KNOCK_MS = 30_000; // someone who tried to come in this recently is on the host's list
+const KNOCK_MS = 30_000;
+const BRING_MS = 15_000; // brought out of a room: put by the host if their page is back in the open world within this // someone who tried to come in this recently is on the host's list
 const EVENING_KICK_MS = 12 * 3600_000;
 const PLACES = new Set(ARENAS.map((a) => a.id));
 const POINTS = { played: 1, won: 3, wavesPer: 3 };
@@ -78,6 +81,7 @@ export class Host {
     this.teamPoints = [0, 0, 0, 0];
     this.history = []; // { kind, at, winners }
     this.actions = []; // when the host's last actions came (a flood guard)
+    this.bringing = new Map(); // name -> { by, until }: brought out of a room, put by the host when they come in (fetch)
   }
 
   // ------------------------------------------------------------------ the game asks
@@ -101,6 +105,10 @@ export class Host {
     if (fresh) this.tellTeams();
     else if (this.teamCount) this.game.send(player.ws, this.teamsMsg());
     if (this.frozen) this.game.send(player.ws, { t: 'freeze', on: true, text: this.frozen.text });
+    // Brought out of a room by the host (fetch): by the host now, after the duel put them back where they stood (its back).
+    const fetched = this.bringing.get(name);
+    this.bringing.delete(name);
+    if (fetched && Date.now() < fetched.until) setImmediate(() => this.game.players.get(name) === player && this.game.bring(fetched.by, name));
   }
 
   /** Nobody but the host moves or fights while frozen (the server keeps them where they stood). */
@@ -217,13 +225,18 @@ export class Host {
   view() {
     const now = Date.now();
     for (const [n, k] of this.knocking) if (now - k.at > KNOCK_MS || this.game.players.has(n)) this.knocking.delete(n);
-    const players = [...this.game.players.entries()].filter(([, p]) => !p.guard).map(([name, p]) => ({ // the people (the guards: `guards`)
+    const person = (x, name, p) => ({
       name, role: p.role, team: this.teamIdOf(name), muted: this.muted.has(name), alive: p.alive, ping: p.rttAvg === null ? null : Math.round(p.rttAvg),
       points: this.scores[name]?.points ?? 0, kills: p.score.kills, deaths: p.score.deaths,
-      inside: !!this.game.gate.insideOf(p), // inside a private home: the hall screen shows a card, never the picture
-    }));
+      inside: !!x.gate.insideOf(p), // inside a private home: the hall screen shows a card, never the picture
+    });
+    const players = [...this.game.players.entries()].filter(([, p]) => !p.guard).map(([name, p]) => person(this.game, name, p)); // the people (the guards: `guards`)
+    // The people in the rooms (a players' room, the Zombies duel's): on the host page with the same actions (act: where).
+    const duel = new Set(this.game.hub?.duel?.games() ?? []);
+    const away = (this.game.hub?.games() ?? []).filter((x) => x !== this.game).flatMap((x) => [...x.players.entries()].filter(([, p]) => !p.guard)
+      .map(([name, p]) => ({ ...person(x, name, p), where: duel.has(x) ? `duel-${x.room.duel}` : 'room' })));
     return {
-      players, max: this.game.rules.maxPlayers, most: this.game.most, locked: this.locked, knocking: [...this.knocking.keys()],
+      players, away, max: this.game.rules.maxPlayers, most: this.game.most, locked: this.locked, knocking: [...this.knocking.keys()],
       frozen: this.frozen, chatOff: this.chatOff, words: words.list(),
       teams: { count: this.teamCount, list: EVENING_TEAMS },
       programme: this.programme, next: this.nextIndex, countdown: this.countdown ? { kind: this.countdown.kind, ms: Math.max(0, this.countdown.until - now) } : null,
@@ -261,7 +274,7 @@ export class Host {
     this.actions.push(now);
     const op = str(b?.op, 20);
     const name = this.resolve(str(b?.name, 20));
-    const known = (n) => this.game.players.has(n) && !this.game.players.get(n).guard; // a guard (server/flagGuards.mjs) is no one to mute, move or kick
+    const known = (n) => !!this.where(n) && !this.where(n).players.get(n).guard; // anywhere: the house, a room, the duel's; a guard (server/flagGuards.mjs) is no one to mute, move or kick
     const g = this.game;
     switch (op) {
       case 'lock':
@@ -294,20 +307,25 @@ export class Host {
         const on = !!b.on;
         const text = words.clean(str(b.text, 120));
         this.frozen = on ? { text } : null;
-        g.broadcast({ t: 'freeze', on, text });
+        this.everywhere({ t: 'freeze', on, text }); // the rooms too: their games ask this host (game.mjs lan)
         return { ok: true };
       }
-      case 'bring':
+      case 'bring': {
+        const x = b.name === '*' ? null : this.where(name);
+        if (x && x !== g) return this.fetch(by, name, x); // in a room: out of it, then to the host
         return g.bring(by, b.name === '*' ? '*' : name) ? { ok: true } : { error: 'Join the game yourself first: they come to where you stand', code: 'notInGame' };
-      case 'mute':
+      }
+      case 'mute': {
         if (!known(name)) return { error: 'Not here', code: 'notHere' };
         if (b.on) this.muted.add(name);
         else this.muted.delete(name);
-        g.send(g.players.get(name).ws, { t: 'system', text: b.on ? 'The host muted your chat' : 'You can chat again', code: b.on ? 'youMuted' : 'youUnmuted' });
+        const x = this.where(name);
+        x.send(x.players.get(name).ws, { t: 'system', text: b.on ? 'The host muted your chat' : 'You can chat again', code: b.on ? 'youMuted' : 'youUnmuted' });
         return { ok: true };
+      }
       case 'chat':
         this.chatOff = !b.on;
-        g.broadcast({ t: 'system', text: this.chatOff ? 'The host turned the chat off' : 'The chat is on again', code: this.chatOff ? 'chatOffAll' : 'chatOnAll' });
+        this.everywhere({ t: 'system', text: this.chatOff ? 'The host turned the chat off' : 'The chat is on again', code: this.chatOff ? 'chatOffAll' : 'chatOnAll' });
         return { ok: true };
       case 'words':
         words.set(b.list);
@@ -333,6 +351,9 @@ export class Host {
       case 'move': {
         const team = int(b.team, 0, this.teamCount - 1);
         if (!known(name) || team === null) return { error: 'Out of range', code: 'badValue' };
+        // In the Zombies duel's room they play for the team they had at its start (server/duel.mjs sideOf): a move now
+        // would change nothing there, and its points would go to the other team. Refused, said; after the duel, as ever.
+        if (g.hub?.duel?.games().includes(this.where(name))) return { error: 'They play the Zombies duel for their team now. Move them once it is over.', code: 'duelMove' };
         // A team game being played has two sides: with three or four teams tonight a move would change nothing in it.
         if (this.teamCount !== 2 && g.modes.teamGame && g.modes.state.phase === 'playing') return { error: 'This game plays in two teams: set two teams tonight to move players during it.', code: 'twoTeams' };
         this.teams[name] = team;
@@ -394,7 +415,8 @@ export class Host {
    * guard (server/flagGuards.mjs, names with capitals) is nobody's match.
    */
   resolve(name) {
-    const all = new Set([...[...this.game.players.entries()].filter(([, p]) => !p.guard).map(([n]) => n), ...this.knocking.keys()]);
+    const here = (this.game.hub?.games() ?? [this.game]).flatMap((x) => [...x.players.entries()]); // the rooms too
+    const all = new Set([...here.filter(([, p]) => !p.guard).map(([n]) => n), ...this.knocking.keys()]);
     if (!name || all.has(name)) return name;
     const low = name.toLowerCase();
     const hits = [...all].filter((n) => n.toLowerCase() === low);
@@ -454,13 +476,45 @@ export class Host {
     return { t: 'announce', code: 'nextGame', args: { kind: k }, text: `Next: ${KINDS[k] ?? (k === 'assault' ? ASSAULT_TITLE : 'Zombies duel')}`, ms: Math.max(0, this.countdown.until - now), count: true };
   }
 
-  /** `name` came into `game` (server/rooms.mjs joined: the open world or a room) while a countdown runs: its line, after the welcome. */
-  tellCountdown(game, name) {
-    if (!this.countdown) return;
+  /**
+   * `name` came into `game` (server/rooms.mjs joined: the open world or a room), after its welcome: the countdown's line
+   * while one runs, and in a room the freeze while everyone is frozen (the open world's comes with joined).
+   */
+  cameIn(game, name) {
+    const room = game !== this.game;
+    if (!this.countdown && !(room && this.frozen)) return;
     setImmediate(() => {
       const p = game.players.get(name);
       if (p && this.countdown) game.send(p.ws, this.countdownMsg(Date.now()));
+      if (p && room && this.frozen) game.send(p.ws, { t: 'freeze', on: true, text: this.frozen.text });
     });
+  }
+
+  /** The game `name` plays in now: the open world, a players' room or one of the duel's (server/rooms.mjs gameOf), or null. */
+  where(name) {
+    if (!name) return null;
+    const g = this.game.hub ? this.game.hub.gameOf(name) : this.game.players.has(name) ? this.game : null;
+    return g?.players.get(name) ? g : null;
+  }
+
+  /**
+   * The host brings `name` out of the room `room` (a players' room or the Zombies duel's): their part in its game ends as
+   * by leaving it (game.mjs leave: in the duel's final they count as out), they are let through locked doors, and their
+   * page connects to the open world at once (4006, as the duel's own move); there joined() puts them by the host. Out
+   * of the duel for the rest of it (its route no longer takes them back: server/duel.mjs sideOf). The host stands in
+   * the open world, or nothing happens.
+   */
+  fetch(by, name, room) {
+    const g = this.game;
+    if (!g.players.get(by)?.state) return { error: 'Join the game yourself first: they come to where you stand', code: 'notInGame' };
+    const duel = g.hub?.duel;
+    if (duel?.games().includes(room)) duel.state.members.set(name, null); // sideOf: null, not on a side of this duel any more
+    this.admitted.add(name);
+    this.bringing.set(name, { by, until: Date.now() + BRING_MS });
+    const p = room.players.get(name);
+    room.send(p.ws, { t: 'system', text: 'The host brings you over.', code: 'hostBrings' });
+    p.ws.close(4006, 'To the host'); // src/net/client.ts: again at once, to the open world (its room forgotten)
+    return { ok: true };
   }
 
   /** A message to every page: the open world, the players' rooms and the Zombies duel's (server/rooms.mjs games). */
