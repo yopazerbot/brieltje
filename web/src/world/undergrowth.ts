@@ -108,6 +108,11 @@ export interface GroundShadeUniforms {
   groundShadeAll: { value: THREE.Texture };
   groundArea: { value: THREE.Vector3 };
   groundAreaAll: { value: THREE.Vector3 };
+  /** At dusk: the ground's dusk pictures (their second channel) and how much of them to show */
+  groundContact: { value: THREE.Texture };
+  groundContactAll: { value: THREE.Texture };
+  groundDuskK: { value: number };
+  groundDuskKAll: { value: number };
 }
 
 function inside(x: number, z: number, rings: Ring[]): boolean {
@@ -411,7 +416,8 @@ export class Undergrowth {
       shader.uniforms.windTime = wind.time;
       shader.uniforms.windStrength = wind.strength;
       Object.assign(shader.uniforms, { windDir: wind.dir, windSpeed: wind.speed });
-      if (shade) Object.assign(shader.uniforms, { ugShade: shade.groundShade, ugShadeAll: shade.groundShadeAll, ugArea: shade.groundArea, ugAreaAll: shade.groundAreaAll });
+      if (shade) Object.assign(shader.uniforms, { ugShade: shade.groundShade, ugShadeAll: shade.groundShadeAll, ugArea: shade.groundArea, ugAreaAll: shade.groundAreaAll,
+        ugDusk: shade.groundContact, ugDuskAll: shade.groundContactAll, ugDuskK: shade.groundDuskK, ugDuskKAll: shade.groundDuskKAll });
       if (sway) Object.assign(shader.uniforms, washUniforms);
       shader.vertexShader = shader.vertexShader
         .replace(
@@ -424,7 +430,7 @@ export class Undergrowth {
           uniform vec2 windDir;
           uniform float windSpeed;
           varying vec2 vUgLight;
-          ${shade ? 'uniform sampler2D ugShade;\nuniform sampler2D ugShadeAll;\nuniform vec3 ugArea;\nuniform vec3 ugAreaAll;' : ''}`,
+          ${shade ? 'uniform sampler2D ugShade;\nuniform sampler2D ugShadeAll;\nuniform vec3 ugArea;\nuniform vec3 ugAreaAll;\nuniform sampler2D ugDusk;\nuniform sampler2D ugDuskAll;\nuniform float ugDuskK;\nuniform float ugDuskKAll;' : ''}`,
         )
         .replace(
           '#include <begin_vertex>',
@@ -444,8 +450,16 @@ export class Undergrowth {
             float fine = smoothstep(0.5, 0.46, max(edgeFine.x, edgeFine.y));
             vec4 gs = vec4(1.0, 1.0, 0.5, 0.5);
             vec2 edgeAll = abs(uvAll - 0.5);
-            if (fine < 1.0 && max(edgeAll.x, edgeAll.y) < 0.5) gs = textureLod(ugShadeAll, uvAll, 0.0);
-            if (fine > 0.0) gs = mix(gs, textureLod(ugShade, uvFine, 0.0), fine);
+            // At dusk the low sun's long shadows, as the ground has them (world/duskShade.ts).
+            if (fine < 1.0 && max(edgeAll.x, edgeAll.y) < 0.5) {
+              gs = textureLod(ugShadeAll, uvAll, 0.0);
+              if (ugDuskKAll > 0.0) gs.r = mix(gs.r, textureLod(ugDuskAll, uvAll, 0.0).g, ugDuskKAll);
+            }
+            if (fine > 0.0) {
+              vec4 gsHere = textureLod(ugShade, uvFine, 0.0);
+              if (ugDuskK > 0.0) gsHere.r = mix(gsHere.r, textureLod(ugDusk, uvFine, 0.0).g, ugDuskK);
+              gs = mix(gs, gsHere, fine);
+            }
             vUgLight = gs.rg;
           }`
             : ''}`,

@@ -163,7 +163,8 @@ export class BankPlants {
       shader.uniforms.windTime = wind.time;
       shader.uniforms.windStrength = wind.strength;
       Object.assign(shader.uniforms, { windDir: wind.dir, windSpeed: wind.speed });
-      if (shade) Object.assign(shader.uniforms, { bpShade: shade.groundShade, bpShadeAll: shade.groundShadeAll, bpArea: shade.groundArea, bpAreaAll: shade.groundAreaAll });
+      if (shade) Object.assign(shader.uniforms, { bpShade: shade.groundShade, bpShadeAll: shade.groundShadeAll, bpArea: shade.groundArea, bpAreaAll: shade.groundAreaAll,
+        bpDusk: shade.groundContact, bpDuskAll: shade.groundContactAll, bpDuskK: shade.groundDuskK, bpDuskKAll: shade.groundDuskKAll });
       Object.assign(shader.uniforms, washUniforms); // a helicopter's rotor wash (world/rotorWash.ts)
       shader.vertexShader = shader.vertexShader
         .replace(
@@ -176,7 +177,7 @@ export class BankPlants {
           uniform vec2 windDir;
           uniform float windSpeed;
           varying vec2 vBpLight;
-          ${shade ? 'uniform sampler2D bpShade;\nuniform sampler2D bpShadeAll;\nuniform vec3 bpArea;\nuniform vec3 bpAreaAll;' : ''}`,
+          ${shade ? 'uniform sampler2D bpShade;\nuniform sampler2D bpShadeAll;\nuniform vec3 bpArea;\nuniform vec3 bpAreaAll;\nuniform sampler2D bpDusk;\nuniform sampler2D bpDuskAll;\nuniform float bpDuskK;\nuniform float bpDuskKAll;' : ''}`,
         )
         .replace(
           '#include <begin_vertex>',
@@ -212,8 +213,16 @@ export class BankPlants {
             float fine = smoothstep(0.5, 0.46, max(edgeFine.x, edgeFine.y));
             vec4 gs = vec4(1.0, 1.0, 0.5, 0.5);
             vec2 edgeAll = abs(uvAll - 0.5);
-            if (fine < 1.0 && max(edgeAll.x, edgeAll.y) < 0.5) gs = textureLod(bpShadeAll, uvAll, 0.0);
-            if (fine > 0.0) gs = mix(gs, textureLod(bpShade, uvFine, 0.0), fine);
+            // At dusk the low sun's long shadows, as the ground has them (world/duskShade.ts).
+            if (fine < 1.0 && max(edgeAll.x, edgeAll.y) < 0.5) {
+              gs = textureLod(bpShadeAll, uvAll, 0.0);
+              if (bpDuskKAll > 0.0) gs.r = mix(gs.r, textureLod(bpDuskAll, uvAll, 0.0).g, bpDuskKAll);
+            }
+            if (fine > 0.0) {
+              vec4 gsHere = textureLod(bpShade, uvFine, 0.0);
+              if (bpDuskK > 0.0) gsHere.r = mix(gsHere.r, textureLod(bpDusk, uvFine, 0.0).g, bpDuskK);
+              gs = mix(gs, gsHere, fine);
+            }
             vBpLight = gs.rg;
           }`
             : ''}`,

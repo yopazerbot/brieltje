@@ -294,6 +294,7 @@ const scattered = (one: THREE.BufferGeometry, count: number, kind: 'tuft' | 'lea
         gtHeights: { value: this.heights.texture }, gtCover: { value: this.cover.texture },
         windTime: wind.time, windStrength: wind.strength, windDir: wind.dir, windSpeed: wind.speed,
         ugShade: shade.groundShade, ugShadeAll: shade.groundShadeAll, ugArea: shade.groundArea, ugAreaAll: shade.groundAreaAll,
+        ugDusk: shade.groundContact, ugDuskAll: shade.groundContactAll, ugDuskK: shade.groundDuskK, ugDuskKAll: shade.groundDuskKAll,
       });
       Object.assign(shader.uniforms, washUniforms); // a helicopter's rotor wash (world/rotorWash.ts)
       shader.vertexShader = shader.vertexShader
@@ -329,6 +330,10 @@ const scattered = (one: THREE.BufferGeometry, count: number, kind: 'tuft' | 'lea
           uniform sampler2D ugShadeAll;
           uniform vec3 ugArea;
           uniform vec3 ugAreaAll;
+          uniform sampler2D ugDusk;
+          uniform sampler2D ugDuskAll;
+          uniform float ugDuskK;
+          uniform float ugDuskKAll;
           varying vec2 vGtLight;
           varying vec3 vGtTint;
           ${WASH_GLSL}`,
@@ -354,8 +359,16 @@ ${blades ? '          gtRoot += gtTurn(gtBlade.xy, gtPlace.z);\n' : ''}
           float fine = smoothstep(0.5, 0.46, max(edgeFine.x, edgeFine.y));
           vec4 gs = vec4(1.0, 1.0, 0.5, 0.5);
           vec2 edgeAll = abs(uvAll - 0.5);
-          if (fine < 1.0 && max(edgeAll.x, edgeAll.y) < 0.5) gs = textureLod(ugShadeAll, uvAll, 0.0);
-          if (fine > 0.0) gs = mix(gs, textureLod(ugShade, uvFine, 0.0), fine);
+          // At dusk the low sun's long shadows, as the ground has them (world/duskShade.ts).
+          if (fine < 1.0 && max(edgeAll.x, edgeAll.y) < 0.5) {
+            gs = textureLod(ugShadeAll, uvAll, 0.0);
+            if (ugDuskKAll > 0.0) gs.r = mix(gs.r, textureLod(ugDuskAll, uvAll, 0.0).g, ugDuskKAll);
+          }
+          if (fine > 0.0) {
+            vec4 gsHere = textureLod(ugShade, uvFine, 0.0);
+            if (ugDuskK > 0.0) gsHere.r = mix(gsHere.r, textureLod(ugDusk, uvFine, 0.0).g, ugDuskK);
+            gs = mix(gs, gsHere, fine);
+          }
           vGtLight = gs.rg;
 ${blades ? `          float gtWild = clamp(1.0 - gs.a * 2.0, 0.0, 1.0);
           float gtMown = smoothstep(0.52, 0.6, gs.a); // a garden mown in stripes (0.6 to 1), not plain grass (0.5)
