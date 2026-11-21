@@ -47,7 +47,7 @@ Start the tool in that folder, not in the main checkout. Claude Code's subagents
 ## Working efficiently (any session)
 
 - **Find, don't read.** Search for the function, key or row you need and read only those lines. `docs/CODEMAP.md` says which module holds what. Never read `main.ts`, `i18n.ts` or `DECISIONS.md` whole.
-- **Reuse the dev tools.** `tools/dev/` has the headless browser driver (`cdp.mjs`), screenshots (`shot.mjs`) and frame timing (`bench.mjs`). Use them instead of writing a new driver. A check worth keeping goes there too.
+- **Reuse the dev tools.** `tools/dev/` has the headless browser driver (`cdp.mjs`), screenshots (`shot.mjs`), frame timing (`bench.mjs`) and a start's memory (`startmem.mjs`). Use them instead of writing a new driver. A check worth keeping goes there too.
 - **Keep output small.** Filter what a command prints (`grep`, `head`, `tail`). Send big output to a temp file and look only at the part you need. Run long jobs (builds of models, bakes, renders) in the background.
 - **Research first.** When Yoshi asks for something new or for an improvement, first look online at how big-budget (triple-A) games do it, for inspiration (Yoshi, 20 Nov 2026). Say in the plan or the brief what you took from it. Inspiration only: copy no asset, texture, name or level (see Assets). Keep the project's and Yoshi's details out of the searches. A tool that can't search says so.
 - **Plan short.** A few lines: the files, the approach, the checks. Then work.
@@ -146,6 +146,7 @@ These come from CONTRIBUTING.md, plus a few that only agents need. A change that
 - No 32-bit float textures with linear filtering. Older iPads read them as black.
 - Keep everything that goes into half-float targets under 65504: HDR skies, lights, emissive values. An iPhone stores a larger value as infinity, and surfaces go black.
 - Phones and iPads must keep working: the touch controls, the layout and the frame rate.
+- A phone's browser ends a page that holds too much memory, however fast its chip is (an iPhone, 21 Nov 2026: no start at all). A phone or tablet on Auto stays on Low. Nothing new may allocate a higher preset's targets or textures on a phone.
 
 ## Checks before you hand back
 
@@ -160,8 +161,9 @@ On this PC as well:
 4. You tried the Low preset. If players see the change, you also tried a phone (touch emulation).
 5. A change to multiplayer was tested with a local server on your own port and two clients.
 6. For "black on iPhone or Mac" bugs, run Chromium with SwiftShader (`--use-angle=swiftshader --enable-unsafe-swiftshader`). It stores half-float overflow as infinity, as Apple's chips do.
+7. A change that adds geometry, textures, render targets or pictures made on the CPU: compare a phone start before and after with `node tools/dev/startmem.mjs --phone --quality low` (`--compare` fails above 40 MB of growth). Give the numbers. Growth needs a reason in your report.
 
-A cloud worker that can't run 3 to 6 says so in its pull request.
+A cloud worker that can't run 3 to 7 says so in its pull request.
 
 ## Commits
 
