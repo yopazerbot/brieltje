@@ -35,6 +35,10 @@
 // - A supply crate: one of LOOT.guns you lack, at random. Lost when you go down, as every found gun.
 // - An assault rifle (the game's automatic rifle): yours, unless you carry one already (it stays for a
 //   teammate, as a crate does when you carry every gun). Lost when you go down, as every found gun.
+// - The laser rifle: from wave LOOT.laserFrom on, a reward that falls is the laser rifle LOOT.laserShare of the time (a
+//   big one's LOOT.laserBigShare), instead of what it would have been; never while every fighter carries one, and it stays
+//   for a teammate while you carry one, as the rifle does. Also sold at the stall, dearly (shared/stall.mjs). Lost when
+//   you go down, as every found gun. (Outside the Zombies game everyone carries it: shared/loadout.mjs.)
 //
 // Who has what is a kit per player name (kits), kept for the game, a dropped connection included.
 
@@ -113,6 +117,10 @@ export const LOOT = {
   nadeGap: 400,
   /** Supply crate: the guns it may hold */
   guns: ['rifle', 'shotgun', 'sniper'],
+  /** The laser rifle: from this wave, this share of the rewards that fall (a big one's bigger) are one */
+  laserFrom: 6,
+  laserShare: 0.12,
+  laserBigShare: 0.3,
   /** Music box: m around it and up or down, ms it plays, the pace a zombie keeps in it (a big one), ms that lasts after, how many at once */
   lullReach: 7,
   lullRise: 3,
@@ -208,9 +216,10 @@ export class Loot {
    * stood). `fighters`: who plays now; when every one of them has a scope, no scope falls (it would lie
    * there for nobody: walking over it did nothing). `rifled`: every one of them carries a rifle (the caller
    * knows their guns): then no rifle falls either, and its share goes back to the ammo pack, so the other
-   * kinds keep theirs.
+   * kinds keep theirs. `wave`: the wave it fell in; from LOOT.laserFrom the reward may be the laser rifle (one more roll of
+   * the dice there, always, so the duel's two rooms stay alike), unless `lasered`: every fighter carries one already.
    */
-  drop(z, now, last = false, fighters = [], rifled = false) {
+  drop(z, now, last = false, fighters = [], rifled = false, wave = 0, lasered = false) {
     const out = [];
     // `side` m to its right, `ahead` m in front of it (a zombie walks along sin, cos of its yaw).
     const leave = (kind, side, ahead = 0) => {
@@ -225,6 +234,10 @@ export class Loot {
     if (this.items.size >= LOOT.lying + (big ? 2 : 0)) return out;
     const p = big ? LOOT.bigChance : z.kind === RUNNER ? LOOT.runnerChance : LOOT.chance;
     if (!(this.drops() < p) && !(last && !this.dropped)) return out;
+    if (Number.isSafeInteger(wave) && wave >= LOOT.laserFrom && this.drops() < (big ? LOOT.laserBigShare : LOOT.laserShare) && !lasered) {
+      leave('laser', 0, big ? 0.6 : 0);
+      return out;
+    }
     const scoped = fighters.length > 0 && fighters.every((n) => this.kits.get(n)?.scope);
     const rifle = LOOT.weights.find(([k]) => k === 'rifle')?.[1] ?? 0;
     const weights = LOOT.weights
@@ -284,6 +297,7 @@ export class Loot {
     const lacking = kind === 'gun' && Array.isArray(p.guns) ? LOOT.guns.filter((g) => !p.guns.includes(g)) : [];
     if (kind === 'gun' && !lacking.length) return null;
     if (kind === 'rifle' && !(Array.isArray(p.guns) && !p.guns.includes('rifle'))) return null;
+    if (kind === 'laser' && !(Array.isArray(p.guns) && !p.guns.includes('laser'))) return null;
     let w;
     let heal;
     if (kind === 'scope') k.scope = true;
@@ -295,6 +309,7 @@ export class Loot {
     else if (kind === 'medkit') heal = Math.min(LOOT.heal, LOOT.health - p.hp);
     else if (kind === 'gun') w = lacking[Math.min(lacking.length - 1, Math.floor(this.drops() * lacking.length))]; // the wave's drop dice (the duel: both rooms)
     else if (kind === 'rifle') w = 'rifle';
+    else if (kind === 'laser') w = 'laser';
     else if (kind === 'lull') {
       // It plays where it lay, not where its taker goes; the oldest stops when too many play.
       while (this.lulls.size >= LOOT.lullsAll) this.lulls.delete(this.lulls.keys().next().value);

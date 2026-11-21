@@ -10,7 +10,7 @@ import { ITEM_X, ITEM_Z, stallPick } from './stallAim';
 
 /**
  * The market stall at the Zombies place (shared/stall.mjs STALL_SPOTS) while a game runs there: a wooden table
- * under a red and cream striped awning, the six things sold lying on it (the rewards' own shapes, world/rewards.ts)
+ * under a red and cream striped awning, the seven things sold lying on it (the rewards' own shapes, world/rewards.ts)
  * and a lamp. Open in the break, shut during a wave (a cloth over the table, the lamp dark). Made in code: boxes,
  * and the signs baked with their colours on the vertices.
  *
@@ -34,7 +34,7 @@ const C = {
   dark: '#2a2622',
   bulbOff: '#4a4438',
 };
-const ITEM_FIT = 0.34;
+const ITEM_FIT = 0.3; // m: seven things 0.34 m apart on the table (stallAim ITEM_X), a little room between
 const BULB = new THREE.Vector3(0, 1.75, -0.3);
 /** The lamp's light on the goods: from the front and above */
 const LAMP_DIR = new THREE.Vector3(0, 0.89, -0.45).normalize();
@@ -268,7 +268,7 @@ export class MarketStall {
     });
   }
 
-  /** The six things merged, and the lit bulb. */
+  /** The seven things merged, and the lit bulb. */
   private goodsGeo(): THREE.BufferGeometry {
     const parts = STALL.items.map(([kind], i) => bakedSign(kind).translate(ITEM_X[i], TOP_Y, ITEM_Z));
     parts.push(part(bulbGeo(), new THREE.Color(3, 2, 1)));

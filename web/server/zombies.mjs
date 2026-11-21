@@ -28,7 +28,7 @@
 // music box plays and which zombies it slows (each tick), the gun in a crate. No page names any of it.
 //
 // Coins and the stall (shared/stall.mjs): a beaten zombie pays whoever beat it (beat), a beaten wave
-// pays everyone who fights (bonus), and in the break a page may buy one of six things (buy: the page
+// pays everyone who fights (bonus), and in the break a page may buy one of seven things (buy: the page
 // names only the thing). The coins are the server's count, told to each player's own page (zcoins).
 //
 // Who goes down waits for the end of the wave (their page shows it), then everyone comes back at
@@ -44,6 +44,7 @@ import { sold, Stall } from '../shared/stall.mjs';
 import { zombieEntry } from '../shared/wire.mjs';
 import { arenaOf } from '../shared/arenas.mjs';
 import { homeAt } from '../shared/homes.mjs';
+import { laserRefill, laserReset } from './laserGate.mjs';
 
 export const DONE_MS = 15_000;
 /** ms after the last parachute is down before a wave may come (tick: the break holds while anyone drops) */
@@ -312,7 +313,12 @@ export class ZombieGame {
     const g = this.game;
     // What is in it is the server's: health back on its own count, a gun into the guns it checks each hit with.
     if (got.kind === 'medkit') p.hp = Math.min(LOOT.health, p.hp + got.heal);
-    else if (got.kind === 'gun' || got.kind === 'rifle') p.weapons.add(got.w);
+    else if (got.kind === 'gun' || got.kind === 'rifle' || got.kind === 'laser') p.weapons.add(got.w);
+    // The laser rifle as the page has it (server/laserGate.mjs): just come, cool with a full cell; its bigger ammo pack, a full cell.
+    if (got.kind === 'laser') laserReset(p);
+    else if (got.kind === 'ammo' && got.w === 'laser') {
+      laserRefill(p, Math.round(g.weaponSpec('laser').mag * (got.kit?.ammo?.includes('laser') ? LOOT.bigMag : 1)));
+    }
     g.send(p.ws, { t: 'zgift', kind: got.kind, w: got.w, kit: got.kit, ...(got.kind === 'medkit' ? { hp: p.hp } : {}) });
   }
 
@@ -355,7 +361,7 @@ export class ZombieGame {
   /**
    * A page buys one thing at the stall: `m.k`, the kind, its only field (the page never names coins, a
    * price, a count or a player). Checked in this order: the rate (refused messages count too), who
-   * (the socket's player: here, alive, armed, not down, not in a car), the kind (one of the six), the
+   * (the socket's player: here, alive, armed, not down, not in a car), the kind (one of the seven), the
    * break (the server's phase now), the reach (the server's own position for the player, p.state, at
    * the place's stall: stallReach; the message's other fields are never read), the coins (the server's
    * own count) and what it gives (Loot.give on the server's position, health and guns); charged only
@@ -709,7 +715,9 @@ export class ZombieGame {
     const fighters = [...this.game.players].filter(([, p]) => p.state?.armed).map(([n]) => n);
     // Every fighter carries a rifle (the server's own record of their guns): no rifle falls for nobody.
     const rifled = fighters.length > 0 && fighters.every((n) => this.game.players.get(n)?.weapons?.has('rifle'));
-    if (z) this.loot.drop(z, Date.now(), this.horde.left === 0, fighters, rifled);
+    // And a laser rifle (from a later wave): none while every one of them carries one.
+    const lasered = fighters.length > 0 && fighters.every((n) => this.game.players.get(n)?.weapons?.has('laser'));
+    if (z) this.loot.drop(z, Date.now(), this.horde.left === 0, fighters, rifled, this.horde.wave, lasered);
     this.modes.send();
   }
 

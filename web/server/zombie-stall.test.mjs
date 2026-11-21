@@ -345,8 +345,8 @@ test('10. coins belong to a session: another one under the name starts at 0; the
   const f = fixture();
   const { game, z, a } = f;
   // Every page is told 0 as the game begins (never the last game's coins).
-  assert.deepEqual(f.started.a.filter((m) => m.t === 'zcoins'), [{ t: 'zcoins', c: 0, n: [0, 0, 0, 0, 0, 0] }]);
-  assert.deepEqual(f.started.b.filter((m) => m.t === 'zcoins'), [{ t: 'zcoins', c: 0, n: [0, 0, 0, 0, 0, 0] }]);
+  assert.deepEqual(f.started.a.filter((m) => m.t === 'zcoins'), [{ t: 'zcoins', c: 0, n: [0, 0, 0, 0, 0, 0, 0] }]);
+  assert.deepEqual(f.started.b.filter((m) => m.t === 'zcoins'), [{ t: 'zcoins', c: 0, n: [0, 0, 0, 0, 0, 0, 0] }]);
   // A dropped connection and back within the game, the same session: coins and purchases told again.
   z.stall.coins.set('a', 400);
   f.say('a', { t: 'zbuy', k: 'claymore' });
@@ -355,7 +355,7 @@ test('10. coins belong to a session: another one under the name starts at 0; the
   const back = player(0); // the same key: the same session
   game.players.set('a', back);
   z.join('a', back);
-  assert.deepEqual(f.of(back, 'zcoins').at(-1), { t: 'zcoins', c: 250, n: [0, 0, 1, 0, 0, 0] });
+  assert.deepEqual(f.of(back, 'zcoins').at(-1), { t: 'zcoins', c: 250, n: [0, 0, 1, 0, 0, 0, 0] });
   // The name taken by another session once that one is gone: it starts at 0, and its prices at the first.
   z.leave('a', back, Date.now());
   game.players.delete('a');
@@ -363,7 +363,7 @@ test('10. coins belong to a session: another one under the name starts at 0; the
   other.key = 'someone-else';
   game.players.set('a', other);
   z.join('a', other);
-  assert.deepEqual(f.of(other, 'zcoins').at(-1), { t: 'zcoins', c: 0, n: [0, 0, 0, 0, 0, 0] });
+  assert.deepEqual(f.of(other, 'zcoins').at(-1), { t: 'zcoins', c: 0, n: [0, 0, 0, 0, 0, 0, 0] });
   assert.equal(z.stall.of('a'), 0);
   // A kill credited to the name while nobody holds it pays the name; a new session still starts clean.
   z.stall.coins.set('a', 0);
@@ -376,12 +376,12 @@ test('10. coins belong to a session: another one under the name starts at 0; the
   game.players.set('a', third);
   z.join('a', third);
   assert.equal(z.stall.of('a'), 0);
-  assert.deepEqual(f.of(third, 'zcoins').at(-1), { t: 'zcoins', c: 0, n: [0, 0, 0, 0, 0, 0] });
+  assert.deepEqual(f.of(third, 'zcoins').at(-1), { t: 'zcoins', c: 0, n: [0, 0, 0, 0, 0, 0, 0] });
   // Someone new hears 0 on joining.
   const d = player(2);
   game.players.set('d', d);
   z.join('d', d);
-  assert.deepEqual(f.of(d, 'zcoins'), [{ t: 'zcoins', c: 0, n: [0, 0, 0, 0, 0, 0] }]);
+  assert.deepEqual(f.of(d, 'zcoins'), [{ t: 'zcoins', c: 0, n: [0, 0, 0, 0, 0, 0, 0] }]);
 });
 
 test('11. remote purchase: only where the server holds the buyer to be counts; a message naming a place is never read', () => {

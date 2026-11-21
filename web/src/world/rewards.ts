@@ -22,7 +22,8 @@ import type { Ring } from './houseData';
  * when they are out it is gone in a puff. Four draws a turret, five as it flashes.
  * The five newer rewards' signs: a white first-aid kit with a red cross, a dark blue vest with two
  * straps, three grenades, a little wooden music box with a crank, a big crate with two white bands; and the
- * assault rifle, the game's own rifle model as the guns lying on the map are drawn (world/pickups.ts).
+ * assault rifle, the game's own rifle model as the guns lying on the map are drawn (world/pickups.ts); the laser
+ * rifle the same way, its own model (lasergun.glb), in an aqua of its own.
  * A music box taken opens where it lay and plays its tune; glowing dots on the ground mark the circle
  * it slows the zombies in (all of them one instanced draw).
  */
@@ -30,6 +31,7 @@ import type { Ring } from './houseData';
 const COLORS: Record<LootKind, string> = {
   ammo: '#f2c14e', scope: '#5fd3f3', claymore: '#ff7a45', stakes: '#9be36b', turret: '#c58cff',
   nades: '#d7e05a', medkit: '#ff5d73', armor: '#4f8dff', lull: '#ff8ad8', gun: '#ffffff', rifle: '#ff3a2e',
+  laser: '#22f0c8',
 };
 const REACH = 1.0; // m: the page asks for one this close (the server allows LOOT.reach)
 /** Whether the guns' models are in (weapon.ts): until then a rifle's sign is the built one, and swaps when they come. */
@@ -363,14 +365,14 @@ function sign(kind: LootKind): THREE.Group {
     crate.add(new THREE.Mesh(boxGeo, mats.box), new THREE.Mesh(crateBandGeo, mats.white));
     crate.scale.setScalar(1.4);
     g.add(crate);
-  } else if (kind === 'rifle') {
-    // The rifle itself, as on the map; the loaded model takes the built one's place once it is in.
+  } else if (kind === 'rifle' || kind === 'laser') {
+    // The rifle (the laser rifle) itself, as on the map; the loaded model takes the built one's place once it is in.
     const gun = new THREE.Group();
-    gun.add(gunModel('rifle'));
+    gun.add(gunModel(kind));
     if (!gunsIn) {
       void gunsReady.then((ok) => {
         if (!ok) return;
-        gun.clear().add(gunModel('rifle'));
+        gun.clear().add(gunModel(kind));
         gun.traverse((o) => (o.userData.ignoreRay = true));
       });
     }

@@ -2,7 +2,7 @@
 
 import type { Kit, Loot, LootKind } from './loot.mjs';
 
-export type StallKind = 'medkit' | 'nades' | 'claymore' | 'armor' | 'gun' | 'turret';
+export type StallKind = 'medkit' | 'nades' | 'claymore' | 'armor' | 'gun' | 'turret' | 'laser';
 
 export const STALL: {
   readonly kill: { readonly walker: number; readonly runner: number; readonly big: number };

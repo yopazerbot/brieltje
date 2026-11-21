@@ -107,12 +107,13 @@ test('two things as near in angle: the nearer one', () => {
   for (const s of SPOTS) {
     // Standing a little left of the gap between things 2 and 3, looking halfway between them: the same angle to
     // each, thing 2 the nearer.
-    const p = world(s, 0.15, -1.0);
+    const gap = (ITEM_X[2] + ITEM_X[3]) / 2;
+    const p = world(s, gap + 0.15, -1.0);
     const a = yawTo(p, itemAt(s, 2)), b = yawTo(p, itemAt(s, 3));
     const mid = Math.atan2(Math.sin(a) + Math.sin(b), Math.cos(a) + Math.cos(b));
     assert.equal(stallPick(s, p.x, p.z, mid), 2, s.id);
     // Behind the table, mirrored: thing 3 the nearer.
-    const q = world(s, -0.15, 1.0);
+    const q = world(s, gap - 0.15, 1.0);
     const c = yawTo(q, itemAt(s, 2)), d = yawTo(q, itemAt(s, 3));
     assert.equal(stallPick(s, q.x, q.z, Math.atan2(Math.sin(c) + Math.sin(d), Math.cos(c) + Math.cos(d))), 3, s.id);
   }

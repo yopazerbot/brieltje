@@ -2,7 +2,7 @@
 
 import type { Nav, Zombie } from './zombies.mjs';
 
-export type LootKind = 'ammo' | 'scope' | 'claymore' | 'stakes' | 'turret' | 'medkit' | 'armor' | 'nades' | 'lull' | 'gun' | 'rifle';
+export type LootKind = 'ammo' | 'scope' | 'claymore' | 'stakes' | 'turret' | 'medkit' | 'armor' | 'nades' | 'lull' | 'gun' | 'rifle' | 'laser';
 
 export const LOOT: {
   chance: number;
@@ -57,6 +57,9 @@ export const LOOT: {
   nadesCarry: number;
   nadeGap: number;
   guns: string[];
+  laserFrom: number;
+  laserShare: number;
+  laserBigShare: number;
   lullReach: number;
   lullRise: number;
   lullMs: number;
@@ -154,7 +157,7 @@ export class Loot {
   spare(name: string): boolean;
   put(kind: LootKind, x: number, y: number, z: number, now: number): Item;
   wave(): void;
-  drop(z: Zombie, now: number, last?: boolean, fighters?: string[], rifled?: boolean): Item[];
+  drop(z: Zombie, now: number, last?: boolean, fighters?: string[], rifled?: boolean, wave?: number, lasered?: boolean): Item[];
   take(name: string, p: { x: number; y: number; z: number; w: string; hp?: number; guns?: string[] }, id: number, now: number): { kind: LootKind; w?: string; heal?: number; kit: Kit } | null;
   give(name: string, p: { x: number; y: number; z: number; w: string; hp?: number; guns?: string[] }, kind: LootKind, now: number, at?: { x: number; y: number; z: number }): { kind: LootKind; w?: string; heal?: number; kit: Kit } | null;
   place(name: string, p: { x: number; y: number; z: number }, at: At, now: number): { mine?: Mine; why?: 'none' | 'max' | 'spot' };

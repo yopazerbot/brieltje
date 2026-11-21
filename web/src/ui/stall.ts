@@ -76,6 +76,7 @@ export class StallChip {
       armor: 'loot.armor',
       gun: 'loot.gun',
       turret: 'loot.turret',
+      laser: paintball.on ? 'paint.laser' : 'loot.laser',
     } as const)[kind]);
     const n = this.price(kind);
     return this.have >= n ? t('prompt.stall', { use: key('use', mode), thing, n }) : t('prompt.stallShort', { thing, n, c: this.have });

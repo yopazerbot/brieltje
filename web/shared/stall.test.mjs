@@ -24,8 +24,8 @@ const HERE = Object.freeze({ x: 0, y: 0, z: 0 });
 const KINDS = STALL.items.map(([k]) => k);
 const BAD = ['__proto__', 'constructor', 'toString', '', 'ammo', 'scope', 'stakes', 'lull', 5, null, undefined, {}, ['medkit'], 'MEDKIT'];
 
-test('the six things, in order, and the table cannot be changed', () => {
-  assert.deepEqual(KINDS, ['medkit', 'nades', 'claymore', 'armor', 'gun', 'turret']);
+test('the seven things, in order, and the table cannot be changed', () => {
+  assert.deepEqual(KINDS, ['medkit', 'nades', 'claymore', 'armor', 'gun', 'turret', 'laser']);
   assert.ok(Object.isFrozen(STALL) && Object.isFrozen(STALL.items) && Object.isFrozen(STALL.kill));
   for (const row of STALL.items) assert.ok(Object.isFrozen(row));
   assert.throws(() => {
@@ -128,7 +128,7 @@ test('each refusal of the table costs nothing', () => {
     s.coins.set('a', 5000);
     assert.deepEqual(s.buy(loot, 'a', p, kind, 'break', 0, HERE), { why: 'full' }, kind);
     assert.equal(s.of('a'), 5000, kind);
-    assert.deepEqual(s.view('a').n, [0, 0, 0, 0, 0, 0]);
+    assert.deepEqual(s.view('a').n, [0, 0, 0, 0, 0, 0, 0]);
   };
   for (const hp of [100, 90, 86, NaN, undefined, '40']) full(() => {}, { ...at(), hp }, 'medkit');
   full((k) => (k.nades = LOOT.nadesCarry), at(), 'nades');
@@ -160,7 +160,7 @@ test('one player\'s purchases leave another\'s prices and coins alone', () => {
   s.coins.set('a', 5000);
   s.coins.set('b', 5000);
   for (let i = 0; i < 2; i++) assert.ok(s.buy(loot, 'a', at(), 'claymore', 'break', 0, HERE).got);
-  assert.deepEqual(s.view('b'), { c: 5000, n: [0, 0, 0, 0, 0, 0] });
+  assert.deepEqual(s.view('b'), { c: 5000, n: [0, 0, 0, 0, 0, 0, 0] });
   assert.equal(s.buy(loot, 'b', at(), 'claymore', 'break', 0, HERE).price, 150);
   assert.equal(loot.kit('b').claymores, 1);
   assert.equal(s.of('a'), 5000 - 150 - 200);
@@ -171,7 +171,7 @@ test('the view is a copy', () => {
   const v = s.view('a');
   v.n[0] = 99;
   v.c = 99;
-  assert.deepEqual(s.view('a'), { c: 0, n: [0, 0, 0, 0, 0, 0] });
+  assert.deepEqual(s.view('a'), { c: 0, n: [0, 0, 0, 0, 0, 0, 0] });
 });
 
 test('waves 1 to 3 alone pay 305: two cheap things, or the crate, or half a turret', () => {
@@ -217,7 +217,7 @@ test('the reach: within STALL.reach on the plan and STALL.rise up or down, measu
     const { r, s, loot } = buy(pos, where);
     assert.deepEqual(r, { why: 'far' }, why);
     assert.equal(s.of('a'), 5000, `${why}: costs nothing`);
-    assert.deepEqual(s.view('a').n, [0, 0, 0, 0, 0, 0], `${why}: counts nothing`);
+    assert.deepEqual(s.view('a').n, [0, 0, 0, 0, 0, 0, 0], `${why}: counts nothing`);
     assert.deepEqual(loot.kit('a'), { ammo: [], scope: false, claymores: 0, stakes: 0, turrets: 0, armor: 0, nades: 0 }, `${why}: gives nothing`);
   }
   // The order: the kind, the break, the reach, then the coins.

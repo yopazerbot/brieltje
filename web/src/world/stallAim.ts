@@ -6,7 +6,7 @@ import { STALL, type StallSpot } from '../../shared/stall.mjs';
  *
  * The stall's local frame: the origin on the ground under the table's middle, the front along -z, the table along x.
  * - Only from in front of the table or behind it, within its length and a little more (TABLE_HALF + BEYOND). From an
- *   end the six things lie in a row along your view, within a few degrees of each other, and a hair of turning would
+ *   end the seven things lie in a row along your view, within a few degrees of each other, and a hair of turning would
  *   flip between them: nothing is offered there.
  * - A thing is the one you face when your view passes within AIM_M of it at its distance (as an angle, AIM_MIN to
  *   AIM_MAX): wide when you stand at the table, narrow from 2.5 m, so the offer ends a little past the outer things.
@@ -14,7 +14,7 @@ import { STALL, type StallSpot } from '../../shared/stall.mjs';
  */
 
 /** Where each thing lies on the table, in STALL.items order: from the buyer's left (+x) to right (m, local). */
-export const ITEM_X: readonly number[] = STALL.items.map((_, i) => 1.0 - 0.4 * i);
+export const ITEM_X: readonly number[] = STALL.items.map((_, i, all) => 0.34 * ((all.length - 1) / 2 - i)); // 0.34 m apart, the row centred: seven fill the table
 export const ITEM_Z = -0.05;
 /** m: half the table's length, and how far past its end you still stand "in front" */
 export const TABLE_HALF = 1.2;

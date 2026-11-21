@@ -62,11 +62,11 @@ export const ZOMBIE = {
   /** m: closer than this, with a clear way, a zombie walks straight at you */
   straight: 7,
   /**
-   * Gunfire draws them. m: how far each gun is heard (the pistol is the quiet one); a zombie that hears a shot
-   * walks `alert` times its pace for `alertMs`, and for that long the shooter counts as nearer than they are
-   * (`loud` of the distance) when it chooses between players close by.
+   * Gunfire draws them. m: how far each gun is heard (the pistol is the quiet one, the laser rifle's zap quieter); a
+   * zombie that hears a shot walks `alert` times its pace for `alertMs`, and for that long the shooter counts as nearer
+   * than they are (`loud` of the distance) when it chooses between players close by.
    */
-  hear: { pistol: 12, rifle: 22, shotgun: 30, sniper: 45, bazooka: 55, grenade: 45, turret: 0 },
+  hear: { pistol: 12, rifle: 22, shotgun: 30, sniper: 45, bazooka: 55, grenade: 45, turret: 0, laser: 8 },
   alert: 1.18,
   alertMs: 4000,
   loud: 0.6,

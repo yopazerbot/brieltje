@@ -1177,7 +1177,7 @@ export class Weapon {
   }
 
   /**
-   * The laser rifle is yours, its cell full and cool, and in your hands (alone only for now: main.ts's dev give).
+   * The laser rifle is yours, its cell full and cool, and in your hands (the Zombies game's drop or stall, main.ts gift; or the dev give alone).
    * Its keys show for a few seconds (laserHint).
    */
   giveLaser(): void {

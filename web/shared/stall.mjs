@@ -1,5 +1,5 @@
 // The stall in the Zombies game: coins for every zombie you put down, a bonus when a wave is beaten,
-// and six things to buy with them in the break between waves. Shared by the server (which keeps the
+// and seven things to buy with them in the break between waves. Shared by the server (which keeps the
 // coins together) and the page (which keeps them alone): plain objects and plain functions, no
 // three.js, no network.
 //
@@ -46,6 +46,8 @@ export const STALL = Object.freeze({
     Object.freeze(['armor', 200, 100]),
     Object.freeze(['gun', 300, 150]),
     Object.freeze(['turret', 600, 300]),
+    // The laser rifle: twice the supply crate's gun, the dearest gun here (Yoshi, 21 Nov 2026: "bought from stall for big price").
+    Object.freeze(['laser', 600, 300]),
   ]),
 });
 
