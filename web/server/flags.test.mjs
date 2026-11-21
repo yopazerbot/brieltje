@@ -845,7 +845,8 @@ test('the host swaps the sides: flags home, launchers on their racks, bases, rac
     for (const n of s.blue) {
       const st = s.game.players.get(n).state;
       const [x, z] = s.f.bases.red.stand;
-      assert.ok(Math.hypot(st.x - x, st.z - z) < 25, `${field}: ${n} at blue's new base`);
+      // A base's places reach up to 10 m past its own six start places (server/teamStarts.mjs), which lie up to 22 m from the stand.
+      assert.ok(Math.hypot(st.x - x, st.z - z) < 35, `${field}: ${n} at blue's new base`);
       assert.ok(s.game.players.get(n).protectedUntil - s.now() === SAFE_MS, 'protected');
     }
     assert.equal(f.score.red, 2, 'the score carries on');
