@@ -13,7 +13,8 @@ import { windAt } from './wind';
  * columns are unlit and faint (no light, nothing near the half-float limit), on every preset. Each column has a thin
  * white core and each cloth a white edge (Yoshi, 17 Nov 2026: "Make sure the ctf is fair"): the red reads against
  * Molenhoek's brick and its red cycle lane, the blue against the sky. With the sides swapped each stand is at its
- * team's new base (shared/flagFields.mjs baseOf).
+ * team's new base (shared/flagFields.mjs baseOf). A carrier with a flag away long (the view's `seen`) has a tall thin
+ * column of their team's colour over them, on every page: the standoff found.
  */
 
 const TEAMS: FlagTeam[] = ['blue', 'red'];
@@ -90,6 +91,19 @@ const droppedColumnGeo = columnGeo(COLUMN_DROPPED, 0.22);
 // The columns' white core: a thin column inside each, as faint, that edges the colour from far off (sky or brick).
 const baseCoreGeo = columnGeo(COLUMN, 0.07);
 const droppedCoreGeo = columnGeo(COLUMN_DROPPED, 0.06);
+// The beacon over a carrier who has had the flag away long (server/flags.mjs BEACON_MS): as tall as a base's, thinner, its
+// foot over their head, in the carrier's team's colour; the same faint unlit look, faded near the eye (the carrier's own
+// view is inside it: gone for them).
+const BEACON_FOOT = 2.1; // m over the carrier's feet
+const beaconGeo = columnGeo(COLUMN, 0.2);
+const beaconCoreGeo = columnGeo(COLUMN, 0.08);
+const BEACON_OPACITY = 0.6;
+/** Its white core brighter than a stand's (blue on a blue sky shows by the core) and a slow pulse that catches the eye. */
+const BEACON_CORE = 0.85;
+const BEACON_PULSE = 0.25;
+/** m: as thin as made up to this far from the eye, wider beyond it (at most BEACON_WIDEST times): a few pixels across. */
+const BEACON_THIN_M = 35;
+const BEACON_WIDEST = 8;
 const coreMat = () => new THREE.MeshBasicMaterial({ color: '#ffffff', alphaMap: fade, transparent: true, opacity: CORE_OPACITY, depthWrite: false });
 /** Each team's stand materials, made once and shared by every field's stands (a field change makes no new ones). */
 const teamMats = (color: string) => ({
@@ -105,6 +119,8 @@ class Flag {
   readonly root = new THREE.Group();
   readonly cloth: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshStandardMaterial>;
   readonly column: THREE.Mesh;
+  /** The beacon over its carrier (view `seen`), in the carrying team's colour */
+  readonly beacon: THREE.Mesh;
   private rest: Float32Array;
 
   constructor(readonly team: FlagTeam) {
@@ -119,8 +135,13 @@ class Flag {
     const core = new THREE.Mesh(droppedCoreGeo, coreMat());
     this.column.add(core);
     this.column.visible = false;
+    const carrier = FLAG_COLORS[team === 'blue' ? 'red' : 'blue']; // the other team carries it
+    this.beacon = new THREE.Mesh(beaconGeo, new THREE.MeshBasicMaterial({ color: carrier, alphaMap: fade, transparent: true, opacity: BEACON_OPACITY, depthWrite: false, side: THREE.DoubleSide }));
+    const beaconCore = new THREE.Mesh(beaconCoreGeo, coreMat());
+    this.beacon.add(beaconCore);
+    this.beacon.visible = false;
     this.root.add(staff, knob, this.cloth);
-    for (const m of [staff, knob, this.cloth, this.column, core]) {
+    for (const m of [staff, knob, this.cloth, this.column, core, this.beacon, beaconCore]) {
       m.userData.ignoreRay = true; // shots go through
       m.raycast = () => {};
     }
@@ -159,7 +180,7 @@ export class FlagWorld {
     for (const team of TEAMS) {
       const flag = new Flag(team);
       this.flags.set(team, flag);
-      this.group.add(flag.root, flag.column);
+      this.group.add(flag.root, flag.column, flag.beacon);
     }
   }
 
@@ -236,6 +257,7 @@ export class FlagWorld {
       const root = flag.root;
       let speed = 0;
       flag.column.visible = f.at === 'ground';
+      flag.beacon.visible = false;
       if (f.at === 'home') {
         const [x, z, y] = baseOf(field, team, !!v.swapped).stand;
         root.visible = true;
@@ -262,6 +284,17 @@ export class FlagWorld {
         const bx = Math.sin(at.yaw) * 0.22, bz = Math.cos(at.yaw) * 0.22;
         root.position.set(at.x + bx, at.y + 0.75, at.z + bz);
         root.rotation.set(-0.22, at.yaw, 0, 'YXZ');
+        if (f.seen) {
+          // The beacon: every page draws it over the carrier, where it draws them (server/flags.mjs BEACON_MS).
+          const k = nearFade(eye, at.x, at.z) * (1 - BEACON_PULSE + BEACON_PULSE * Math.sin(this.time * 4));
+          // Wider with distance (a few pixels across however far: 0.4 m wide was a pixel at 200 m), thin up close.
+          const wide = eye ? Math.min(BEACON_WIDEST, Math.max(1, Math.hypot(eye.x - at.x, eye.z - at.z) / BEACON_THIN_M)) : 1;
+          flag.beacon.scale.set(wide, 1, wide);
+          flag.beacon.position.set(at.x, at.y + BEACON_FOOT, at.z);
+          (flag.beacon.material as THREE.MeshBasicMaterial).opacity = BEACON_OPACITY * k;
+          ((flag.beacon.children[0] as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = BEACON_CORE * k;
+          flag.beacon.visible = k > 0;
+        }
         const prev = this.last.get(team);
         if (prev && dt > 0) speed = Math.hypot(at.x - prev.x, at.z - prev.z) / dt;
         if (prev) prev.set(at.x, at.y, at.z);

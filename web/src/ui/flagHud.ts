@@ -111,6 +111,8 @@ export class FlagHud {
   /** The game's bar this sits under, and when its height was last looked at (placeUnder) */
   private after: HTMLElement;
   private placedAt = 0;
+  /** The beacon was over you at the last frame (its line once as it comes on) */
+  private seenMine = false;
 
   /** `after`: the game's bar (#modebar), which this sits under. */
   constructor(after: HTMLElement) {
@@ -172,6 +174,15 @@ export class FlagHud {
     this.line.classList.toggle('show', !!v && now < this.lineUntil);
     if (!v) return;
     this.placeUnder(now);
+    // The beacon over you came on (server/flags.mjs BEACON_MS): one small line, in your team's colour, no sound.
+    const seen = TEAMS.find((t) => v.flags[t].at === 'carried' && v.flags[t].by === me && v.flags[t].seen) ?? null;
+    if (seen && !this.seenMine) {
+      this.line.textContent = t('flag.seenYou');
+      this.line.style.setProperty('--team', FLAG_COLORS[other(seen)]);
+      this.lineUntil = now + LINE_MS;
+      this.line.classList.add('show');
+    }
+    this.seenMine = !!seen;
     const key = JSON.stringify([v.flags.blue.at, v.flags.blue.by, Math.ceil((v.flags.blue.ms ?? 0) / 1000), v.flags.red.at, v.flags.red.by, Math.ceil((v.flags.red.ms ?? 0) / 1000), me, t('flag.home', { flag: '' }), v.assault?.def]);
     if (key === this.key) return;
     this.key = key;

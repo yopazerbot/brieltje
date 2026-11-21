@@ -1011,6 +1011,7 @@ const en = {
   'flag.us.capturedYou': 'You scored for your team!',
   'flag.us.captured': 'Your team scored!',
   'flag.them.captured': 'They scored',
+  'flag.seenYou': 'Everyone can see you now',
   'flag.us.safe': '{name} took their flag into a home: it went back to their base',
   'flag.them.safe': '{name} took your flag into a home: it is back',
   // Before play, on the countdown card (ui/objective.ts): your team and your task in one line.
@@ -2480,6 +2481,7 @@ const nl = {
   'flag.us.capturedYou': 'Jij scoorde voor je team!',
   'flag.us.captured': 'Je team scoorde!',
   'flag.them.captured': 'Zij scoorden',
+  'flag.seenYou': 'Iedereen kan je nu zien',
   'flag.us.safe': '{name} nam hun vlag mee een huis in: hij staat weer in hun basis',
   'flag.them.safe': '{name} nam je vlag mee een huis in: hij is terug',
   'obj.cd.flag': 'Jij bent {team} · Breng {flag} naar {place}',
