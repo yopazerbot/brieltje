@@ -12,7 +12,8 @@ receiver and the tube at the real sizes of the class (18.5 mm bore, a 37 mm wide
 walnut stock with a shaped comb, a semi-pistol-grip wrist with checkering (its cut grooves a fine dark grid), a dark spacer and
 a ribbed rubber butt pad, a sling swivel under the butt. A blued steel receiver with flat sides and a rounded top:
 the ejection port on the right with the bolt in it (its groove and extractor), the loading port underneath with the
-shell lifter and the loading gate inside, four plugged screw holes on top, the trigger group's two pins. Under it the
+shell lifter and the loading gate inside, its top level with the rib and a sight channel down its middle (aimed, the
+line you follow to the beads), four plugged screw holes beside it, the trigger group's two pins. Under it the
 trigger plate with the guard, the trigger, the cross-bolt safety behind it and the action release on the left.
 Out front the barrel (a thicker ring where it leaves the receiver, a crowned muzzle with a bore you see into) under a
 vent rib on posts with a mid bead and a brass front bead; the magazine tube under it to the barrel's lug and the cap,
@@ -99,24 +100,27 @@ def squash(o, centre, sx=1.0, sy=1.0, sz=1.0):
 # Flat sides, a rounded top (an 8 mm radius into a flat 2 cm wide), its back sloping down into the stock: a section
 # pushed along the gun, cut to its side outline. The ejection port on the right, the loading port underneath, four
 # plugged screw holes on top, the trigger group's pins on both sides.
-TOP, RC = 0.0705, 0.008
+TOP, RC = 0.0658, 0.008  # the top level with the rib's: aimed, you look along it to the beads
 rsec = [(-RW, 0.0135), (-RW + 0.0015, 0.012), (RW - 0.0015, 0.012), (RW, 0.0135)] + arc(RW - RC, TOP - RC, RC, 0, 90, 6)[:] + arc(-RW + RC, TOP - RC, RC, 90, 180, 6)
 rec = section("receiver", rsec, -0.040, 0.175, M["Blued"])
 side = prism("outline", [(-0.041, 0.0), (0.176, 0.0), (0.176, 0.08), (0.004, 0.08), (-0.030, 0.0685), (-0.041, 0.0620)], 0.03, M["Blued"], 0)
 apply_mod(rec, "BOOLEAN", operation="INTERSECT", object=side, solver="EXACT")
 bpy.data.objects.remove(side, do_unlink=True)
 clean(rec)
-rec_cuts = [dark(box(0.003, 0.03, 0.060, 0.128, 0.033, 0.0612)),       # the ejection port, deep: you see into it with the bolt back
+rec_cuts = [dark(box(0.003, 0.03, 0.060, 0.128, 0.033, 0.0575)),       # the ejection port, deep: you see into it with the bolt back (under the top's rounded edge: aimed, you look down on the top)
             dark(box(-0.0122, 0.0122, 0.066, 0.150, 0.004, 0.0185))]   # the loading port underneath
 rec_cuts += [dark(box(s * RW - 0.0005, s * RW + 0.0005, -0.036, 0.170, 0.0128, 0.0134)) for s in (-1, 1)]  # the seam over the trigger plate
+# Down the middle of the top a sight channel, dark between two lit edges, that runs on into the rib: aimed, the line
+# your eye follows from the receiver's back to the beads.
+rec_cuts.append(dark(box(-0.0024, 0.0024, -0.034, 0.177, TOP - 0.0007, TOP + 0.01)))
 # A shallow milled panel on each side, its edges catching the light (the flat sides read as one slab without it).
 PANEL = [(0.004, 0.0215), (0.163, 0.0215), (0.167, 0.0255), (0.167, 0.0545), (0.163, 0.0585), (0.004, 0.0585), (0.000, 0.0545), (0.000, 0.0255)]
 rec_cuts += [prism("panel", PANEL, 0.0005, M["Blued"], 0, x=s * RW) for s in (-1, 1)]
 cut(rec, rec_cuts)
 body.append(bevel(rec, 0.0012, 2))
-for y in (0.016, 0.040, 0.112, 0.136):  # the screw holes for a sight mount, plugged
-    body.append(lathe("plug", [(TOP - 0.0006, 0), (TOP - 0.0006, 0.0021), (TOP + 0.0002, 0.0019), (TOP + 0.0004, 0)], M["Steel"], 10, (0, y, 0), "z"))
-    body.append(block("plugslot", -0.0016, 0.0016, y - 0.00025, y + 0.00025, TOP + 0.0001, TOP + 0.0006, M["Dark"], 0, 1))
+for x, y in ((-0.0072, 0.020), (0.0072, 0.020), (-0.0072, 0.130), (0.0072, 0.130)):  # the screw holes for a sight mount, plugged, beside the channel
+    body.append(lathe("plug", [(TOP - 0.0012, 0), (TOP - 0.0012, 0.0021), (TOP - 0.0004, 0.0019), (TOP - 0.0002, 0)], M["Steel"], 10, (x, y, 0), "z"))
+    body.append(block("plugslot", x - 0.0016, x + 0.0016, y - 0.00025, y + 0.00025, TOP - 0.0005, TOP - 0.0001, M["Dark"], 0, 1))
 for y in (0.010, 0.052):
     for s in (-1, 1):
         body += S.pin(s * RW, y, 0.0185, s, 0.0022)
@@ -124,7 +128,7 @@ for y in (0.010, 0.052):
 body.append(prism("lifter", [(0.068, 0.0150), (0.148, 0.0150), (0.148, 0.0172), (0.068, 0.0172)], 0.0098, M["Steel"], 0.0004, 1,
                   cuts=[dark(box(-0.0035, 0.0035, 0.115, 0.15, 0.0140, 0.0180))]))
 body.append(block("gate", 0.0098, 0.0120, 0.080, 0.148, 0.0055, 0.0150, M["Steel"], 0.0004, 1))
-body.append(block("portback", 0.002, 0.0035, 0.060, 0.128, 0.033, 0.0612, M["Dark"], 0, 1))
+body.append(block("portback", 0.002, 0.0035, 0.060, 0.128, 0.033, 0.0575, M["Dark"], 0, 1))
 
 # ---- The trigger group --------------------------------------------------------------------------
 body.append(prism("tplate", [(-0.026, 0.0128), (0.064, 0.0128), (0.064, 0.0060), (0.058, 0.0030), (0.000, 0.0030), (-0.018, 0.0060), (-0.026, 0.0090)], 0.0165,
@@ -194,18 +198,17 @@ def line(pts, y):
     return pts[-1][1]
 
 
-# Over the wrist as high as before (the right thumb lies over it), then the comb falls to 1.5 cm and the heel to 3 cm
-# under the rib's line.
-TOPL = [(-0.040, 0.0620), (-0.070, 0.0602), (-0.100, 0.0580), (-0.135, 0.0560), (-0.260, 0.0465), (-0.395, 0.0370)]
+# From the receiver's tang the top line drops into the wrist (the right thumb lies along it), then the comb falls away
+# as a field gun's does: 2.6 cm under the rib's line at its nose, 4.3 cm where the cheek lies, 6 cm at the heel. Aimed,
+# the eye looks over it to the receiver.
+TOPL = [(-0.040, 0.0600), (-0.060, 0.0545), (-0.085, 0.0480), (-0.110, 0.0445), (-0.150, 0.0400), (-0.260, 0.0230), (-0.395, 0.0060)]
 BOTL = [(-0.040, 0.0120), (-0.055, 0.0060), (-0.072, -0.0070), (-0.088, -0.0220), (-0.104, -0.0360), (-0.118, -0.0460), (-0.135, -0.0515),
-        (-0.152, -0.0525), (-0.172, -0.0490), (-0.205, -0.0490), (-0.300, -0.0690), (-0.395, -0.0900)]
+        (-0.152, -0.0530), (-0.172, -0.0510), (-0.205, -0.0540), (-0.300, -0.0800), (-0.395, -0.1030)]
 HALF = [(-0.040, 0.0183), (-0.080, 0.0160), (-0.125, 0.0166), (-0.170, 0.0178), (-0.260, 0.0198), (-0.395, 0.0212)]
 TOPW = [(-0.040, 1.0), (-0.100, 0.95), (-0.170, 0.70), (-0.395, 0.74)]
-# Sections every centimetre or so up to the comb, then one straight run to the butt. Aimed, the eye is 4 cm behind the
-# butt (weapon.ts: the shotgun's aim 0.38 m behind the grip): the game keeps what lies closer than the camera's near
-# edge, down to a last few centimetres it cuts (gunSurface.ts NEAR_KEPT). The straight run's points are all either
-# past the near edge or in those last centimetres, so the stock is cut where the near edge crosses it, and you see its
-# comb run out under the receiver as before, not a sheet of wood up into the view.
+# Sections every centimetre or so up to the comb, then one straight run to the butt. Aimed, the eye is where a cheek on
+# the comb puts it (weapon.ts AIM): the comb falls away under it, and the wrist runs up to the receiver in the right
+# hand (the game draws what lies nearer than the camera's near edge in its order: gunSurface.ts NEAR_KEPT).
 ys = [-0.040 - 0.222 * i / 20 for i in range(21)] + [-0.395]
 POW = [(-0.040, 5.0), (-0.095, 3.6), (-0.160, 2.6), (-0.395, 2.6)]  # square at the receiver's back, rounder from the wrist on
 stock = S.loft("stock", [(y, line(BOTL, y), line(TOPL, y), line(HALF, y), line(TOPW, y), line(POW, y)) for y in ys], M["Wood"], 32, 2.6)
@@ -248,7 +251,7 @@ pump.append(lathe("sleevetube", [(0.170, 0.0109), (0.490, 0.0109), (0.490, 0.010
 for s in (-1, 1):
     pump.append(block("actionbar", *sorted((s * 0.0107, s * 0.0124)), 0.130, 0.298, MZ - 0.0028, MZ + 0.0028, M["Steel"], 0.0003, 1))
 bolt_cuts = [dark(box(0.0125, 0.02, 0.072, 0.118, 0.0455, 0.0485))]
-pump.append(block("bolt", 0.0025, 0.0148, 0.0605, 0.1275, 0.0335, 0.0608, M["Steel"], 0.0006, 2))
+pump.append(block("bolt", 0.0025, 0.0148, 0.0605, 0.1275, 0.0335, 0.0572, M["Steel"], 0.0006, 2))
 pump[-1] = cut(pump[-1], bolt_cuts)
 pump.append(block("extractor", 0.0128, 0.0152, 0.1215, 0.1275, 0.0490, 0.0560, M["Dark"], 0.0003, 1))
 
@@ -293,7 +296,7 @@ right = hand("shotgun_handR", gw,
              (0.012, -0.135, 0.0), (0.28, -0.7, -0.66),
              # The thumb over the wrist's top-left corner and down its left side (6 mm further out than weapons.py's: the
              # rounded walnut no longer hides its inside).
-             ([(-0.010, -0.085, 0.046), (-0.026, -0.064, 0.056), (-0.030, -0.042, 0.062), (-0.028, -0.02, 0.066), (-0.026, -0.002, 0.068)], 0.0105),
+             ([(-0.010, -0.085, 0.040), (-0.026, -0.064, 0.046), (-0.030, -0.042, 0.053), (-0.028, -0.02, 0.058), (-0.026, -0.002, 0.062)], 0.0105),
              ([gw.at(0.008, 70, 0.01), (0.02, 0.012, 0.004), (0.015, 0.025, 0.0), (0.008, 0.028, -0.004), (0.003, 0.026, -0.006)], 0.0095))
 pw = Wrap(PUMP, (0, -1, 0), (0, 0, -1), 0.0228, 0.0228 * 0.95)
 hw = Wrap(PUMP, (0, 1, 0), (0, 0, -1), 0.0228, 0.0228)
