@@ -615,6 +615,7 @@ const HIP: Record<WeaponId, [number, number, number]> = {
  * up, its folded front sight and rail rose into the tube's small window, right under the dot. So it is held nearer and
  * squeezed more (the window nearly twice as wide on screen), and turned a little muzzle down: the eye on the tube's
  * axis, the rail and the front sight under the window's lower edge, nothing of the gun over what you aim at.
+ * The laser rifle the same, through its eight-sided window (its shroud and emitter filled the window's lower half).
  */
 const AIM: Record<WeaponId, [number, number, number]> = {
   pistol: [-0.085, 0, 1.25],
@@ -623,7 +624,7 @@ const AIM: Record<WeaponId, [number, number, number]> = {
   sniper: [-0.065, 0.04, 1.2], // seen only while raising it: past an aim of 0.85 its scope's picture takes the view
   bazooka: [-0.09, 0.05, 1.3],
   launcher: [-0.03, 0.1, 1.2],
-  laser: [-0.045, 0.05, 1.2],
+  laser: [-0.03, -0.03, 1.6], // through its sight's window, as the carbine
 };
 
 /** From the hip the gun is drawn as with a 54 degree view instead of 72: its own depth this much shorter. */
