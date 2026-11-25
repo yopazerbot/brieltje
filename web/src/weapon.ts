@@ -366,10 +366,13 @@ function takeGun(scene: THREE.Object3D, w: WeaponId): void {
           m.color.set('#4a6a7c');
           m.envMapIntensity = 1.5;
         }
-        gunSurface(m); // its finish, worn edges, darker seams, a fine grain (world/gunSurface.ts), before `toy` notes the real look
+        // Its finish, worn edges, darker seams, a fine grain (world/gunSurface.ts), before `toy` notes the real look. What has
+        // no finish (the red dot and its windows) is kept from the camera's near edge as well: aimed, the sight is that close.
+        if (!gunSurface(m)) noNearCut(m);
         if (ROLE[m.name]) toy(m, w, ROLE[m.name]);
         // The red-dot sight: a window you look through, and a dot that shows in any light.
         if (m.name === 'Lens' || m.name === 'LaserGlass') m.depthWrite = false; // and the laser's emitter glass: you see into it
+        if (m.name === 'Lens') m.opacity = 0.07; // two windows deep, and clear: more of a tint was a haze over what you aim at, at night most
         if (m.name === 'RedDot' || m.name === 'LaserReticle') m.emissiveIntensity = 3;
       }
     }
@@ -608,10 +611,14 @@ const HIP: Record<WeaponId, [number, number, number]> = {
  * so the top of the gun runs away from you to the front sight, which stays on the crosshair), and its own depth
  * squeezed by this much about the grip (the gun drawn as with a narrower view, as HIP_VIEW from the hip: the front
  * sight not tiny, the back of the gun not huge). The line of sight, the world's zoom and the shot do not change.
+ * The carbine is looked through, not along (Yoshi, 25 Nov 2026: "can't see what I'm aiming at anymore"): turned muzzle
+ * up, its folded front sight and rail rose into the tube's small window, right under the dot. So it is held nearer and
+ * squeezed more (the window nearly twice as wide on screen), and turned a little muzzle down: the eye on the tube's
+ * axis, the rail and the front sight under the window's lower edge, nothing of the gun over what you aim at.
  */
 const AIM: Record<WeaponId, [number, number, number]> = {
   pistol: [-0.085, 0, 1.25],
-  rifle: [-0.04, 0.07, 1.2],
+  rifle: [-0.028, -0.03, 1.6], // through the red dot's tube, see below
   shotgun: [-0.04, 0.11, 1.3],
   sniper: [-0.065, 0.04, 1.2], // seen only while raising it: past an aim of 0.85 its scope's picture takes the view
   bazooka: [-0.09, 0.05, 1.3],
@@ -1056,7 +1063,13 @@ export class Weapon {
       const model = loaded.gun.clone(true);
       const hands = loaded.hands.clone(true);
       m.gun.add(model, hands);
-      for (const o of [model, hands]) o.traverse((c) => (c.castShadow = false));
+      // The gun in your hands is always in view, and never left out for being nearer than the camera's near edge:
+      // aimed, a small part held whole inside it (the red dot, a sight's window) was skipped, and the dot was gone.
+      for (const o of [model, hands])
+        o.traverse((c) => {
+          c.castShadow = false;
+          c.frustumCulled = false;
+        });
       const part = (name: string) => {
         const o = model.getObjectByName(`${w}_${name}`) ?? hands.getObjectByName(`${w}_${name}`);
         if (o) {

@@ -273,12 +273,12 @@ optic.append(lathe("orear", [(-0.0172, 0.0158), (-0.0172, 0.0182), (-0.0160, 0.0
 optic.append(lathe("owindowR", [(-0.0150, 0), (-0.0150, 0.0161), (-0.0146, 0.0161), (-0.0146, 0)], M["Lens"], 24, (0, 0, OZ)))
 optic.append(lathe("owindow", [(0.0400, 0), (0.0400, 0.0161), (0.0404, 0.0161), (0.0404, 0)], M["Lens"], 24, (0, 0, OZ)))
 optic.append(lathe("odot", [(0.0, 0), (0.0, 0.0008), (0.0003, 0)], M["RedDot"], 10, (0, 0.0396, OZ)))
-TY = 0.0300  # the caps' place along the tube
-optic.append(ring("obossT", OZ + 0.0120, OZ + 0.0196, 0.0078, M["Anod"], (0, TY, 0), 20, "z", 0.0005))
+TY = 0.0300  # the caps' place along the tube; their bosses start in the tube's wall, never inside it (aimed, you look through the tube)
+optic.append(ring("obossT", OZ + 0.0176, OZ + 0.0196, 0.0078, M["Anod"], (0, TY, 0), 20, "z", 0.0005))
 optic.append(knob("ocapT", 0.0071, 0.0065, 12, OZ + 0.0194, OZ + 0.0252, M["Anod"], (0, TY, 0), "z"))
-optic.append(ring("obossR", 0.0120, 0.0196, 0.0078, M["Anod"], (0, TY, OZ), 20, "x", 0.0005))
+optic.append(ring("obossR", 0.0176, 0.0196, 0.0078, M["Anod"], (0, TY, OZ), 20, "x", 0.0005))
 optic.append(knob("ocapR", 0.0071, 0.0065, 12, 0.0194, 0.0252, M["Anod"], (0, TY, OZ), "x"))
-optic.append(ring("obossL", -0.0196, -0.0120, 0.0082, M["Anod"], (0, TY, OZ), 20, "x", 0.0005))
+optic.append(ring("obossL", -0.0196, -0.0176, 0.0082, M["Anod"], (0, TY, OZ), 20, "x", 0.0005))
 optic.append(knob("obright", 0.0090, 0.0082, 14, -0.0262, -0.0194, M["Dark"], (0, TY, OZ), "x"))
 
 # ---- The magazine ------------------------------------------------------------------------------
