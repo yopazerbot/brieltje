@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { STALL, type StallKind, type StallSpot } from '../../shared/stall.mjs';
 import { onPaintball } from '../paintball';
@@ -20,6 +21,12 @@ import { ITEM_X, ITEM_Z, stallPick } from './stallAim';
  * that adds a little warm light there). No real light, no texture.
  * Zombies walk round it through their grid (makeNav's boxes, stallBox); players get a walking-only barrier; shots
  * and blasts pass through (ignoreRay), as the server knows no stall for them. `aim` says which thing you face.
+ *
+ * The frame and the cloth above are what shows until the model is in, or if it can't be fetched: the stall made in
+ * Blender (tools/market_stall.py, public/models/market-stall.glb), fetched when a game first needs the stall. It has
+ * a steel frame, a striped canvas tied on with rope, a plank table with a cloth and crates under it, an enamel lamp,
+ * and its textures baked (CC0 from Poly Haven, the ambient occlusion in). Shut, its tarp lies over the table. The
+ * lamp's light is then laid on its canvas and valance (fitLamp).
  */
 
 // The local frame: the origin on the ground under the table's middle, the front along -z, the table along x.
@@ -39,6 +46,7 @@ const BULB = new THREE.Vector3(0, 1.75, -0.3);
 /** The lamp's light on the goods: from the front and above */
 const LAMP_DIR = new THREE.Vector3(0, 0.89, -0.45).normalize();
 const KEY = 'stall';
+const MODEL_URL = '/models/market-stall.glb';
 
 /** One part with a colour on its vertices: position, normal and colour only, not indexed (they all merge). */
 function part(geo: THREE.BufferGeometry, hex: string | THREE.Color, m?: THREE.Matrix4): THREE.BufferGeometry {
@@ -210,6 +218,43 @@ function lampParts(): THREE.BufferGeometry[] {
   return [pool, table, awning, flaps];
 }
 
+/**
+ * The lamp's light on the model's canvas and valance: the awning's points moved up to the canvas's underside, the
+ * flaps' points out to the valance's inside (`ranges`: their first point and count in `lamp`). A point that misses
+ * (past the canvas's edge, under a scallop) gets no light. Rays in the stall's frame, against its model only.
+ */
+function fitLamp(lamp: THREE.BufferGeometry, model: THREE.BufferGeometry, awning: [number, number], flaps: [number, number]): void {
+  const probe = new THREE.Mesh(model, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }));
+  probe.updateMatrixWorld(true);
+  const ray = new THREE.Raycaster();
+  const pos = lamp.attributes.position as THREE.BufferAttribute;
+  const bright = lamp.attributes.bright as THREE.BufferAttribute;
+  const p = new THREE.Vector3();
+  const fit = ([first, n]: [number, number], from: (p: THREE.Vector3) => THREE.Vector3, dir: THREE.Vector3, set: (p: THREE.Vector3, hit: THREE.Vector3) => void) => {
+    for (let i = first; i < first + n; i++) {
+      p.fromBufferAttribute(pos, i);
+      ray.set(from(p.clone()), dir);
+      ray.far = 1.2;
+      const hits = ray.intersectObject(probe, false);
+      // The farthest hit is the cloth's outer face (the rails, the lamp and the cord lie before it).
+      const last = hits[hits.length - 1];
+      if (!last) {
+        bright.setX(i, 0);
+        continue;
+      }
+      set(p, last.point);
+      pos.setXYZ(i, p.x, p.y, p.z);
+    }
+  };
+  const up = new THREE.Vector3(0, 1, 0);
+  fit(awning, (q) => q.setY(1.5), up, (q, hit) => q.setY(hit.y - 0.006)); // the canvas is 4 mm thick
+  const out = new THREE.Vector3(0, 0, -1);
+  fit(flaps, (q) => q.setZ(-0.5), out, (q, hit) => q.setZ(hit.z + 0.005)); // the valance 3 mm
+  pos.needsUpdate = bright.needsUpdate = true;
+  lamp.computeBoundingSphere();
+  (probe.material as THREE.Material).dispose();
+}
+
 export class MarketStall {
   readonly group = new THREE.Group();
   /** Hidden for the frame-time checks (briel.marketStall.mute) */
@@ -240,8 +285,13 @@ export class MarketStall {
   private ground = 0;
   private open: boolean | null = null;
   private barrier = false;
+  /** The model's tarp, shown when shut (the model in: loadModel) */
+  private cover: THREE.Mesh | null = null;
+  private model: 'none' | 'loading' | 'in' | 'failed' = 'none';
+  /** The awning's and the flaps' points in the lamp's geometry: [first, count] */
+  private lampRanges: [number, number][] = [];
 
-  constructor(private world: World, private groundAt: (x: number, z: number) => number, precompile: (root: THREE.Object3D) => unknown = () => {}) {
+  constructor(private world: World, private groundAt: (x: number, z: number) => number, private precompile: (root: THREE.Object3D) => unknown = () => {}) {
     const parts = frameParts();
     this.openGeo = mergeGeometries(parts);
     this.shutGeo = mergeGeometries([...parts, clothPart(), part(bulbGeo(), C.bulbOff)]);
@@ -251,6 +301,8 @@ export class MarketStall {
     this.goods = new THREE.Mesh(this.goodsGeo(), this.goodsMat);
     const lamp = lampParts();
     this.poolN = lamp[0].attributes.position.count;
+    const n = lamp.map((g) => g.attributes.position.count);
+    this.lampRanges = [[n[0] + n[1], n[2]], [n[0] + n[1] + n[2], n[3]]];
     this.lamp = new THREE.Mesh(mergeGeometries(lamp), this.lampMat);
     for (const p of lamp) p.dispose();
     this.lamp.renderOrder = 60; // after what it lights, as the street lamps' pools
@@ -265,6 +317,42 @@ export class MarketStall {
     onPaintball(() => {
       this.goods.geometry.dispose();
       this.goods.geometry = this.goodsGeo();
+    });
+  }
+
+  /**
+   * The stall made in Blender in place of the boxes: its frame (the canvas, the table, the lamp) and its tarp, one
+   * textured material each. Fetched once, the first time a game shows the stall; the boxes stay if it fails.
+   */
+  private loadModel(): void {
+    if (this.model !== 'none') return;
+    this.model = 'loading';
+    new GLTFLoader().loadAsync(MODEL_URL).then((gltf) => {
+      const stall = gltf.scene.getObjectByName('Stall') as THREE.Mesh | undefined;
+      const cover = gltf.scene.getObjectByName('Cover') as THREE.Mesh | undefined;
+      if (!stall?.isMesh || !cover?.isMesh) throw new Error('market stall: no Stall or Cover');
+      for (const m of [stall, cover]) {
+        const mat = m.material as THREE.MeshStandardMaterial;
+        for (const t of [mat.map, mat.normalMap, mat.roughnessMap]) if (t) t.anisotropy = 4;
+      }
+      this.openGeo.dispose();
+      this.shutGeo.dispose();
+      this.frameMat.dispose();
+      this.openGeo = this.shutGeo = stall.geometry;
+      this.frame.geometry = stall.geometry;
+      this.frame.material = stall.material;
+      this.cover = new THREE.Mesh(cover.geometry, cover.material);
+      this.cover.castShadow = this.cover.receiveShadow = true;
+      this.cover.userData.ignoreRay = true;
+      this.cover.visible = this.open === false;
+      this.group.add(this.cover);
+      const [awning, flaps] = this.lampRanges;
+      fitLamp(this.lamp.geometry, stall.geometry, awning, flaps);
+      if (this.spot) this.groundPool(this.spot);
+      this.model = 'in';
+      void this.precompile(this.frame);
+    }).catch(() => {
+      this.model = 'failed';
     });
   }
 
@@ -291,6 +379,7 @@ export class MarketStall {
       return;
     }
     if (spot !== this.spot) {
+      this.loadModel();
       this.spot = spot;
       this.ground = this.groundAt(spot.x, spot.z);
       this.group.position.set(spot.x, this.ground, spot.z);
@@ -302,6 +391,7 @@ export class MarketStall {
     if (open !== this.open) {
       this.open = open;
       this.frame.geometry = open ? this.openGeo : this.shutGeo;
+      if (this.cover) this.cover.visible = !open;
       this.goods.visible = open;
     }
     this.group.visible = !this.mute;

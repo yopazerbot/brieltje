@@ -19,6 +19,8 @@ file's opening comment; run it again after adding, moving or removing a module.
 - `web/src/footMove.test.mjs`: How your speed on foot follows the keys (src/footMove.ts): the build-up, the stop, turning, and never faster than the pace the keys ask for (the server's...
 - `web/src/footMove.ts`: How your speed on foot follows the keys or the stick (player.ts), so a body has a little weight (Yoshi, 21 Nov 2026: "Can the physics improve ...", then "Do...
 - `web/src/footsteps.ts`: Footsteps made in code: a short burst of filtered noise (plus a low thump on wood and tiles) that sounds different per floor.
+- `web/src/freshCode.test.mjs`: When the page loads again after a lazy part of the game failed to arrive (src/freshCode.ts).
+- `web/src/freshCode.ts`: A lazy part of the game that did not arrive: the page loads again, once.
 - `web/src/grade.ts`: The output pass (tone mapping and the screen's colour space, the last full-screen step before the edge smoothing) with a light colour grade folded in, so...
 - `web/src/graphics.ts`: Graphics quality presets and automatic selection.
 - `web/src/heliPilot.ts`: ms: the server lets one helicopter, car, horse or bike message through every 300 ms (server/game.mjs); a margin over it
@@ -626,6 +628,7 @@ file's opening comment; run it again after adding, moving or removing a module.
 - `tools/kouter_house.py`: Build the southern house and its front garden from the public model outline and street-side references.
 - `tools/ktx2.py`: GPU-compressed copies (KTX2, Basis Universal) of every surface texture in web/public/textures/.
 - `tools/lasergun.py`: Build the laser rifle in Blender, with the gloved hands that hold it in first person.
+- `tools/market_stall.py`: Build the market stall of the Zombies game (web/src/world/stall.ts) in Blender, its textures baked.
 - `tools/model_3.py`: Build the Tesla Model 3 (Highland facelift, 2024+, Deep Blue Metallic) for the game in Blender, from its real sizes.
 - `tools/model_y.py`: Build the Tesla Model Y (2025 refresh, black) for the game in Blender, from its real sizes.
 - `tools/molenhoek.py`: Build the street Molenhoek round its portal in Blender: its houses and the rebuilt street.

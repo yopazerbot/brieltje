@@ -16,6 +16,10 @@ From [Poly Haven](https://polyhaven.com), released as CC0 (public domain). Thank
 | Gravel yards, field tracks and footpaths | `gravel_floor` |
 | Fields and the floor of the woods | `dry_mud_field_001` |
 | Garden shed cladding | `wood_planks` |
+| The Zombies market stall's canvas, cloth, tarp and rope (baked onto its model in `tools/market_stall.py`) | `rough_linen` |
+| The market stall's table and trestles | `wood_table_worn` |
+| The market stall's fruit crates | `rough_wood` |
+| The market stall's steel frame | `metal_plate_02` |
 | Concrete stairs and beams | `concrete_wall_008` |
 | Oak veneer stair treads | `oak_veneer_01` |
 | Hedges | `forest_leaves_02` |
