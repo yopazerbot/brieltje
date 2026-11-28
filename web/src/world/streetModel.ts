@@ -214,6 +214,21 @@ export function clearOpenGround(data: VillageData, rings: [number, number][][] |
   data.trees = data.trees.filter((t) => !rings.some((ring) => near(ring, t.x, t.z, 1.5)));
 }
 
+/**
+ * A model's `fencesGone` outlines (the cemetery: its hedges stand where the data drew a fence): the village's fence
+ * posts in them, and its fence wires whose middle lies in them, aren't drawn or walked into.
+ */
+export function clearFences(data: VillageData, rings: [number, number][][] | undefined): void {
+  if (!rings?.length) return;
+  const gone = (x: number, z: number) => rings.some((ring) => near(ring, x, z, 0));
+  if (data.posts) data.posts = data.posts.filter(([x, z]) => !gone(x, z));
+  data.prisms = (data.prisms ?? []).filter((p) => {
+    if (p.m !== 'fence') return true;
+    const ring = p.p[0];
+    return !gone(ring.reduce((s, q) => s + q[0], 0) / ring.length, ring.reduce((s, q) => s + q[1], 0) / ring.length);
+  });
+}
+
 /** An outline's box on the plan: min x, min z, max x, max z. */
 type Box = [number, number, number, number];
 function boxOf(ring: [number, number][]): Box {

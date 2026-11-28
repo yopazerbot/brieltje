@@ -316,6 +316,8 @@ def build():
     h = Cemetery({
         "vh_lawn": {"texture": "grass", "tint": "#b9c7a2"},
         "vh_gravel": {"texture": "gravel", "tint": "#d4ccbd"},
+        "vh_pavers": {"texture": "pavers", "tint": "#a5a39d"},
+        "vh_clinker": {"texture": "clinker", "tint": "#b0705a"},
         "vh_hedge": {"texture": "hedge", "tint": "#62804a"},
         "vh_brick": {"texture": "nb_brick", "tint": "#8a5444", "normalScale": .55},
         "vh_stone": {"tint": "#ffffff", "rough": .82},
@@ -376,7 +378,29 @@ def build():
     bench(h, 87.4, main[1] + 3.6, along_s=False, face=-1)
     tap_and_bin(h, 87.6, E + 1.2)
     print(f"{graves} graves")
-    h.export({"alone": True})
+    forecourt(h)
+    # The data's fence posts and wires along the cemetery's sides stood just inside the new hedges: within the frame
+    # and a metre round it they go (main.ts: clearFences), as the hedges stand in for them.
+    gone = [[round(c, 2) for c in h.rect(s, w)] for s, w in ((-1, -1), (S_WALL, -1), (S_WALL, WIDTH + 1), (-1, WIDTH + 1))]
+    h.export({"alone": True, "fencesGone": [gone]})
+
+
+def forecourt(h):
+    """The data's paved cover runs on a few metres past the wall: concrete pavers there, with a band of red clinkers
+    along the wall's foot, as a village cemetery's forecourt often is. In strips a quarter of a metre wide across w,
+    each as far as the cover reaches in its middle (the drapes are rectangles; the cover's edge is ragged)."""
+    s0, step = S_WALL + .15, .25
+    w = 0.0
+    while w < WIDTH - 1e-6:
+        w1 = min(WIDTH, w + step)
+        reach = s0
+        while reach < S_WALL + 8 and inside(h.cover, tuple(h.rect(reach + .05, (w + w1) / 2))):  # noqa: F405
+            reach += .05
+        if reach > s0 + .3:
+            h.drape("vh_clinker", s0, min(reach, s0 + .45), w, w1, .04)
+            if reach > s0 + .45:
+                h.drape("vh_pavers", s0 + .45, reach, w, w1, .04)
+        w = w1
 
 
 build()

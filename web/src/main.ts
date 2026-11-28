@@ -172,7 +172,7 @@ import { Crash } from './world/crash';
 import { Breakage } from './world/breakage';
 import { CarWear } from './world/carDamage';
 import { TyreSpray } from './world/tyreSpray';
-import { clearOpenGround, cutOut, fitStreetModel, loadStreetModel } from './world/streetModel';
+import { clearFences, clearOpenGround, cutOut, fitStreetModel, loadStreetModel } from './world/streetModel';
 import { TrunkBlocks } from './world/trunkBlocks';
 import { SPIRIT, SpiritFight, spiritDev } from './world/spiritFight';
 import { render as spiritSound } from './world/spiritSound';
@@ -4740,6 +4740,7 @@ async function buildVillage(): Promise<void> {
   const modelsCompiled = bakes.then(() => Promise.all(models.map((m) => precompile(m))));
   streetBakes = playing.then(() => Promise.all(models.filter(later).map((m) => bakeLight(m, renderer, Infinity, precompile))));
   for (const m of models) clearOpenGround(data, m.userData.clear as [number, number][][] | undefined); // their forecourts free of trees
+  for (const m of models) clearFences(data, m.userData.fencesGone as [number, number][][] | undefined); // the cemetery's hedges in place of the data's fences
   for (const m of models) data.trees.push(...((m.userData.trees as VillageData['trees'] | undefined) ?? [])); // their own trees (home 4's young birches), drawn as the village's
   if (brickModel) uplights.add(brickModel); // their spotlights and the door's lantern at night (world/uplights.ts)
   const kept = withoutLandmarks(data, models.map((m) => m.userData.landmark as string), models.flatMap((m) => (m.userData.replaces as Ring[] | undefined) ?? []));
@@ -5007,7 +5008,7 @@ async function loadModel(url: string): Promise<THREE.Object3D> {
   scene.userData.landmark = root.userData.landmark;
   scene.userData.replaces = root.userData.replaces;
   scene.userData.clear = root.userData.clear; // open ground the village's trees give way on (clearOpenGround)
-  for (const k of ['trees', 'uplights', 'lantern']) scene.userData[k] = root.userData[k]; // its own trees and their lights (world/uplights.ts)
+  for (const k of ['trees', 'uplights', 'lantern', 'fencesGone']) scene.userData[k] = root.userData[k]; // its own trees and their lights (world/uplights.ts)
   // Blocks measured from the origin's ground (`blocksOnGround`: tools/sparrenhof.py) go up with it.
   const lift = root.userData.blocksOnGround ? scene.position.y : 0;
   scene.userData.blocks = ((root.userData.blocks as Prism[] | undefined) ?? []).map((p) => ({ ...p, y0: p.y0 + lift, y1: p.y1 + lift }));
