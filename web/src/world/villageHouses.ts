@@ -2,7 +2,7 @@ import * as THREE from 'three';
 
 /**
  * The hand-made houses among the generated ones: each a Blender model of our own (tools/village_houses_b1.py, _b2,
- * _b3, _b4) at /models/<name>.glb, standing in for one generated house (its root's `replaces`: the outline of that house's
+ * _b3, _b4, _b5) at /models/<name>.glb, standing in for one generated house (its root's `replaces`: the outline of that house's
  * wall blocks, which stay in the data for walking into and for the server). A name is added here in the commit that
  * adds its file (villageHouses.test.mjs checks that every listed file is there and stands in properly): a missing file
  * would still leave the generated house standing, but every load would fetch it for nothing. Each is named by its
@@ -28,6 +28,12 @@ export const VILLAGE_HOUSES: readonly (readonly [name: string, reach: number])[]
   ['vh_steep_gable', 350], // x -201.2, z -1213.3: a red brick house under a steep gable with a chimney at its top
   ['vh_hip_bungalow', 350], // x -191.4, z -1164.7: a white bungalow of the 1970s under a hipped roof
   ['vh_tall_gable', 350], // x -147.0, z -1157.3: a tall rosy brick house with clipped gables and a front gable over a bay
+  ['vh_hip_single', 350], // x 494.5, z -657.1: a buff bungalow under an orange-red hipped roof, behind the church (tools/village_houses_b5.py)
+  ['vh_ivy_cottage', 350], // x 451.5, z -692.3: an ivy-grown cottage under pantiles and the white farm building behind it
+  ['vh_white_modern', 350], // x 412.0, z -667.0: a modern white brick house, a dark brick band with its garage
+  ['vh_buff_hip', 350], // x 428.6, z -678.9: a buff brick house of two storeys under a hipped roof
+  ['vh_pale_gable', 350], // x 399.5, z -651.1: a pale brick house with a steep front gable
+  ['vh_red_chimneys', 350], // x 376.8, z -590.2: a tall red brick house, its gable to the street, two chimneys
   ['kapellenhoek_home', 350], // x 616.5, z -352.6: home 4, the brick house on Kapellenhoek (tools/kapellenhoek_home.py, world/walkIn.ts)
   ['fb_stables_1255', 350], // x 1254.8, z -569.5: a cow stable of three halls with an open bay (tools/farm_buildings.py)
   ['fb_shed_31', 350], // x 30.5, z -956.4: a long machine shed with an open bay
