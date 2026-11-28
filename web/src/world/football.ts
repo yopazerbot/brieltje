@@ -285,44 +285,73 @@ function shadowMaterial(): THREE.MeshBasicMaterial {
 }
 
 /**
- * A small goal as the school's model has it (tools/school.py): dark green square tubes, the crossbar, side
- * frames sloping back to a bar on the ground, and a net of thin pale cords. One mesh, coloured per vertex.
+ * A small goal as the school's model has it (tools/school.py, the goal at the far end): powder-coated green steel
+ * tube bent round its top corners, stays sloping back to a bar on the ground, and a net of pale cord in a 10 cm mesh
+ * (back and sides). Its frame's sizes are the pitch's (shared/ball.mjs), so the ball meets what is drawn. One mesh,
+ * coloured per vertex: the tubes round (12 sides), the cords thin square strands.
  */
 function goalMesh(g: { mx: number; mz: number; nx: number; nz: number; ux: number; uz: number; half: number; height: number; depth: number; y: number }): THREE.Mesh {
   const parts: THREE.BufferGeometry[] = [];
   const at = (along: number, deep: number, y: number) => new THREE.Vector3(g.mx + g.ux * along + g.nx * deep, g.y + y, g.mz + g.uz * along + g.nz * deep);
   const green = new THREE.Color('#2d4b37');
-  const cord = new THREE.Color('#d9dcd8');
-  const beam = (a: THREE.Vector3, b: THREE.Vector3, w: number, colour: THREE.Color) => {
-    const len = a.distanceTo(b);
-    const box = new THREE.BoxGeometry(w, w, len);
-    box.lookAt(b.clone().sub(a)); // the box's length along a-b
-    box.translate((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
-    const n = box.getAttribute('position').count;
+  const cord = new THREE.Color('#e4e6e2');
+  const coloured = (geo: THREE.BufferGeometry, colour: THREE.Color) => {
+    const n = geo.getAttribute('position').count;
     const col = new Float32Array(n * 3);
     for (let i = 0; i < n; i++) col.set([colour.r, colour.g, colour.b], i * 3);
-    box.setAttribute('color', new THREE.BufferAttribute(col, 3));
-    box.deleteAttribute('uv');
-    parts.push(box);
+    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    geo.deleteAttribute('uv');
+    parts.push(geo.index ? geo.toNonIndexed() : geo);
+  };
+  /** A round tube (radius r) or a square strand (r < 0.01) from a to b */
+  const piece = (a: THREE.Vector3, b: THREE.Vector3, r: number, colour: THREE.Color) => {
+    const len = a.distanceTo(b);
+    if (len < 1e-4) return;
+    const geo = r < 0.01 ? new THREE.BoxGeometry(r * 2, r * 2, len) : new THREE.CylinderGeometry(r, r, len, 12, 1, true).rotateX(Math.PI / 2);
+    geo.lookAt(b.clone().sub(a)); // its length along a-b
+    geo.translate((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
+    coloured(geo, colour);
   };
   const H = g.height, D = g.depth, W = g.half;
+  const R = 0.04; // the frame's tube
+  // The frame: up one side, bent round the top corners (radius 0.08), along the top, down the other side.
+  const bend = 0.08;
+  const path: THREE.Vector3[] = [at(-W, 0, -0.02), at(-W, 0, H - bend)];
+  for (let k = 1; k <= 4; k++) {
+    const a = Math.PI - (k / 4) * (Math.PI / 2);
+    path.push(at(-W + bend + Math.cos(a) * bend, 0, H - bend + Math.sin(a) * bend));
+  }
+  for (let k = 0; k <= 4; k++) {
+    const a = Math.PI / 2 - (k / 4) * (Math.PI / 2);
+    path.push(at(W - bend + Math.cos(a) * bend, 0, H - bend + Math.sin(a) * bend));
+  }
+  path.push(at(W, 0, -0.02));
+  for (let i = 0; i + 1 < path.length; i++) piece(path[i], path[i + 1], R, green);
+  for (const p of path.slice(1, -1)) coloured(new THREE.SphereGeometry(R, 12, 6).translate(p.x, p.y, p.z), green); // the joints, smooth
+  // Stays and the bars on the ground behind.
   for (const s of [-1, 1]) {
-    beam(at(s * W, 0, -0.02), at(s * W, 0, H), 0.08, green);
-    beam(at(s * W, 0, H), at(s * W, D, 0), 0.05, green);
-    beam(at(s * W, 0, 0.02), at(s * W, D, 0.02), 0.05, green);
+    piece(at(s * W, 0, H - 0.1), at(s * W, D, 0.022), 0.022, green);
+    piece(at(s * W, 0, 0.022), at(s * W, D, 0.022), 0.022, green);
   }
-  beam(at(-W - 0.04, 0, H), at(W + 0.04, 0, H), 0.08, green);
-  beam(at(-W, D, 0.02), at(W, D, 0.02), 0.05, green);
-  for (let k = 1; k < 10; k++) {
-    const a = -W + (2 * W * k) / 10;
-    beam(at(a, 0.02, H - 0.02), at(a, D, 0.03), 0.015, cord);
+  piece(at(-W - 0.02, D, 0.022), at(W + 0.02, D, 0.022), 0.022, green);
+  // The net, a 10 cm mesh: down the back slope and across it, and a triangle each side.
+  const cw = 0.004;
+  const across = Math.max(2, Math.round((2 * W) / 0.1));
+  for (let k = 0; k <= across; k++) {
+    const a = -W + (2 * W * k) / across;
+    piece(at(a, 0.03, H - 0.02), at(a, D, 0.04), cw, cord);
   }
-  for (const y of [0.4, 0.8, 1.2]) {
-    const d = D * (1 - y / H);
-    beam(at(-W, d, y), at(W, d, y), 0.015, cord);
-    for (const s of [-1, 1]) beam(at(s * W, 0, y), at(s * W, d, y), 0.015, cord); // the side nets
+  const down = Math.max(2, Math.round(Math.hypot(H, D) / 0.1));
+  for (let k = 1; k < down; k++) {
+    const t = k / down;
+    piece(at(-W, 0.03 + (D - 0.03) * t, H - 0.02 - (H - 0.06) * t), at(W, 0.03 + (D - 0.03) * t, H - 0.02 - (H - 0.06) * t), cw, cord);
   }
-  const mesh = new THREE.Mesh(mergeGeometries(parts), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6 }));
+  for (const s of [-1, 1]) {
+    for (let h = 0.1; h < H - 0.05; h += 0.1) piece(at(s * W, 0.03, h), at(s * W, D * (1 - h / H), h), cw, cord);
+    for (let d = 0.1; d < D - 0.05; d += 0.1) piece(at(s * W, d, 0.03), at(s * W, d, H * (1 - d / D)), cw, cord);
+  }
+  const mesh = new THREE.Mesh(mergeGeometries(parts), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.15 }));
+  mesh.castShadow = true;
   mesh.name = 'football_goal';
   return mesh;
 }
