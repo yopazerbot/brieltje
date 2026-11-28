@@ -140,7 +140,7 @@ const MODEL_PARTS: [RegExp, SnowLook][] = [
   [/^mh_detail(_[ewmg])?$|^mh_(stone|render)_g$|^mh_tiles$/, {}], // walls, posts, cabinets, sills; a garden's walls and tiles
   [/^school_yard$/, { amount: 0.85 }], // the playground
   [/^school_fittings$/, {}], // the square's beds and their grasses, signs, the goal's net
-  [/^school_(tower|things)_fittings$/, {}], // the playground's things, baked: the play tower, benches, goal, shelters' steel
+  [/^school_(wood|steel|plastic)_fittings$/, {}], // the playground's things, baked: the play tower, benches, goal, shelters' steel
   [/^far_(roof|brick|render)$/, {}], // the far houses round the square
   [/^near_trim$/, {}], // the near ones' sills, copings and beds of grasses
   [/^caf_slabs$/, { amount: 0.85 }], // the café's path of slabs

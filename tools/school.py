@@ -45,10 +45,11 @@ Output: one GLB, one mesh per material:
 - school_glass: dark glass; school_clear: the bike shelters' and the corridor roof's translucent sheets;
 - school_fittings: frames, gutters, doors, fences, the goal's net, solar panels, paint on the ground, coloured per
   vertex;
-- school_tower_fittings (the play tower) and school_things_fittings (the balance posts, the goal's frame, the
-  benches' slats, the bike shelters' steel and stands, the bench, hoops and egg seat on the pavement): parts with CC0
-  textures from Poly Haven (rough_wood, metal_plate_02; tools/blender_kit.py), baked by Cycles with their ambient
-  occlusion onto one atlas each (1024 px colour, 512 px normals and roughness), stored in the GLB as JPEG.
+- school_wood_fittings, school_steel_fittings, school_plastic_fittings: the play tower, the balance posts, the goal's
+  frame, the benches' slats, the bike shelters' steel and stands, the bench, hoops and egg seat on the pavement, by
+  what they are made of: parts with CC0 textures from Poly Haven (rough_wood, metal_plate_02; tools/blender_kit.py),
+  their colour and ambient occlusion baked by Cycles onto one shared atlas (1024 x 512 px, JPEG in the GLB); no
+  normal or roughness maps (a phone's memory), a roughness and metal per mesh.
 Also web/shared/playground.json: the play tower's sizes, for climbing it and sliding down in the game and for the
 football. To write only that, give a scratch path for the GLB and throw it away.
 """
@@ -447,9 +448,9 @@ def lerp(a, b, t):
 # The play tower, the balance posts, the goal, the benches, the bike shelters' steel, the bench on the pavement, the
 # hoops and the egg seat are made of real parts (round pine posts with rounded tops and bolts, planks with gaps, a
 # shingled roof, a moulded slide, steel tubes bent round), each with a CC0 texture from Poly Haven (tools/blender_kit.py:
-# rough_wood, metal_plate_02) laid along its grain. At the end Cycles bakes their colour, ambient occlusion (with the
-# school, the yard and the ground round them), normals and roughness onto one atlas per group (bake_things below):
-# school_tower_fittings (the tower) and school_things_fittings (the rest). Their names keep them out of the buildings'
+# rough_wood, metal_plate_02) laid along its grain. At the end Cycles bakes their colour and ambient occlusion (with
+# the school, the yard and the ground round them) onto one atlas (bake_things below), split into school_wood_fittings,
+# school_steel_fittings and school_plastic_fittings by what they are made of. Their names keep them out of the buildings'
 # light layout (tools/bake/lightmap_uv.py leaves "fittings" out), so the school's baked light stays valid.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import blender_kit as kit  # noqa: E402
@@ -1421,12 +1422,45 @@ for name, bm in BM.items():
     objs.append(ob)
 
 
+# What the play things are made of, for their finish in the game: (mesh, roughness, metal). One colour atlas for all
+# three; no normal or roughness maps (a phone's memory: AGENTS.md "Graphics"; the bevels carry the shape).
+KINDS = (("school_wood_fittings", 0.85, 0.0), ("school_steel_fittings", 0.5, 0.15), ("school_plastic_fittings", 0.42, 0.0))
+KIND_OF = {**{m.name: 0 for m in (PINE, PINE2, SLATS, SHINGLE)}, **{m.name: 1 for m in (GALV, GREEN, YELLOW, ORANGE)},
+           **{m.name: 2 for m in (SLIDE, EGG)}}
+ATLAS = (1024, 512)                           # the colour atlas, wide: 1024 x 512 px
+
+
+def wide_atlas(o, margin):
+    """The 'atlas' UVs for a wide texture: the pieces laid flat, made twice as tall, packed into the square without
+    turning, so on the 2:1 picture each texel covers a square of the surface."""
+    bpy.ops.object.select_all(action="DESELECT")
+    bpy.context.view_layer.objects.active = o
+    o.select_set(True)
+    a = o.data.uv_layers.new(name="atlas")
+    o.data.uv_layers.active = a
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.select_all(action="SELECT")
+    bpy.ops.uv.smart_project(angle_limit=math.radians(60), island_margin=margin, area_weight=0.0, correct_aspect=True, scale_to_bounds=False)
+    bpy.ops.object.mode_set(mode="OBJECT")
+    uv = np.empty(len(a.data) * 2, np.float32)
+    a.data.foreach_get("uv", uv)
+    uv[1::2] *= ATLAS[0] / ATLAS[1]
+    a.data.foreach_set("uv", uv)
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.select_all(action="SELECT")
+    bpy.ops.uv.pack_islands(rotate=False, margin=margin)
+    bpy.ops.object.mode_set(mode="OBJECT")
+
+
 def bake_things():
-    """Join each group of play things into one mesh, lay out its atlas and bake its textures (tools/blender_kit.py),
-    with the school and the ground round them shading them (the occlusion looks 0.7 m)."""
-    groups = [kit.join(TOWER_PARTS, "school_tower_fittings"), kit.join(THINGS, "school_things_fittings")]
-    for o in groups:
-        kit.atlas_uvs(o, 0.003)
+    """All the play things in one mesh, one wide atlas, their colour and ambient occlusion baked into it (Cycles, the
+    school and the ground round them shading them; tools/blender_kit.py), then split again by what they are made of."""
+    parts = TOWER_PARTS + THINGS
+    for p in parts:
+        a = p.data.attributes.new("kind", "INT", "FACE")
+        a.data.foreach_set("value", [KIND_OF[p.data.materials[0].name]] * len(p.data.polygons))
+    o = kit.join(parts, "school_play")
+    wide_atlas(o, 0.002)
     bpy.data.objects.remove(kit.bake_setup(CPU))  # its own ground lies at the origin: the relief instead
     bpy.context.scene.world.light_settings.distance = 0.35  # a contact shade at the feet, not a dark band up the legs
     bm = bmesh.new()
@@ -1441,21 +1475,59 @@ def bake_things():
     me.materials.append(kit.plain_material("bake_ground", "#808080", 0.8))
     occ = bpy.data.objects.new("bake_ground", me)
     bpy.context.scene.collection.objects.link(occ)
-    tmp = tempfile.mkdtemp(prefix="school_bake_")
-    for o in groups:
-        imgs = kit.bake(o, [], 1024)
-        # The texels between the pieces stay at roughness 0 after the bake: in the small mip levels they mixed into the
-        # shingles and the thin tubes as a glitter of sky (seen on a phone). Matte there instead.
-        r = kit.px(imgs["rough"])
-        r[..., :3] = np.where(r[..., :3] < 0.02, 0.85, r[..., :3])
-        imgs["rough"].pixels.foreach_set(np.ascontiguousarray(r).ravel())
-        nm = kit.px(imgs["normal"])  # and a flat normal there, not (0, 0, 0)
-        gap = nm[..., :3].sum(axis=-1) < 0.05
-        nm[gap, 0], nm[gap, 1], nm[gap, 2] = 0.5, 0.5, 1.0
-        imgs["normal"].pixels.foreach_set(np.ascontiguousarray(nm).ravel())
-        kit.final_material(o, imgs, tmp)
+    imgs = {}
+    for kind in ("albedo", "ao"):
+        imgs[kind] = bpy.data.images.new(f"school_play_{kind}", *ATLAS, alpha=False)
+        imgs[kind].colorspace_settings.name = "sRGB" if kind == "albedo" else "Non-Color"
+    bpy.ops.object.select_all(action="DESELECT")
+    bpy.context.view_layer.objects.active = o
+    o.select_set(True)
+    for kind, typ, samples, extra in (("albedo", "DIFFUSE", 16, {"pass_filter": {"COLOR"}}), ("ao", "AO", 256, {})):
+        bpy.context.scene.cycles.samples = samples
+        kit.target(o, imgs[kind])
+        bpy.ops.object.bake(type=typ, margin=6, use_clear=True, **extra)
+        print(f"baked school_play {kind}")
     bpy.data.objects.remove(occ)
-    return groups
+    alb, ao = kit.px(imgs["albedo"]), kit.px(imgs["ao"])
+    base = alb.copy()
+    base[..., :3] = alb[..., :3] * (0.12 + 0.88 * ao[..., :1] ** 1.15)  # the occlusion in the colour, as final_material
+    colour = bpy.data.images.new("school_play_color", *ATLAS, alpha=False)
+    colour.pixels.foreach_set(np.ascontiguousarray(base).ravel())
+    colour.filepath_raw = os.path.join(tempfile.mkdtemp(prefix="school_bake_"), "school_play_color.png")
+    colour.file_format = "PNG"
+    colour.save()
+    o.data.uv_layers.remove(o.data.uv_layers["tex"])
+    out = []
+    for k, (name, rough, metal) in enumerate(KINDS):
+        m = bpy.data.materials.new(name)
+        m.use_nodes = True
+        nt = m.node_tree
+        p = nt.nodes["Principled BSDF"]
+        img = nt.nodes.new("ShaderNodeTexImage")
+        img.image = colour
+        uvn = nt.nodes.new("ShaderNodeUVMap")
+        uvn.uv_map = "atlas"
+        nt.links.new(uvn.outputs["UV"], img.inputs["Vector"])
+        nt.links.new(img.outputs["Color"], p.inputs["Base Color"])
+        p.inputs["Roughness"].default_value = rough
+        p.inputs["Metallic"].default_value = metal
+        m.use_backface_culling = True
+        ob = o.copy()
+        ob.data = o.data.copy()
+        bpy.context.scene.collection.objects.link(ob)
+        bm = bmesh.new()
+        bm.from_mesh(ob.data)
+        layer = bm.faces.layers.int.get("kind")
+        bmesh.ops.delete(bm, geom=[f for f in bm.faces if f[layer] != k], context="FACES")
+        bm.to_mesh(ob.data)
+        bm.free()
+        ob.data.attributes.remove(ob.data.attributes["kind"])
+        ob.data.materials.clear()
+        ob.data.materials.append(m)
+        ob.name = ob.data.name = name
+        out.append(ob)
+    bpy.data.objects.remove(o)
+    return out
 
 
 for ob in bake_things():
