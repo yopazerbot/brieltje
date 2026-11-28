@@ -19,7 +19,9 @@ occlusion (a ground under it), onto one atlas per mesh: colour (occlusion multip
 map and metal/roughness (green: roughness, blue: metal), these two at half the colour's size. Only the baked maps
 go into the GLB.
 
-Output: one GLB with two meshes, Stall (1024 px colour) and Cover (the tarp, 512 px colour), each one material.
+Output: one GLB with Stall (1024 px colour), Cover (the tarp, 512 px colour) and the goods, one mesh a thing
+(Good_medkit and so on, in STALL.items' order, and Good_tray, the grenades' tray; one material, 512 px maps),
+all in place on the table.
 The GLB's frame is the game's local frame: the origin on the ground under the table's middle, the front along -z.
 With preview_dir it also renders the baked model in daylight there: three-quarter front and back, front, a
 close-up and the stall shut.
@@ -706,6 +708,168 @@ for x in (-0.51, 0.51):
     pts.append((x, TOP_Y - 0.12, TABLE_HZ + EDGE + 0.02))
     path_tube(f"TarpRope{x}", pts, 0.006, rope, COVER)
 
+# ------------------------------------------------------------------------------------------------ the goods
+# The seven things sold, each at its place on the table (stallAim ITEM_X, ITEM_Z), facing the front (-z): what a
+# pickup of that kind gives (world/rewards.ts draws their signs), as real things. In STALL.items' order. The laser
+# rifle is the game's own model (lasergun.glb), laid on the cradle here by stall.ts.
+GOOD_KINDS = ["medkit", "nades", "claymore", "armor", "gun", "turret", "laser", "tray"]  # the grenades' tray apart: paintball paints them, not it
+GOODS = {k: [] for k in GOOD_KINDS}
+bag_red = tex_material("bag_red", "rough_linen", 0.12, srgb("#b02a2c"), sat=0.0, bright=1.15, nstrength=1.2)
+patch_white = tex_material("patch_white", "rough_linen", 0.1, srgb("#ece8de"), sat=0.0, bright=1.2, nstrength=0.8)
+webbing = tex_material("webbing", "rough_linen", 0.05, srgb("#2a2a2a"), sat=0.0, bright=1.0, nstrength=1.5)
+navy = tex_material("navy", "rough_linen", 0.1, srgb("#28385a"), sat=0.0, bright=1.1, nstrength=1.4)
+navy_dark = tex_material("navy_dark", "rough_linen", 0.05, srgb("#1b2740"), sat=0.0, bright=1.0, nstrength=1.6)
+olive = tex_material("olive", "metal_plate_02", 0.35, srgb("#6f7744"), sat=0.0, bright=2.8, rough=1.2, metal=0.05, nstrength=0.5)
+olive_steel = tex_material("olive_steel", "metal_plate_02", 0.35, srgb("#626a3c"), sat=0.0, bright=2.6, rough=0.9, metal=0.15, nstrength=0.5)
+crate_olive = tex_material("crate_olive", "rough_wood", 0.4, srgb("#7a8452"), sat=0.25, bright=1.0, rough=1.3)
+band_white = tex_material("band_white", "rough_wood", 0.4, srgb("#f0ece2"), sat=0.0, bright=1.8, rough=1.3)
+tray_wood = tex_material("tray_wood", "rough_wood", 0.35, srgb("#d8c09a"), sat=0.6, bright=1.1, rough=1.4, shade=wood_shade)
+felt = tex_material("felt", "rough_linen", 0.08, srgb("#3c2a24"), sat=0.0, bright=0.9, nstrength=0.6)
+lens = plain_material("lens", "#151a1c", 0.12)
+
+
+def good_cuboid(kind, name, x, y, z, w, h, d, mat, bev=0.003, segs=1, rot=(0, 0, 0)):
+    o = cuboid(name, x, y, z, w, h, d, mat, GOODS[kind], bev=0 if segs > 1 else bev, rot=rot)
+    if segs > 1:
+        bevel(o, bev, segs)
+    return o
+
+
+T = TOP_Y
+ZC = ITEM_Z
+
+# 1. A red first-aid bag: padded, rounded, a zip round its lid, a white cross on its front and top, a webbing handle.
+cx = ITEM_X[0]
+good_cuboid("medkit", "Bag", cx, T + 0.068, ZC, 0.25, 0.136, 0.16, bag_red, bev=0.035, segs=4)
+for nm_, (w, h) in (("CrossV", (0.024, 0.07)), ("CrossH", (0.07, 0.024))):
+    good_cuboid("medkit", f"Front{nm_}", cx, T + 0.068, ZC - 0.0805, w, h, 0.003, patch_white, bev=0.001)
+    good_cuboid("medkit", f"Top{nm_}", cx, T + 0.1365, ZC + 0.01, w, 0.003, h, patch_white, bev=0.001)
+zip_pts = []
+for k in range(41):  # the zip: round the bag's sides, 3 cm under its top, a rounded rectangle
+    a = 2 * math.pi * k / 40
+    zip_pts.append((cx + 0.126 * math.copysign(abs(math.cos(a)) ** 0.25, math.cos(a)),
+                    T + 0.106, ZC + 0.081 * math.copysign(abs(math.sin(a)) ** 0.25, math.sin(a))))
+path_tube("Zip", zip_pts, 0.0035, webbing, GOODS["medkit"])
+path_tube("Handle", [(cx - 0.065, T + 0.13, ZC + 0.03), (cx - 0.05, T + 0.16, ZC + 0.03), (cx, T + 0.168, ZC + 0.03),
+                     (cx + 0.05, T + 0.16, ZC + 0.03), (cx + 0.065, T + 0.13, ZC + 0.03)], 0.006, webbing, GOODS["medkit"])
+good_cuboid("medkit", "ZipPull", cx + 0.1, T + 0.1, ZC - 0.083, 0.012, 0.025, 0.004, steel, bev=0.001)
+
+
+# 2. Three frag grenades standing in a shallow wooden tray: an egg of olive steel, the fuze on top, its lever down
+#    the side and the ring with its pin.
+cx = ITEM_X[1]
+good_cuboid("tray", "TrayBase", cx, T + 0.006, ZC, 0.27, 0.012, 0.13, tray_wood, bev=0.002)
+for s in (-1, 1):
+    good_cuboid("tray", f"TraySide{s}", cx, T + 0.024, ZC + s * 0.061, 0.27, 0.04, 0.008, tray_wood, bev=0.002)
+    good_cuboid("tray", f"TrayEnd{s}", cx + s * 0.131, T + 0.024, ZC, 0.008, 0.04, 0.114, tray_wood, bev=0.002)
+
+
+def grenade(gx, gz, yaw):
+    base = T + 0.012
+    bpy.ops.mesh.primitive_uv_sphere_add(segments=20, ring_count=12, radius=0.031, location=G(gx, base + 0.037, gz))
+    body = bpy.context.active_object
+    body.scale = (1, 1, 1.18)
+    bpy.ops.object.transform_apply(scale=True)
+    finish(body, olive_steel, GOODS["nades"])
+    tube("Neck", (gx, base + 0.07, gz), (gx, base + 0.08, gz), 0.011, steel, GOODS["nades"], seg=12)
+    tube("Fuze", (gx, base + 0.08, gz), (gx, base + 0.097, gz), 0.0135, steel, GOODS["nades"], seg=12)
+    c, s = math.cos(yaw), math.sin(yaw)
+    # The lever: from the fuze's top, out and down the body's side.
+    lever = [(0.0, 0.098), (0.016, 0.097), (0.026, 0.085), (0.031, 0.06), (0.03, 0.035)]
+    path_tube("Lever", [(gx + c * r, base + y, gz + s * r) for r, y in lever], 0.003, steel, GOODS["nades"], seg=4)
+    torus("Ring", (gx - s * 0.02, base + 0.088, gz + c * 0.02), (c, 0, s), 0.011, 0.0016, steel, GOODS["nades"])
+
+
+for i, (dx, yaw) in enumerate(((-0.08, 0.3), (0.0, -0.9), (0.08, 2.2))):
+    grenade(cx + dx, ZC + (0.008 if i == 1 else -0.006), yaw)
+
+
+# 3. A claymore: the curved olive case, convex face to the front, on two pairs of scissor legs, the fuze wells on top.
+cx = ITEM_X[2]
+CY0, CH, CW = T + 0.05, 0.085, 0.22
+
+
+def claymore_face(u, v):
+    x = -CW / 2 + CW * u
+    return (cx + x, CY0 + CH * v, ZC - 0.012 - 0.016 * (1 - (2 * x / CW) ** 2))
+
+
+case = sheet("ClaymoreCase", 20, 2, claymore_face, olive, GOODS["claymore"], 0.0, lambda u, v: (u * CW, v * CH))
+sol = case.modifiers.new("solid", "SOLIDIFY")
+sol.thickness, sol.offset, sol.use_even_offset = 0.034, -1.0, True
+apply_mods(case)
+bevel(case, 0.003)
+for x in (-0.075, 0.075):
+    for s in (-1, 1):  # each pair crossed, seen from the side
+        tube("Leg", (cx + x, CY0 + 0.004, ZC + 0.006 + s * 0.012), (cx + x + 0.004, T, ZC + 0.006 - s * 0.03), 0.0025, steel, GOODS["claymore"], seg=6)
+    tube("LegPivot", (cx + x - 0.006, CY0 + 0.002, ZC + 0.006), (cx + x + 0.006, CY0 + 0.002, ZC + 0.006), 0.004, olive, GOODS["claymore"], seg=8)
+for x in (-0.045, 0.045):
+    tube("Well", (cx + x, CY0 + CH - 0.004, ZC + 0.004), (cx + x, CY0 + CH + 0.01, ZC + 0.004), 0.008, olive, GOODS["claymore"], seg=10)
+    tube("WellCap", (cx + x, CY0 + CH + 0.01, ZC + 0.004), (cx + x, CY0 + CH + 0.014, ZC + 0.004), 0.0095, webbing, GOODS["claymore"], seg=10)
+tube("Sight", (cx, CY0 + CH - 0.002, ZC + 0.004), (cx, CY0 + CH + 0.012, ZC + 0.004), 0.004, olive, GOODS["claymore"], seg=6)
+
+
+# 4. A plate carrier laid flat: the padded front panel, rows of webbing across it, the loop panel for patches, the
+#    shoulder straps folded over its top, buckles.
+cx = ITEM_X[3]
+good_cuboid("armor", "Panel", cx, T + 0.02, ZC, 0.26, 0.04, 0.3, navy, bev=0.014, segs=3)
+for k in range(4):
+    z = ZC - 0.125 + k * 0.03
+    good_cuboid("armor", f"Molle{k}", cx, T + 0.041, z, 0.236, 0.004, 0.019, navy_dark, bev=0.0012)
+    for x in (-0.06, 0.0, 0.06):  # the stitched tacks between the loops
+        good_cuboid("armor", f"Tack{k}{x}", cx + x, T + 0.0435, z, 0.004, 0.002, 0.02, webbing, bev=0.0)
+good_cuboid("armor", "LoopPanel", cx, T + 0.0415, ZC + 0.03, 0.13, 0.004, 0.06, navy_dark, bev=0.0015)
+for s in (-1, 1):
+    good_cuboid("armor", f"Strap{s}", cx + s * 0.075, T + 0.046, ZC + 0.105, 0.055, 0.014, 0.1, navy, bev=0.005, segs=2)
+    good_cuboid("armor", f"Buckle{s}", cx + s * 0.075, T + 0.055, ZC + 0.07, 0.04, 0.006, 0.022, webbing, bev=0.002)
+    good_cuboid("armor", f"Cummerbund{s}", cx + s * 0.135, T + 0.015, ZC - 0.03, 0.03, 0.026, 0.2, navy, bev=0.008, segs=2)
+
+
+# 5. A weapons crate: olive-painted planks, two white bands, steel corners, two latches, rope handles at its ends.
+cx = ITEM_X[4]
+CW5, CH5, CD5 = 0.28, 0.15, 0.17
+good_cuboid("gun", "CrateBody", cx, T + 0.058, ZC, CW5, 0.116, CD5, crate_olive, bev=0.004)
+good_cuboid("gun", "CrateLid", cx, T + 0.1345, ZC, CW5 + 0.004, 0.031, CD5 + 0.004, crate_olive, bev=0.004)
+for k in range(1, 3):  # the plank seams on the front
+    good_cuboid("gun", f"Seam{k}", cx, T + k * 0.039, ZC - CD5 / 2 - 0.0005, CW5 - 0.01, 0.002, 0.002, webbing, bev=0.0)
+for x in (-0.07, 0.07):
+    good_cuboid("gun", f"Band{x}", cx + x, T + 0.075, ZC, 0.034, 0.152, CD5 + 0.008, band_white, bev=0.002)
+for sx in (-1, 1):
+    for sy in (0.012, 0.138):
+        for sz in (-1, 1):
+            good_cuboid("gun", f"Corner{sx}{sy}{sz}", cx + sx * (CW5 / 2 - 0.006), T + sy, ZC + sz * (CD5 / 2 - 0.006), 0.018, 0.024, 0.018, steel, bev=0.002)
+    good_cuboid("gun", f"Latch{sx}", cx + sx * 0.105, T + 0.118, ZC - CD5 / 2 - 0.004, 0.022, 0.03, 0.008, steel, bev=0.0015)
+    path_tube(f"RopeHandle{sx}", [(cx + sx * (CW5 / 2 + 0.002), T + 0.1, ZC - 0.04), (cx + sx * (CW5 / 2 + 0.014), T + 0.085, ZC - 0.03),
+                                  (cx + sx * (CW5 / 2 + 0.018), T + 0.078, ZC), (cx + sx * (CW5 / 2 + 0.014), T + 0.085, ZC + 0.03),
+                                  (cx + sx * (CW5 / 2 + 0.002), T + 0.1, ZC + 0.04)], 0.005, rope, GOODS["gun"])
+
+
+# 6. A small sentry turret on its tripod: the head (a box with an ammo can at its side), the barrel and its muzzle
+#    brake to the front, a dark sensor, a carry handle.
+cx = ITEM_X[5]
+HUB = T + 0.165
+for k in range(3):
+    a = math.pi / 2 + k * 2 * math.pi / 3  # one leg to the back
+    tube("TripodLeg", (cx, HUB, ZC), (cx + 0.115 * math.cos(a), T + 0.004, ZC + 0.115 * math.sin(a)), 0.006, olive_steel, GOODS["turret"], seg=8)
+    tube("Foot", (cx + 0.115 * math.cos(a), T, ZC + 0.115 * math.sin(a)), (cx + 0.115 * math.cos(a), T + 0.008, ZC + 0.115 * math.sin(a)), 0.011, webbing, GOODS["turret"], seg=10)
+tube("Hub", (cx, HUB - 0.03, ZC), (cx, HUB + 0.02, ZC), 0.02, olive_steel, GOODS["turret"], seg=14)
+good_cuboid("turret", "Head", cx, HUB + 0.058, ZC + 0.01, 0.09, 0.07, 0.15, olive, bev=0.008, segs=2)
+good_cuboid("turret", "AmmoCan", cx + 0.07, HUB + 0.05, ZC + 0.025, 0.045, 0.055, 0.085, olive_steel, bev=0.004, segs=2)
+tube("Shroud", (cx, HUB + 0.058, ZC - 0.065), (cx, HUB + 0.058, ZC - 0.13), 0.016, olive_steel, GOODS["turret"], seg=12)
+tube("Barrel", (cx, HUB + 0.058, ZC - 0.13), (cx, HUB + 0.058, ZC - 0.2), 0.0085, steel, GOODS["turret"], seg=12)
+tube("Brake", (cx, HUB + 0.058, ZC - 0.195), (cx, HUB + 0.058, ZC - 0.222), 0.0135, steel, GOODS["turret"], seg=12)
+bpy.ops.mesh.primitive_uv_sphere_add(segments=14, ring_count=8, radius=0.014, location=G(cx - 0.025, HUB + 0.075, ZC - 0.065))
+finish(bpy.context.active_object, lens, GOODS["turret"])
+path_tube("CarryHandle", [(cx, HUB + 0.093, ZC - 0.03), (cx, HUB + 0.115, ZC - 0.015), (cx, HUB + 0.115, ZC + 0.035),
+                          (cx, HUB + 0.093, ZC + 0.05)], 0.005, webbing, GOODS["turret"])
+
+
+# 7. The cradle the laser rifle lies on: two notched wooden blocks with felt on their tops.
+cx = ITEM_X[6]
+for x in (-0.085, 0.085):
+    good_cuboid("laser", f"Cradle{x}", cx + x, T + 0.017, ZC, 0.035, 0.034, 0.11, tray_wood, bev=0.003)
+    good_cuboid("laser", f"Felt{x}", cx + x, T + 0.0355, ZC, 0.033, 0.003, 0.1, felt, bev=0.001)
+
 
 # ------------------------------------------------------------------------------------------------ join
 def join(objs, name):
@@ -722,7 +886,12 @@ def join(objs, name):
 
 stall = join(STALL, "Stall")
 cover = join(COVER, "Cover")
-for o in (stall, cover):
+for i, k in enumerate(GOOD_KINDS):  # which thing each face belongs to: split again after the bake
+    for o in GOODS[k]:
+        a = o.data.attributes.new("good", "INT", "FACE")
+        a.data.foreach_set("value", [i] * len(o.data.polygons))
+goods = join([o for k in GOOD_KINDS for o in GOODS[k]], "Goods")
+for o in (stall, cover, goods):
     o.data.calc_loop_triangles()
     print(f"market_stall: {o.name} {len(o.data.loop_triangles)} triangles, {len(o.data.materials)} materials")
 
@@ -742,6 +911,7 @@ def atlas_uvs(obj, margin):
 
 atlas_uvs(stall, 0.004)
 atlas_uvs(cover, 0.006)
+atlas_uvs(goods, 0.006)
 
 # ------------------------------------------------------------------------------------------------ bake
 scene = bpy.context.scene
@@ -804,8 +974,8 @@ def emit_metal(obj, on):
 
 def bake(obj, hidden, size):
     imgs = bake_images(obj.name.lower(), size)
-    if hidden:
-        hidden.hide_render = True
+    for o in hidden:
+        o.hide_render = True
     bpy.ops.object.select_all(action="DESELECT")
     bpy.context.view_layer.objects.active = obj
     obj.select_set(True)
@@ -822,8 +992,8 @@ def bake(obj, hidden, size):
         if kind == "metal":
             emit_metal(obj, False)
         print(f"market_stall: baked {obj.name} {kind}")
-    if hidden:
-        hidden.hide_render = False
+    for o in hidden:
+        o.hide_render = False
     return imgs
 
 
@@ -833,7 +1003,7 @@ def px(img):
     return a.reshape(img.size[1], img.size[0], 4)
 
 
-def final_material(obj, imgs, tmp):
+def final_material(obj, imgs, tmp, half=True):
     """The baked maps into one material: colour with the occlusion in, the normals, metal/roughness."""
     alb, ao = px(imgs["albedo"]), px(imgs["ao"])
     occ = 0.12 + 0.88 * ao[..., :1] ** 1.15
@@ -845,7 +1015,7 @@ def final_material(obj, imgs, tmp):
         im = bpy.data.images.new(f"{obj.name.lower()}_{kind}", w, h, alpha=False)
         im.colorspace_settings.name = cs
         im.pixels.foreach_set(np.ascontiguousarray(data).ravel())
-        if kind == "normal":
+        if kind == "normal" and half:
             im.scale(w // 2, h // 2)  # half the colour's size: a phone's memory (the weave is finer than it shows)
         im.filepath_raw = os.path.join(tmp, f"{obj.name.lower()}_{kind}.png")
         im.file_format = "PNG"
@@ -857,7 +1027,8 @@ def final_material(obj, imgs, tmp):
     im = bpy.data.images.new(f"{obj.name.lower()}_mr", w, h, alpha=False)
     im.colorspace_settings.name = "Non-Color"
     im.pixels.foreach_set(mr.ravel())
-    im.scale(w // 2, h // 2)
+    if half:
+        im.scale(w // 2, h // 2)
     im.filepath_raw = os.path.join(tmp, f"{obj.name.lower()}_mr.png")
     im.file_format = "PNG"
     im.save()
@@ -896,19 +1067,42 @@ tmp = os.path.join(os.path.dirname(os.path.abspath(OUT)), ".market_stall_bake")
 if PREVIEW:
     tmp = os.path.join(PREVIEW, "bake")
 os.makedirs(tmp, exist_ok=True)
-stall_imgs = bake(stall, cover, 1024)
-cover_imgs = bake(cover, None, 512)  # the tarp's own occlusion: the table under it, the ground
+stall_imgs = bake(stall, [cover], 1024)  # the goods on the table shade it
+cover_imgs = bake(cover, [goods], 512)  # the tarp's own occlusion: the table under it, the ground
+goods_imgs = bake(goods, [cover], 512)  # in the stall's shade
 final_material(stall, stall_imgs, tmp)
 final_material(cover, cover_imgs, tmp)
+final_material(goods, goods_imgs, tmp, half=False)
 bpy.data.objects.remove(ground)
+
+# The goods apart again, one mesh each (Good_<kind>), so the game can tint the ones paintball paints.
+good_objs = []
+for i, k in enumerate(GOOD_KINDS):
+    o = goods.copy()
+    o.data = goods.data.copy()
+    bpy.context.scene.collection.objects.link(o)
+    bm = bmesh.new()
+    bm.from_mesh(o.data)
+    layer = bm.faces.layers.int.get("good")
+    bmesh.ops.delete(bm, geom=[f for f in bm.faces if f[layer] != i], context="FACES")
+    bm.to_mesh(o.data)
+    bm.free()
+    o.data.attributes.remove(o.data.attributes["good"])
+    o.name = o.data.name = f"Good_{k}"
+    good_objs.append(o)
+bpy.data.objects.remove(goods)
 
 lo = Vector((min(v.co[i] for o in (stall, cover) for v in o.data.vertices) for i in range(3)))
 hi = Vector((max(v.co[i] for o in (stall, cover) for v in o.data.vertices) for i in range(3)))
+for o in good_objs:
+    print(f"market_stall: {o.name} {len(o.data.polygons)} faces")
 print("market_stall: bounds (Blender)", tuple(round(c, 3) for c in lo), tuple(round(c, 3) for c in hi))
 
 bpy.ops.object.select_all(action="DESELECT")
 stall.select_set(True)
 cover.select_set(True)
+for o in good_objs:
+    o.select_set(True)
 os.makedirs(os.path.dirname(os.path.abspath(OUT)), exist_ok=True)
 opts = dict(filepath=OUT, export_format="GLB", use_selection=True, export_apply=True, export_yup=True,
             export_texcoords=True, export_normals=True, export_tangents=False, export_cameras=False, export_lights=False,
@@ -964,9 +1158,14 @@ if PREVIEW:
              ("stall_front", (0, 4.6, 1.55), (0, 0, 1.15), 32, False),
              ("stall_back34", (-3.0, -3.2, 1.9), (0, 0, 1.0), 32, False),
              ("stall_close", (0.7, 1.7, 1.6), (0.0, 0.1, 1.2), 30, False),
-             ("stall_shut", (2.8, 3.2, 1.6), (0, 0, 1.0), 32, True))
+             ("stall_shut", (2.8, 3.2, 1.6), (0, 0, 1.0), 32, True),
+             ("goods_close", (0.0, 1.35, 1.45), (0.0, 0.0, 0.98), 30, False),
+             ("goods_left", (0.75, 0.75, 1.2), (0.68, 0.0, 0.96), 32, False),
+             ("goods_right", (-0.5, 0.8, 1.2), (-0.5, 0.0, 0.96), 32, False))
     for label, at, look, lens, shut in shots:
         cover.hide_render = not shut
+        for o in good_objs:
+            o.hide_render = shut
         cam.location = at
         cam.data.lens = lens
         cam.rotation_euler = (Vector(look) - Vector(at)).to_track_quat("-Z", "Y").to_euler()

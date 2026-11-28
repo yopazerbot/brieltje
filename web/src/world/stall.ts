@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { STALL, type StallKind, type StallSpot } from '../../shared/stall.mjs';
-import { onPaintball } from '../paintball';
+import { onPaintball, paintball } from '../paintball';
+import { gunsReady } from '../weapon';
 import type { World } from './collision';
 import { daylight } from './daylight';
 import { mood } from './mood';
@@ -26,7 +27,9 @@ import { ITEM_X, ITEM_Z, stallPick } from './stallAim';
  * Blender (tools/market_stall.py, public/models/market-stall.glb), fetched when a game first needs the stall. It has
  * a steel frame, a striped canvas tied on with rope, a plank table with a cloth and crates under it, an enamel lamp,
  * and its textures baked (CC0 from Poly Haven, the ambient occlusion in). Shut, its tarp lies over the table. The
- * lamp's light is then laid on its canvas and valance (fitLamp).
+ * lamp's light is then laid on its canvas and valance (fitLamp). Its goods take the signs' place on the table: a
+ * first-aid bag, grenades in a tray, a claymore, a plate carrier, a weapons crate, a turret, and the laser rifle's own
+ * model on a cradle; lit as the rest (at night the lamp's glow added), the ones paintball paints tinted pink then.
  */
 
 // The local frame: the origin on the ground under the table's middle, the front along -z, the table along x.
@@ -47,6 +50,11 @@ const BULB = new THREE.Vector3(0, 1.75, -0.3);
 const LAMP_DIR = new THREE.Vector3(0, 0.89, -0.45).normalize();
 const KEY = 'stall';
 const MODEL_URL = '/models/market-stall.glb';
+/** The goods paintball paints (rewards.ts: its paint mine colour) */
+const PAINTED = new Set<StallKind>(['nades', 'claymore', 'turret']);
+const PAINT = '#ff5fa2';
+/** The lamp's glow on the model's goods at night (an emissive, the goods' own colour times this) */
+const GOODS_GLOW = 0.35;
 
 /** One part with a colour on its vertices: position, normal and colour only, not indexed (they all merge). */
 function part(geo: THREE.BufferGeometry, hex: string | THREE.Color, m?: THREE.Matrix4): THREE.BufferGeometry {
@@ -288,6 +296,10 @@ export class MarketStall {
   /** The model's tarp, shown when shut (the model in: loadModel) */
   private cover: THREE.Mesh | null = null;
   private model: 'none' | 'loading' | 'in' | 'failed' = 'none';
+  /** The model's goods (in place on the table) and their two materials: as baked, and tinted when paintball paints */
+  private goodsModel: THREE.Group | null = null;
+  private goodsMats: THREE.MeshStandardMaterial[] = [];
+  private paintMat: THREE.MeshStandardMaterial | null = null;
   /** The awning's and the flaps' points in the lamp's geometry: [first, count] */
   private lampRanges: [number, number][] = [];
 
@@ -314,9 +326,10 @@ export class MarketStall {
     // Its three materials compiled before it first shows (compiling walks only what is visible).
     void precompile(this.group);
     this.group.visible = false;
-    onPaintball(() => {
+    onPaintball((on) => {
       this.goods.geometry.dispose();
-      this.goods.geometry = this.goodsGeo();
+      this.goods.geometry = this.goodsGeo(!this.goodsModel);
+      this.painted(on);
     });
   }
 
@@ -349,6 +362,7 @@ export class MarketStall {
       const [awning, flaps] = this.lampRanges;
       fitLamp(this.lamp.geometry, stall.geometry, awning, flaps);
       if (this.spot) this.groundPool(this.spot);
+      this.addGoods(gltf.scene);
       this.model = 'in';
       void this.precompile(this.frame);
     }).catch(() => {
@@ -356,9 +370,82 @@ export class MarketStall {
     });
   }
 
-  /** The seven things merged, and the lit bulb. */
-  private goodsGeo(): THREE.BufferGeometry {
-    const parts = STALL.items.map(([kind], i) => bakedSign(kind).translate(ITEM_X[i], TOP_Y, ITEM_Z));
+  /**
+   * The model's goods in the signs' place (Good_<kind>, in place on the table; the laser rifle its own model, on the
+   * cradle there). Without one of them the signs stay.
+   */
+  private addGoods(scene: THREE.Object3D): void {
+    const meshes = STALL.items.map(([kind]) => scene.getObjectByName(`Good_${kind}`) as THREE.Mesh | undefined);
+    if (meshes.some((m) => !m?.isMesh)) return;
+    const base = meshes[0]!.material as THREE.MeshStandardMaterial;
+    base.emissiveMap = base.map;
+    this.goodsMats = [base, base.clone()];
+    this.paintMat = this.goodsMats[1];
+    this.painted(paintball.on);
+    const paint = this.paintMat;
+    const g = new THREE.Group();
+    STALL.items.forEach(([kind], i) => {
+      const m = new THREE.Mesh(meshes[i]!.geometry, PAINTED.has(kind) ? paint : base);
+      m.castShadow = m.receiveShadow = true;
+      g.add(m);
+      if (kind === 'laser') g.add(this.laserOnCradle(i));
+    });
+    const tray = scene.getObjectByName('Good_tray') as THREE.Mesh | undefined; // the grenades' tray: never painted
+    if (tray?.isMesh) {
+      const t = new THREE.Mesh(tray.geometry, base);
+      t.castShadow = t.receiveShadow = true;
+      g.add(t);
+    }
+    g.traverse((o) => (o.userData.ignoreRay = true));
+    g.visible = this.open === true;
+    this.goodsModel = g;
+    this.group.add(g);
+    this.goods.geometry.dispose();
+    this.goods.geometry = this.goodsGeo(false); // the bulb alone
+    void this.precompile(g);
+  }
+
+  /** The goods paintball paints: bright paint pink all over (their texture is dark olive: a tint would stay dark), or as baked. */
+  private painted(on: boolean): void {
+    const m = this.paintMat;
+    const base = this.goodsMats[0];
+    if (!m || !base) return;
+    m.map = m.emissiveMap = on ? null : base.map;
+    m.color.set(on ? PAINT : '#ffffff');
+    m.needsUpdate = true;
+  }
+
+  /** The laser rifle's own model (its sign, world/rewards.ts), along the table on its cradle at item `i`, once the guns are in. */
+  private laserOnCradle(i: number): THREE.Group {
+    const holder = new THREE.Group();
+    const fit = () => {
+      holder.clear();
+      const gun = rewardSign('laser');
+      const box = new THREE.Box3().setFromObject(gun);
+      const size = box.getSize(new THREE.Vector3());
+      if (size.z > size.x) {
+        gun.rotation.y = Math.PI / 2;
+        gun.updateMatrixWorld(true);
+        box.setFromObject(gun);
+        box.getSize(size);
+      }
+      const s = 0.32 / Math.max(size.x, 1e-3);
+      const c = box.getCenter(new THREE.Vector3());
+      const inner = new THREE.Group();
+      inner.add(gun);
+      gun.position.sub(c);
+      inner.scale.setScalar(s);
+      inner.position.set(ITEM_X[i], TOP_Y + 0.037 + (c.y - box.min.y) * s, ITEM_Z);
+      holder.add(inner);
+      holder.traverse((o) => (o.userData.ignoreRay = true));
+    };
+    void gunsReady.then(fit);
+    return holder;
+  }
+
+  /** The seven things' signs merged (`signs`), and the lit bulb. */
+  private goodsGeo(signs = true): THREE.BufferGeometry {
+    const parts = signs ? STALL.items.map(([kind], i) => bakedSign(kind).translate(ITEM_X[i], TOP_Y, ITEM_Z)) : [];
     parts.push(part(bulbGeo(), new THREE.Color(3, 2, 1)));
     const g = mergeGeometries(parts);
     for (const p of parts) p.dispose();
@@ -393,6 +480,7 @@ export class MarketStall {
       this.frame.geometry = open ? this.openGeo : this.shutGeo;
       if (this.cover) this.cover.visible = !open;
       this.goods.visible = open;
+      if (this.goodsModel) this.goodsModel.visible = open;
     }
     this.group.visible = !this.mute;
     // The lamp's light from dusk on, as the street lamps (mood.night); shut, the lamp is dark.
@@ -403,6 +491,8 @@ export class MarketStall {
       // Lamp-lit: by day no brighter than a sunlit wall; at night brighter by the night's amount than the dark round it.
       const v = (0.45 + 0.55 * daylight()) * (1 + 0.5 * mood.night);
       this.goodsMat.color.setRGB(v, v * (1 - 0.06 * mood.night), v * (1 - 0.16 * mood.night));
+      const glow = GOODS_GLOW * mood.night;
+      for (const m of this.goodsMats) m.emissive.setRGB(LAMP.r * glow, LAMP.g * glow, LAMP.b * glow);
     }
   }
 
