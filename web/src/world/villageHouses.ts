@@ -2,7 +2,7 @@ import * as THREE from 'three';
 
 /**
  * The hand-made houses among the generated ones: each a Blender model of our own (tools/village_houses_b1.py, _b2,
- * _b3, _b4, _b5, _b6) at /models/<name>.glb, standing in for one generated house (its root's `replaces`: the outline of that house's
+ * _b3, _b4, _b5, _b6, _b7) at /models/<name>.glb, standing in for one generated house (its root's `replaces`: the outline of that house's
  * wall blocks, which stay in the data for walking into and for the server). A name is added here in the commit that
  * adds its file (villageHouses.test.mjs checks that every listed file is there and stands in properly): a missing file
  * would still leave the generated house standing, but every load would fetch it for nothing. Each is named by its
@@ -35,6 +35,12 @@ export const VILLAGE_HOUSES: readonly (readonly [name: string, reach: number])[]
   ['vh_pale_gable', 350], // x 399.5, z -651.1: a pale brick house with a steep front gable
   ['vh_red_chimneys', 350], // x 376.8, z -590.2: a tall red brick house, its gable to the street, two chimneys
   ['vh_pale_hip', 350], // x 506.9, z -724.8: a modern pale brick house under a hipped roof, its lower wing with the garage, north of the church (tools/village_houses_b6.py)
+  ['vh_round_villa', 350], // x 126.0, z -1048.2: a red brick villa of the 1930s, a rounded corner and a hipped roof, on the long street from the football ground (tools/village_houses_b7.py)
+  ['vh_chapel_house', 350], // x 143.2, z -994.2: a pale brick house with two pointed dormers and a small wayside chapel by the street
+  ['vh_front_gable', 350], // x 200.5, z -959.4: a red brick house, its steep gable to the street over a grey clad ground floor
+  ['vh_white_dormer', 350], // x 193.2, z -969.5: a white rendered house with a band of dormer windows, beside the red one
+  ['vh_buff_bungalow', 350], // x 246.1, z -919.5: a buff bungalow under a hipped brown roof, a low wall and white shrubs in front
+  ['vh_garage_gable', 350], // x 276.6, z -875.3: a warm brick house, its gable to the street, a garage wing beside it
   ['kapellenhoek_home', 350], // x 616.5, z -352.6: home 4, the brick house on Kapellenhoek (tools/kapellenhoek_home.py, world/walkIn.ts)
   ['fb_stables_1255', 350], // x 1254.8, z -569.5: a cow stable of three halls with an open bay (tools/farm_buildings.py)
   ['fb_shed_31', 350], // x 30.5, z -956.4: a long machine shed with an open bay
