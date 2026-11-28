@@ -2,7 +2,7 @@ import * as THREE from 'three';
 
 /**
  * The hand-made houses among the generated ones: each a Blender model of our own (tools/village_houses_b1.py, _b2,
- * _b3, _b4, _b5) at /models/<name>.glb, standing in for one generated house (its root's `replaces`: the outline of that house's
+ * _b3, _b4, _b5, _b6) at /models/<name>.glb, standing in for one generated house (its root's `replaces`: the outline of that house's
  * wall blocks, which stay in the data for walking into and for the server). A name is added here in the commit that
  * adds its file (villageHouses.test.mjs checks that every listed file is there and stands in properly): a missing file
  * would still leave the generated house standing, but every load would fetch it for nothing. Each is named by its
@@ -34,6 +34,7 @@ export const VILLAGE_HOUSES: readonly (readonly [name: string, reach: number])[]
   ['vh_buff_hip', 350], // x 428.6, z -678.9: a buff brick house of two storeys under a hipped roof
   ['vh_pale_gable', 350], // x 399.5, z -651.1: a pale brick house with a steep front gable
   ['vh_red_chimneys', 350], // x 376.8, z -590.2: a tall red brick house, its gable to the street, two chimneys
+  ['vh_pale_hip', 350], // x 506.9, z -724.8: a modern pale brick house under a hipped roof, its lower wing with the garage, north of the church (tools/village_houses_b6.py)
   ['kapellenhoek_home', 350], // x 616.5, z -352.6: home 4, the brick house on Kapellenhoek (tools/kapellenhoek_home.py, world/walkIn.ts)
   ['fb_stables_1255', 350], // x 1254.8, z -569.5: a cow stable of three halls with an open bay (tools/farm_buildings.py)
   ['fb_shed_31', 350], // x 30.5, z -956.4: a long machine shed with an open bay
