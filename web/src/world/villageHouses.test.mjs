@@ -43,6 +43,8 @@ for (const [name] of VILLAGE_HOUSES) {
     const root = gltf.nodes.find((n) => n.extras?.landmark === name);
     assert.ok(root, 'its root names it as its landmark');
     const replaces = root.extras.replaces;
+    // A place that stands in for no house (`alone`: the cemetery, tools/cemetery.py) hides nothing of the data.
+    if (root.extras.alone) return assert.deepEqual(replaces ?? [], [], 'a model standing alone replaces nothing');
     assert.ok(Array.isArray(replaces) && replaces.length > 0, 'its root has `replaces`');
     const outline = replaces[0];
     assert.ok((village.prisms ?? []).some((p) => same(p.p[0], outline)), 'its first `replaces` ring is the outline of a wall block in village.json');

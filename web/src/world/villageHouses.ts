@@ -36,6 +36,7 @@ export const VILLAGE_HOUSES: readonly (readonly [name: string, reach: number])[]
   ['fb_pair_1170', 350], // x 1173.7, z 470.6: a cow stable and a machine shed across a yard
   ['fb_stable_m12', 350], // x -11.7, z -752.8: an older brick stable with a corrugated roof
   ['fb_hall_1030', 350], // x 1033.2, z 47.7: a storage hall, its lean-to and an older brick wing
+  ['cemetery', 350], // x 420.1, z -625.6 (its gate): the village cemetery behind the church, standing in for no house (tools/cemetery.py)
 ];
 
 /** m: the houses' small parts are drawn within this */
