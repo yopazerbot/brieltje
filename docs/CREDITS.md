@@ -18,8 +18,8 @@ From [Poly Haven](https://polyhaven.com), released as CC0 (public domain). Thank
 | Garden shed cladding | `wood_planks` |
 | The Zombies market stall's canvas, cloth, tarp and rope, and the cloth of the Zombies game's things (baked onto their models in `tools/market_stall.py` and `tools/zombie_items.py`) | `rough_linen` |
 | The market stall's table and trestles, the music box | `wood_table_worn` |
-| The market stall's fruit crates, the weapons crates, the stakes and rails | `rough_wood` |
-| The market stall's steel frame, the Zombies game's ammo can, claymore, grenades, turret and scope | `metal_plate_02` |
+| The market stall's fruit crates, the weapons crates, the stakes and rails; the school playground's play tower, balance posts, benches and shingles (baked onto their models in `tools/school.py`) | `rough_wood` |
+| The market stall's steel frame, the Zombies game's ammo can, claymore, grenades, turret and scope; the school playground's steel: the goal, the bike shelters, the hoops, the ladder's rungs; the slide's and the egg seat's fine surface | `metal_plate_02` |
 | Concrete stairs and beams | `concrete_wall_008` |
 | Oak veneer stair treads | `oak_veneer_01` |
 | Hedges | `forest_leaves_02` |

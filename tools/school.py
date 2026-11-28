@@ -1,7 +1,10 @@
 """Build the primary school of Smetlede and the fittings of the church square in Blender, for the walkthrough.
 
 Run (Blender 5, no window), from the project root:
-  blender -b -P tools/school.py -- <out.glb>
+  blender -b -P tools/school.py -- <out.glb> [--cpu]
+then give it its light layout again (the buildings' baked light stays valid while they don't change: same id):
+  tools/.venv/Scripts/python.exe tools/bake/lightmap_uv.py school
+--cpu bakes the play things on the processor (else the graphics card, if Cycles finds one).
 
 Our own model of the primary school east of the church and of what stands on the square, from the second
 survey of the village centre (31 Oct 2026; data/smetlede.json, DECISIONS.md). Used for measuring only,
@@ -40,16 +43,20 @@ Output: one GLB, one mesh per material:
 - school_render, school_brick, school_siding, school_dark, school_stone, school_yard, school_roof: UVs in
   metres; their glTF extras name a shared game texture and its tint, so they add no graphics memory;
 - school_glass: dark glass; school_clear: the bike shelters' and the corridor roof's translucent sheets;
-- school_fittings: frames, gutters, doors, fences, play equipment, solar panels, paint on the ground,
-  coloured per vertex.
+- school_fittings: frames, gutters, doors, fences, the goal's net, solar panels, paint on the ground, coloured per
+  vertex;
+- school_tower_fittings (the play tower) and school_things_fittings (the balance posts, the goal's frame, the
+  benches' slats, the bike shelters' steel and stands, the bench, hoops and egg seat on the pavement): parts with CC0
+  textures from Poly Haven (rough_wood, metal_plate_02; tools/blender_kit.py), baked by Cycles with their ambient
+  occlusion onto one atlas each (1024 px colour, 512 px normals and roughness), stored in the GLB as JPEG.
 Also web/shared/playground.json: the play tower's sizes, for climbing it and sliding down in the game and for the
-football. To write only that (the GLB has a light layout and a bake that a new export would lose), give a scratch
-path for the GLB and throw it away.
+football. To write only that, give a scratch path for the GLB and throw it away.
 """
 import json
 import math
 import os
 import sys
+import tempfile
 
 import bmesh
 import bpy
@@ -57,6 +64,8 @@ import numpy as np
 from mathutils import Vector
 
 argv = sys.argv[sys.argv.index("--") + 1:]
+CPU = "--cpu" in argv                         # bake the play things on the processor
+argv = [a for a in argv if not a.startswith("--")]
 OUT = argv[0]
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SURVEY = json.load(open(os.path.join(ROOT, "data", "smetlede.json"), encoding="utf-8"))
@@ -434,6 +443,255 @@ def lerp(a, b, t):
     return (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t)
 
 
+# ---------------------------------------------------------------- the play things: parts with textures, baked
+# The play tower, the balance posts, the goal, the benches, the bike shelters' steel, the bench on the pavement, the
+# hoops and the egg seat are made of real parts (round pine posts with rounded tops and bolts, planks with gaps, a
+# shingled roof, a moulded slide, steel tubes bent round), each with a CC0 texture from Poly Haven (tools/blender_kit.py:
+# rough_wood, metal_plate_02) laid along its grain. At the end Cycles bakes their colour, ambient occlusion (with the
+# school, the yard and the ground round them), normals and roughness onto one atlas per group (bake_things below):
+# school_tower_fittings (the tower) and school_things_fittings (the rest). Their names keep them out of the buildings'
+# light layout (tools/bake/lightmap_uv.py leaves "fittings" out), so the school's baked light stays valid.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import blender_kit as kit  # noqa: E402
+
+TOWER_PARTS, THINGS = [], []
+RNG = np.random.default_rng(11)
+
+
+def gdir(d):
+    """A game direction (dx, dz, dy) in Blender's axes."""
+    return Vector((d[0], -d[1], d[2]))
+
+
+def grain_uv(ob, axis=None, centre=None, radius=None):
+    """The part's 'tex' UVs in metres: along `axis` (Blender) for v, so the wood's grain runs along the part; round
+    round it when `centre` is given (a lathed part); a box projection without an axis. A random offset a part, so no two
+    parts show the same piece of the texture."""
+    me = ob.data
+    uvl = me.uv_layers.get("tex") or me.uv_layers.new(name="tex")
+    ou, ov = (float(c) for c in RNG.uniform(0, 4, 2))
+    d = axis.normalized() if axis is not None else None
+    if d is not None:
+        e1 = d.orthogonal().normalized()
+        e2 = d.cross(e1)
+    for poly in me.polygons:
+        n = poly.normal
+        if d is None:
+            k = max(range(3), key=lambda i: abs(n[i]))
+            i, j = ((1, 2), (0, 2), (0, 1))[k]
+            proj = lambda p, i=i, j=j: (p[i], p[j])
+        elif abs(n.dot(d)) > 0.9:  # end grain
+            proj = lambda p: (p.dot(e1), p.dot(e2))
+        elif centre is not None:
+            c = poly.center - centre
+            a0 = math.atan2(c.dot(e2), c.dot(e1))
+
+            def proj(p, a0=a0):
+                q = p - centre
+                a = math.atan2(q.dot(e2), q.dot(e1))
+                a += 2 * math.pi * round((a0 - a) / (2 * math.pi))
+                return (a * radius, q.dot(d))
+        else:
+            t = n.cross(d).normalized()
+            proj = lambda p, t=t: (p.dot(t), p.dot(d))
+        for li in poly.loop_indices:
+            u, v = proj(me.vertices[me.loops[li].vertex_index].co)
+            uvl.data[li].uv = (u + ou, v + ov)
+
+
+def mk(bm, mat, group, bev=0.0, uv=True, **grain):
+    """A part from a bmesh in Blender's frame: bevelled, its material, its UVs, filed in `group`."""
+    me = bpy.data.meshes.new("part")
+    bm.to_mesh(me)
+    bm.free()
+    ob = bpy.data.objects.new("part", me)
+    bpy.context.scene.collection.objects.link(ob)
+    if bev:
+        kit.bevel(ob, bev)
+    ob.data.materials.append(mat)
+    if uv:
+        grain_uv(ob, **grain)
+    group.append(ob)
+    return ob
+
+
+def hull_bm(pts):
+    bm = bmesh.new()
+    for p in pts:
+        bm.verts.new(p)
+    res = bmesh.ops.convex_hull(bm, input=bm.verts[:])
+    bmesh.ops.delete(bm, geom=[g for g in res["geom_interior"] + res["geom_unused"] if isinstance(g, bmesh.types.BMVert)], context="VERTS")
+    bmesh.ops.dissolve_limit(bm, angle_limit=math.radians(0.5), verts=bm.verts[:], edges=bm.edges[:])
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+    return bm
+
+
+def plank(a, b, w, h, up, mat, group, bev=0.004):
+    """A board or beam from game point a to b (x, z, y): w across, h along `up` (a game direction), grain along it."""
+    A, B = V(*a), V(*b)
+    d = (B - A).normalized()
+    side = d.cross(gdir(up)).normalized()
+    upn = side.cross(d).normalized()
+    return mk(hull_bm([P + side * sx + upn * sy for P in (A, B) for sx in (-w / 2, w / 2) for sy in (-h / 2, h / 2)]), mat, group, bev, axis=d)
+
+
+def slab(pts, mat, group, bev=0.0, axis=None):
+    """The convex solid round game points (x, z, y), grain along `axis` (a game direction)."""
+    return mk(hull_bm([V(*p) for p in pts]), mat, group, bev, axis=gdir(axis) if axis else None)
+
+
+def lathe(a, b, prof, mat, group, seg=16):
+    """A round part along a to b (game points): `prof` [(metres from a, radius)], a radius 0 closes it to a point."""
+    A, B = V(*a), V(*b)
+    d = (B - A).normalized()
+    e1 = d.orthogonal().normalized()
+    e2 = d.cross(e1)
+    bm = bmesh.new()
+    rings = []
+    for t, r in prof:
+        c = A + d * t
+        if r <= 1e-6:
+            rings.append([bm.verts.new(c)])
+        else:
+            rings.append([bm.verts.new(c + (e1 * math.cos(2 * math.pi * k / seg) + e2 * math.sin(2 * math.pi * k / seg)) * r) for k in range(seg)])
+    for r0, r1 in zip(rings, rings[1:]):
+        if len(r0) == 1 and len(r1) == 1:
+            continue
+        for k in range(seg):
+            if len(r0) == 1:
+                bm.faces.new((r0[0], r1[k], r1[(k + 1) % seg]))
+            elif len(r1) == 1:
+                bm.faces.new((r0[k], r0[(k + 1) % seg], r1[0]))
+            else:
+                bm.faces.new((r0[k], r0[(k + 1) % seg], r1[(k + 1) % seg], r1[k]))
+    for ring in (rings[0], rings[-1]):
+        if len(ring) > 1:
+            bm.faces.new(ring)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+    return mk(bm, mat, group, axis=d, centre=A, radius=max(r for _, r in prof))
+
+
+def rod(a, b, r, mat, group, seg=16, top=0.0, foot=0.0):
+    """A round post or rod from a to b, its end at b rounded over `top` metres (0: cut square), at a over `foot`."""
+    L = (V(*b) - V(*a)).length
+    prof = []
+    if foot:
+        prof += [(foot * (1 - math.cos(math.pi / 2 * k / 3)), r * math.sin(math.pi / 2 * k / 3)) for k in range(0, 3)]
+    else:
+        prof += [(0.0, r)]
+    prof += [(L - top, r)] if top else [(L, r)]
+    if top:
+        prof += [(L - top + top * math.sin(math.pi / 2 * k / 3), r * math.cos(math.pi / 2 * k / 3)) for k in range(1, 4)]
+    return lathe(a, b, prof, mat, group, seg)
+
+
+def sweep(path, prof, across, mat, group, closed=True):
+    """A profile [(x across, y up)] swept along a path of game points, `across` a game direction square to the path's
+    plane; its 'tex' UVs: round the profile and along the path, in metres."""
+    P = [V(*p) for p in path]
+    ac = gdir(across).normalized()
+    bm = bmesh.new()
+    uvl = bm.loops.layers.uv.new("tex")
+    rings, along = [], [0.0]
+    for i, p in enumerate(P):
+        t = (P[min(i + 1, len(P) - 1)] - P[max(i - 1, 0)]).normalized()
+        n = t.cross(ac).normalized()
+        if n.z < 0:
+            n = -n
+        x = n.cross(t).normalized()  # the across direction, square to the path
+        if x.dot(ac) < 0:
+            x = -x
+        rings.append([bm.verts.new(p + x * px_ + n * py) for px_, py in prof])
+        if i:
+            along.append(along[-1] + (p - P[i - 1]).length)
+    round_ = [0.0]
+    for (x0, y0), (x1, y1) in zip(prof, prof[1:] + prof[:1]):
+        round_.append(round_[-1] + math.hypot(x1 - x0, y1 - y0))
+    m = len(prof)
+    for i in range(len(P) - 1):
+        for k in range(m if closed else m - 1):
+            f = bm.faces.new((rings[i][k], rings[i][(k + 1) % m], rings[i + 1][(k + 1) % m], rings[i + 1][k]))
+            for lp, (ki, ii) in zip(f.loops, ((k, i), (k + 1, i), (k + 1, i + 1), (k, i + 1))):
+                lp[uvl].uv = (round_[ki], along[ii])
+    if closed:
+        for ring in (rings[0], rings[-1]):
+            f = bm.faces.new(ring)
+            for lp in f.loops:
+                lp[uvl].uv = (lp.vert.co.x, lp.vert.co.z)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+    return mk(bm, mat, group, uv=False)
+
+
+def circle(r, n=10):
+    return [(r * math.cos(2 * math.pi * k / n), r * math.sin(2 * math.pi * k / n)) for k in range(n)]
+
+
+def bent(path, r, across, mat, group, n=10):
+    """A steel tube bent along a path of game points (its bends given as points along arcs)."""
+    return sweep(path, circle(r, n), across, mat, group)
+
+
+def arc2(c, r, a0, a1, n=6):
+    """Points along an arc in a plane's own (s, y): centre c, from angle a0 to a1 (degrees)."""
+    return [(c[0] + r * math.cos(math.radians(a0 + (a1 - a0) * k / n)), c[1] + r * math.sin(math.radians(a0 + (a1 - a0) * k / n))) for k in range(n + 1)]
+
+
+def bolt(p, out, group):
+    """A carriage bolt's domed head and washer at game point p on a surface facing `out` (a game direction)."""
+    q = (p[0] + out[0] * 0.012, p[1] + out[1] * 0.012, p[2] + out[2] * 0.012)
+    rod(p, q, 0.017, GALV, group, seg=8, top=0.008)
+
+
+# The materials: weathered pine (two shades), galvanised steel, powder-coated steel, moulded plastic.
+def pine_shade(nt, colour, rough):
+    """Weathered wood (blender_kit's), never glossy: the texture's cracks at low roughness glittered in the sun."""
+    c, r = kit.wood_shade(nt, colour, rough)
+    return c, kit.math_(nt, "MAXIMUM", r, 0.8)
+
+
+def galv_shade(nt, colour, rough):
+    mottle = kit.smooth(nt, kit.noise(nt, 30.0, 3.0), 0.3, 0.7)
+    dull = kit.smooth(nt, kit.noise(nt, 4.0, 4.0), 0.4, 0.75)
+    c = kit.mix(nt, colour, kit.srgb("#8d9294"), kit.math_(nt, "MULTIPLY", mottle, 0.25))
+    c = kit.mix(nt, c, kit.srgb("#6f716c"), kit.math_(nt, "MULTIPLY", dull, 0.25))
+    return c, rough
+
+
+def coat(hex_, chips=0.8):
+    """Powder coat on steel: the colour, chipped to the metal here and there, a little dust."""
+    def shade(nt, colour, rough):
+        chip = kit.smooth(nt, kit.noise(nt, 38.0, 8.0), 0.69, 0.72)
+        c = kit.mix(nt, kit.srgb(hex_), colour, 0.12)
+        c = kit.mix(nt, c, kit.srgb("#8d9294"), kit.math_(nt, "MULTIPLY", chip, chips))
+        dust = kit.smooth(nt, kit.noise(nt, 3.0, 4.0), 0.5, 0.8)
+        c = kit.mix(nt, c, kit.srgb("#8a8378"), kit.math_(nt, "MULTIPLY", dust, 0.15))
+        return c, kit.mixf(nt, 0.42, 0.55, chip)
+    return shade
+
+
+def plastic_shade(hex_):
+    """Moulded polyethylene: one colour, a little paler where scuffed, dusty in patches; satin."""
+    def shade(nt, colour, rough):
+        scuff = kit.smooth(nt, kit.noise(nt, 22.0, 6.0), 0.6, 0.75)
+        c = kit.mix(nt, kit.srgb(hex_), kit.srgb("#d8d4c8"), kit.math_(nt, "MULTIPLY", scuff, 0.18))
+        dust = kit.smooth(nt, kit.noise(nt, 2.5, 4.0), 0.45, 0.8)
+        c = kit.mix(nt, c, kit.srgb("#8a8378"), kit.math_(nt, "MULTIPLY", dust, 0.12))
+        return c, kit.mixf(nt, 0.34, 0.55, scuff)
+    return shade
+
+
+PINE = kit.tex_material("pine", "rough_wood", 0.6, kit.srgb("#f0d6ae"), sat=0.5, bright=1.85, rough=1.2, nstrength=0.9, shade=pine_shade)
+PINE2 = kit.tex_material("pine_grey", "rough_wood", 0.6, kit.srgb("#ddcdb4"), sat=0.35, bright=1.75, rough=1.25, nstrength=0.9, shade=pine_shade)
+SLATS = kit.tex_material("slats", "rough_wood", 0.5, kit.srgb("#e0b98c"), sat=0.55, bright=1.6, rough=1.2, nstrength=0.8, shade=pine_shade)
+SHINGLE = kit.tex_material("shingle", "rough_wood", 0.45, kit.srgb("#b9a68e"), sat=0.3, bright=1.35, rough=1.3, nstrength=0.7, shade=pine_shade)
+GALV = kit.tex_material("galv", "metal_plate_02", 0.8, kit.srgb("#c4c9cb"), sat=0.0, bright=2.5, rough=1.1, metal=0.2, nstrength=0.4, shade=galv_shade)
+GREEN = kit.tex_material("coat_green", "metal_plate_02", 0.8, (1, 1, 1, 1), sat=0.0, bright=1.6, nstrength=0.2, shade=coat("#2d4b37"))
+YELLOW = kit.tex_material("coat_yellow", "metal_plate_02", 0.8, (1, 1, 1, 1), sat=0.0, bright=1.6, nstrength=0.2, shade=coat("#e2ae1c", 0.6))
+ORANGE = kit.tex_material("coat_orange", "metal_plate_02", 0.8, (1, 1, 1, 1), sat=0.0, bright=1.6, nstrength=0.2, shade=coat("#d9731f", 0.6))
+SLIDE = kit.tex_material("slide", "metal_plate_02", 1.5, (1, 1, 1, 1), sat=0.0, nstrength=0.06, shade=plastic_shade("#2a62a6"))
+EGG = kit.tex_material("egg", "metal_plate_02", 1.5, (1, 1, 1, 1), sat=0.0, nstrength=0.06, shade=plastic_shade("#df8429"))
+
+
 # ---------------------------------------------------------------- the front wing (GRB 1852114)
 # A rectangle 23.89 x 13.1 m: the classrooms under a gable along Smetlededorp (8.7 m deep) and a corridor
 # under a lean-to on the playground side. A: the corner against the red-brick house to the east.
@@ -698,32 +956,124 @@ TOWER = {
               "sides": 0.27, "side_top": 1.45, "side_bottom": 0.4, "side_w": 0.04, "side_h": 0.22},
 }
 T_post, T_plat, T_board, T_roof, T_lad, T_sl = (TOWER[k] for k in ("posts", "platform", "boards", "roof", "ladder", "slide"))
-wood, wood_dark = "#8d6c4a", "#6b5038"
-for dv in (-T_post["at"], T_post["at"]):
-    for dw in (-T_post["at"], T_post["at"]):
-        beam("school_fittings", pv(dv, dw) + (gy + T_post["foot"],), pv(dv, dw) + (gy + T_post["top"],), T_post["size"], T_post["size"], wood_dark)
-ph = T_plat["half"]
-solid("school_fittings", [pv(dv, dw) + (gy + y,) for dv in (-ph, ph) for dw in (-ph, ph) for y in (T_plat["y0"], T_plat["y1"])], wood)
-for dv0, dv1, dw0, dw1 in ((-T_board["to"], -T_board["from"], -ph, ph), (T_board["from"], T_board["to"], -ph, ph)):  # boards on two sides: the ladder and the slide in the others
-    solid("school_fittings", [pv(dv, dw) + (gy + y,) for dv in (dv0, dv1) for dw in (dw0, dw1) for y in (T_plat["y1"], T_board["y1"])], wood)
-rh = T_roof["half"]
-for dw in (-rh, rh):  # the roof: two boards in red
-    solid("school_fittings", [pv(dv, w) + (gy + y,) for dv in (-rh, rh) for w, y in ((dw, T_roof["eaves"]), (0.0, T_roof["ridge"])) for y in (y, y + 0.05)], "#b4473a")
-solid("school_fittings", [pv(dv, dw) + (gy + y,) for dv in (-rh, rh) for dw in (-0.03, 0.03) for y in (3.36, 3.44)], wood_dark)
-# The slide, down towards the long block.
+# The tower as such towers stand on Flemish school playgrounds, made of real parts round the game's sizes: four round
+# pine posts; a deck of planks with gaps on a frame bolted round the posts; plank walls on battens with a round handrail
+# on the two closed sides; a shingled roof on rafters and a ridge beam, its gables boarded; a moulded plastic slide with
+# raised sides and a curved run-out on steel legs; a ladder of pine stringers and galvanised round rungs; bent steel
+# grab handles at the ladder's top and at the slide.
+UP, DVD, DWD = (0.0, 0.0, 1.0), (V2[0], V2[1], 0.0), (W2[0], W2[1], 0.0)
+sc = lambda d, k: (d[0] * k, d[1] * k, d[2] * k)
+TP = lambda dv, dw, h: pv(dv, dw) + (gy + h,)
+pa, ph = T_post["at"], T_plat["half"]
+PR, FB, FW = 0.06, 0.84, 0.045                # the posts' radius; the frames' beams outside the posts, their width
+FO = FB + FW / 2                              # the beams' outer faces
+R = lambda w: T_roof["ridge"] - (T_roof["ridge"] - T_roof["eaves"]) / T_roof["half"] * abs(w)  # the roof's line
+for dv in (-pa, pa):
+    for dw in (-pa, pa):
+        rod(TP(dv, dw, T_post["foot"]), TP(dv, dw, 2.68), PR, PINE, TOWER_PARTS)
+        sv, sw = math.copysign(1, dv), math.copysign(1, dw)
+        for h in (1.2, 1.26, 2.57, 2.63):      # carriage bolts through the beams into the posts
+            bolt(TP(dv, sw * FO, h), sc(DWD, sw), TOWER_PARTS)
+            bolt(TP(sv * FO, dw, h), sc(DVD, sv), TOWER_PARTS)
+# The deck: a frame round the posts, a joist in the middle, twelve planks across it.
+for s in (-1, 1):
+    plank(TP(-FO, s * FB, 1.23), TP(FO, s * FB, 1.23), FW, 0.145, UP, PINE2, TOWER_PARTS)
+    plank(TP(s * FB, -FB + FW / 2, 1.23), TP(s * FB, FB - FW / 2, 1.23), FW, 0.145, UP, PINE2, TOWER_PARTS)
+plank(TP(0, -FB, 1.23), TP(0, FB, 1.23), FW, 0.145, UP, PINE2, TOWER_PARTS)
+NP = 12
+pw = (2 * FO - (NP - 1) * 0.012) / NP
+for k in range(NP):
+    w = -FO + pw / 2 + k * (pw + 0.012)
+    plank(TP(-FO, w, T_plat["y1"] - 0.014), TP(FO, w, T_plat["y1"] - 0.014), pw, 0.028, UP, PINE if k % 3 else PINE2, TOWER_PARTS)
+# The two closed sides (the game's boards): five planks on two battens between the posts, a round handrail on top.
+WB = (T_board["from"] + T_board["to"]) / 2
+for s in (-1, 1):
+    for k in range(5):
+        y = T_plat["y1"] + 0.03 + 0.0575 + k * 0.14
+        plank(TP(s * WB, -pa + PR, y), TP(s * WB, pa - PR, y), 0.028, 0.115, UP, PINE if (k + s) % 2 else PINE2, TOWER_PARTS)
+    for w in (-0.3, 0.3):
+        plank(TP(s * (WB - 0.028), w, T_plat["y1"]), TP(s * (WB - 0.028), w, T_board["y1"] - 0.02), 0.07, 0.028, DVD, PINE2, TOWER_PARTS)
+    rod(TP(s * WB, -pa, T_board["y1"] + 0.03), TP(s * WB, pa, T_board["y1"] + 0.03), 0.035, PINE, TOWER_PARTS)
+# The roof: beams round the posts' tops, a ridge beam and rafters, boards, rows of shingles, a ridge cap, boarded gables.
+for s in (-1, 1):
+    plank(TP(-FO - 0.1, s * FB, 2.6), TP(FO + 0.1, s * FB, 2.6), FW, 0.16, UP, PINE2, TOWER_PARTS)
+    plank(TP(s * FB, -FB + FW / 2, 2.6), TP(s * FB, FB - FW / 2, 2.6), FW, 0.16, UP, PINE2, TOWER_PARTS)
+plank(TP(-FO - 0.1, 0, R(0) - 0.09), TP(FO + 0.1, 0, R(0) - 0.09), FW, 0.14, UP, PINE2, TOWER_PARTS)
+for dv in (-0.6, 0.0, 0.6):
+    for s in (-1, 1):
+        plank(TP(dv, 0.02 * s, R(0.02) - 0.06), TP(dv, s * 1.0, R(1.0) - 0.06), FW, 0.1, UP, PINE2, TOWER_PARTS)
+RE = 1.0                                      # the roof's boards reach 1 m out from the middle each way
+for s in (-1, 1):
+    slab([TP(dv, s * w, R(w) + o) for dv in (-RE, RE) for w in (0.0, RE) for o in (-0.012, 0.01)], PINE2, TOWER_PARTS, axis=DWD)
+    n = (W2[0] * s * 0.8 / 1.2806, W2[1] * s * 0.8 / 1.2806, 1 / 1.2806)  # the roof's normal on this side
+    on = lambda dv, w, o: tuple(c + nc * o for c, nc in zip(TP(dv, s * w, R(w) + 0.01), n))
+    b, row = RE + 0.03, 0
+    while b > 0.04:
+        t = max(b - 0.19, -0.01)
+        dv = -RE - 0.03 - RNG.uniform(0.0, 0.12)
+        while dv < RE + 0.03:
+            wd = float(RNG.uniform(0.11, 0.21))
+            d0, d1 = max(dv, -RE - 0.03), min(dv + wd, RE + 0.03)
+            if d1 - d0 > 0.03:
+                tilt = float(RNG.uniform(-0.002, 0.002))
+                slab([on(d, w, o + e) for d in (d0, d1) for w, o in ((b, 0.012 + tilt), (t, 0.0)) for e in (0.0, 0.01)],
+                     SHINGLE, TOWER_PARTS, axis=DWD)
+            dv += wd + 0.002
+        b -= 0.135
+        row += 1
+    slab([on(d, w, 0.022 + e) for d in (-RE - 0.04, RE + 0.04) for w in (0.0, 0.12) for e in (0.0, 0.022)], PINE2, TOWER_PARTS, axis=DVD)
+GB = FO + 0.012                               # the gables' boards, on the outside of the beams
+for s in (-1, 1):
+    w0 = -0.86
+    while w0 < 0.86:
+        w1 = min(w0 + 0.1, 0.86)
+        slab([TP(s * (GB + e), w, y) for w in (w0, w1) for e in (-0.011, 0.011) for y in (2.55, R(w) - 0.015)], PINE, TOWER_PARTS, bev=0.002, axis=UP)
+        w0 = w1 + 0.004
+# The slide: a moulded shell swept along the game's line, the bend into the run-out rounded off.
 (sw0, sy0), (sw1, sy1), (sw2, sy2) = T_sl["top"], T_sl["bottom"], T_sl["end"]
-s0, s1 = pv(0.0, sw0), pv(0.0, sw1)
-beam("school_fittings", s0 + (gy + sy0,), s1 + (gy + sy1,), T_sl["half"] * 2, T_sl["thick"], "#2f6db5")
-for side in (-T_sl["sides"], T_sl["sides"]):
-    beam("school_fittings", pv(side, sw0) + (gy + T_sl["side_top"],), pv(side, sw1) + (gy + T_sl["side_bottom"],), T_sl["side_w"], T_sl["side_h"], "#2f6db5")
-beam("school_fittings", pv(0.0, sw1) + (gy + sy1,), pv(0.0, sw2) + (gy + sy2,), T_sl["half"] * 2, T_sl["thick"], "#2f6db5")
+
+
+def slide_h(w):
+    line = lambda x: sy0 + (sy1 - sy0) * (x - sw0) / (sw1 - sw0)
+    out = lambda x: sy1 + (sy2 - sy1) * (x - sw1) / (sw2 - sw1)
+    a, b = sw1 - 0.3, sw1 + 0.3
+    if w <= a:
+        return line(w)
+    if w >= b:
+        return out(w)
+    t = (w - a) / (b - a)                     # a quadratic curve from the line over the corner to the run-out
+    return (1 - t) ** 2 * line(a) + 2 * (1 - t) * t * sy1 + t ** 2 * out(b)
+
+
+SLIDE_PROFILE = [(-0.25, 0.24), (-0.25, 0.06), (-0.235, 0.02), (-0.2, 0.0), (0.2, 0.0), (0.235, 0.02), (0.25, 0.06), (0.25, 0.24),
+                 (0.258, 0.26), (0.275, 0.266), (0.29, 0.25), (0.29, 0.03), (0.272, -0.018), (0.22, -0.035), (-0.22, -0.035),
+                 (-0.272, -0.018), (-0.29, 0.03), (-0.29, 0.25), (-0.275, 0.266), (-0.258, 0.26)]
+ws = sorted(set([float(w) for w in np.linspace(FO + 0.005, sw1 - 0.3, 12)] + [float(w) for w in np.linspace(sw1 - 0.3, sw1 + 0.3, 14)] + [float(w) for w in np.linspace(sw1 + 0.3, sw2 + 0.02, 4)]))
+sweep([TP(0.0, w, slide_h(w) + 0.02) for w in ws], SLIDE_PROFILE, DVD, SLIDE, TOWER_PARTS)
+for w, cross in ((2.3, 0.35), (sw2 - 0.12, None)):  # its steel legs
+    under = slide_h(w) + 0.02 - 0.03
+    for s in (-0.2, 0.2):
+        rod(TP(s, w, -0.15), TP(s, w, under), 0.024, GALV, TOWER_PARTS, seg=10)
+    if cross:
+        rod(TP(-0.2, w, cross), TP(0.2, w, cross), 0.018, GALV, TOWER_PARTS, seg=10)
+# The ladder: two pine stringers, galvanised round rungs.
 lh, lf, lt, lr = T_lad["half"], T_lad["foot"], T_lad["top"], T_lad["rise"]
-for side in (-lh, lh):  # the ladder on the other side: its foot out on the playground, its top at the platform
-    beam("school_fittings", pv(side, lf) + (gy,), pv(side, lt) + (gy + lr,), T_lad["rail"], T_lad["rail"], wood_dark)
+LP = lambda dv, t: TP(dv, lf + (lt - lf) * t, lr * t)
+for s in (-lh, lh):
+    plank(LP(s, -0.07), LP(s, 0.97), 0.12, FW, DVD, PINE, TOWER_PARTS, bev=0.006)
 for k in range(1, T_lad["rungs"] + 1):
     t = k / (T_lad["rungs"] + 1)
-    a, b = lerp(pv(-lh, lf), pv(-lh, lt), t), lerp(pv(lh, lf), pv(lh, lt), t)
-    beam("school_fittings", a + (gy + lr * t,), b + (gy + lr * t,), T_lad["rung"], T_lad["rung"], wood)
+    rod(LP(-lh - 0.03, t), LP(lh + 0.03, t), 0.017, GALV, TOWER_PARTS, seg=10)
+# Grab handles: bent tube from the deck's frame, over and down onto the ladder's stringers and the slide's rim.
+HO = FO + 0.02
+for s in (-1, 1):
+    dv = s * (lh + FW / 2 + 0.019)
+    pts = [(-HO, 1.18), (-HO, 1.78)] + arc2((-HO - 0.12, 1.78), 0.12, 0, 180)[1:] + [(-HO - 0.24, 1.2), (-HO - 0.25, 0.8)]
+    bent([TP(dv, w, h) for w, h in pts], 0.019, DVD, GALV, TOWER_PARTS)
+    dv = s * 0.31
+    lip = slide_h(HO + 0.25) + 0.02 + 0.262
+    pts = [(HO, 1.18), (HO, 1.8)] + arc2((HO + 0.12, 1.8), 0.12, 180, 0)[1:] + [(HO + 0.245, lip)]
+    bent([TP(dv, w, h) for w, h in pts], 0.019, DVD, GALV, TOWER_PARTS)
 # The tower for the game, in its own frame: its foot's middle (x, z) and height, and the dv and dw directions.
 PLAYGROUND = {
     "about": "The play tower on the school's playground, written by tools/school.py with the model: its foot's middle"
@@ -731,38 +1081,55 @@ PLAYGROUND = {
              " the ladder to the slide), and its parts in metres along them and over y.",
     "tower": {"at": [round(c, 4) for c in pv(0, 0)], "y": round(gy, 4), "v": [round(c, 6) for c in V2], "w": [round(c, 6) for c in W2], **TOWER},
 }
-# A row of balance posts and a beam, where the photo shows low dark timber things in rows.
+# A row of balance posts and a beam, where the photo shows low dark timber things in rows: round pine logs with
+# rounded tops, a round beam on two short posts.
 for k, h in enumerate((0.3, 0.45, 0.6, 0.75, 0.6, 0.45, 0.3)):
     x, z = Q(24.5 + k * 0.55, -11.0)
-    tube("school_fittings", (x, z, terrain(x, z) - 0.2), (x, z, terrain(x, z) + h), 0.11, wood, seg=8)
+    rod((x, z, terrain(x, z) - 0.2), (x, z, terrain(x, z) + h), 0.11, PINE if k % 2 else PINE2, THINGS, seg=20, top=0.04)
 a, b = Q(24.0, -12.6), Q(28.0, -12.6)
 for p in (a, b):
-    beam("school_fittings", p + (terrain(*p) - 0.2,), p + (terrain(*p) + 0.32,), 0.12, 0.12, wood_dark)
-beam("school_fittings", a + (terrain(*a) + 0.38,), b + (terrain(*b) + 0.38,), 0.13, 0.12, wood)
-# A small goal at the south end, facing the playground.
+    rod(p + (terrain(*p) - 0.2,), p + (terrain(*p) + 0.33,), 0.07, PINE2, THINGS, top=0.02)
+a2, b2 = Q(23.88, -12.6), Q(28.12, -12.6)
+rod(a2 + (terrain(*a) + 0.38,), b2 + (terrain(*b) + 0.38,), 0.065, PINE, THINGS, top=0.02, foot=0.02)
+for p in (a, b):
+    bolt((p[0] + W2[0] * 0.062, p[1] + W2[1] * 0.062, terrain(*p) + 0.37), (W2[0], W2[1], 0.0), THINGS)
+# A small goal at the south end, facing the playground: powder-coated steel tube bent round its top corners, stays and
+# bars on the ground behind, a net of cord in a 10 cm mesh (as the goal at the gate end, world/football.ts, it is green).
 g = lambda dw, dv: Q(44.9 + dv, -6.5 + dw)
 gg = terrain(*g(0, 0)) + 0.03
-green = "#2d4b37"
-for dw in (-1.5, 1.5):
-    beam("school_fittings", g(dw, 0) + (gg,), g(dw, 0) + (gg + 1.6,), 0.08, 0.08, green)
-    beam("school_fittings", g(dw, 0) + (gg + 1.6,), g(dw, 0.9) + (gg,), 0.05, 0.05, green)
-    beam("school_fittings", g(dw, 0) + (gg + 0.02,), g(dw, 0.9) + (gg + 0.02,), 0.05, 0.05, green)
-beam("school_fittings", g(-1.54, 0) + (gg + 1.6,), g(1.54, 0) + (gg + 1.6,), 0.08, 0.08, green)
-beam("school_fittings", g(-1.5, 0.9) + (gg + 0.02,), g(1.5, 0.9) + (gg + 0.02,), 0.05, 0.05, green)
-for k in range(1, 10):  # the net: thin cords
-    dw = -1.5 + 3.0 * k / 10
-    beam("school_fittings", g(dw, 0.02) + (gg + 1.58,), g(dw, 0.9) + (gg + 0.03,), 0.015, 0.015, "#d9dcd8")
-for y in (0.4, 0.8, 1.2):
-    t = y / 1.6
-    beam("school_fittings", g(-1.5, 0.9 * (1 - t)) + (gg + y,), g(1.5, 0.9 * (1 - t)) + (gg + y,), 0.015, 0.015, "#d9dcd8")
-# Two benches along the corridor.
+gp = lambda w, dv, h: g(w, dv) + (gg + h,)
+GD = (V2[0], V2[1], 0.0)
+pts = [(-1.5, -0.05), (-1.5, 1.52)] + arc2((-1.42, 1.52), 0.08, 180, 90, 4)[1:] + arc2((1.42, 1.52), 0.08, 90, 0, 4) + [(1.5, -0.05)]
+bent([gp(w, 0.0, h) for w, h in pts], 0.04, GD, GREEN, THINGS, n=12)
+for s in (-1.5, 1.5):
+    rod(gp(s, 0.0, 1.5), gp(s, 0.9, 0.022), 0.022, GREEN, THINGS, seg=10)
+    rod(gp(s, 0.0, 0.022), gp(s, 0.92, 0.022), 0.022, GREEN, THINGS, seg=10)
+rod(gp(-1.52, 0.9, 0.022), gp(1.52, 0.9, 0.022), 0.022, GREEN, THINGS, seg=10)
+cord = "#e4e6e2"
+for k in range(31):  # the back: down the slope, every 10 cm across, and across it
+    w = -1.5 + 0.1 * k
+    beam("school_fittings", gp(w, 0.03, 1.56), gp(w, 0.9, 0.04), 0.008, 0.008, cord)
+for k in range(1, 18):
+    t = k / 18
+    beam("school_fittings", gp(-1.5, 0.03 + 0.87 * t, 1.56 - 1.52 * t), gp(1.5, 0.03 + 0.87 * t, 1.56 - 1.52 * t), 0.008, 0.008, cord)
+for s in (-1.5, 1.5):  # the sides: a triangle each
+    for k in range(1, 16):
+        h = 0.1 * k
+        beam("school_fittings", gp(s, 0.03, h), gp(s, 0.9 * (1 - h / 1.6), h), 0.008, 0.008, cord)
+    for k in range(1, 9):
+        dv = 0.1 * k
+        beam("school_fittings", gp(s, dv, 0.03), gp(s, dv, 1.6 * (1 - dv / 0.9)), 0.008, 0.008, cord)
+# Two benches along the corridor: concrete feet, five pine slats bolted on them.
 for u in (18.2, 21.0):
     yb = base1
-    for du in (-0.75, 0.75):  # concrete feet, a timber seat
+    for du in (-0.75, 0.75):
         p = P1(u + du, DL + 0.55)
         solid("school_dark", [(p[0] + U1[0] * dx + N1[0] * dn, p[1] + U1[1] * dx + N1[1] * dn, yb + y) for dx in (-0.06, 0.06) for dn in (-0.2, 0.2) for y in (-0.1, 0.42)])
-    a, b = P1(u - 0.9, DL + 0.55), P1(u + 0.9, DL + 0.55)
-    solid("school_fittings", [(q[0] + N1[0] * dn, q[1] + N1[1] * dn, yb + y) for q in (a, b) for dn in (-0.22, 0.22) for y in (0.42, 0.48)], wood)
+    for k in range(5):
+        n = DL + 0.55 + (k - 2) * 0.091
+        plank(P1(u - 0.9, n) + (yb + 0.4425,), P1(u + 0.9, n) + (yb + 0.4425,), 0.075, 0.045, UP, SLATS, THINGS, bev=0.006)
+        for du in (-0.75, 0.75):
+            bolt(P1(u + du, n) + (yb + 0.465,), UP, THINGS)
 
 
 # ---------------------------------------------------------------- the gate, the fences and the school garden
@@ -812,10 +1179,12 @@ for k, (fa, fb) in enumerate(SURVEY["barriers"]["fences"]):
 
 
 def shelter(cx, cz, length, r=1.12, spring=0.95):
-    """An arched bike shelter: a half-cylinder of clear sheets on steel ribs, its axis along the long block's W."""
-    ax = W2
-    side = V2
-    hs = 10
+    """An arched bike shelter: a half-cylinder of clear polycarbonate sheets on galvanised steel: four ribs bent in one
+    piece from the ground over the top, purlins along it, four hoop stands under it. Its axis along the long block's W."""
+    ax, side = W2, V2
+    g0 = terrain(cx, cz)
+    AX = (ax[0], ax[1], 0.0)
+    hs = 16
     for k in range(hs):
         a0, a1 = math.pi * k / hs, math.pi * (k + 1) / hs
         pts = []
@@ -823,30 +1192,20 @@ def shelter(cx, cz, length, r=1.12, spring=0.95):
             for a in (a0, a1):
                 x = cx + ax[0] * s + side[0] * r * math.cos(a)
                 z = cz + ax[1] * s + side[1] * r * math.cos(a)
-                pts.append((x, z, terrain(cx, cz) + spring + r * math.sin(a)))
+                pts.append((x, z, g0 + spring + r * math.sin(a)))
         face("school_clear", [pts[0], pts[2], pts[3], pts[1]], (0, 0, 1))
-    for s in np.linspace(-length / 2, length / 2, 4):
-        prev = None
-        for k in range(hs + 1):
-            a = math.pi * k / hs
-            x = cx + ax[0] * s + side[0] * (r + 0.01) * math.cos(a)
-            z = cz + ax[1] * s + side[1] * (r + 0.01) * math.cos(a)
-            p = (x, z, terrain(cx, cz) + spring + (r + 0.01) * math.sin(a))
-            if prev:
-                beam("school_fittings", prev, p, 0.05, 0.05, "#55595c")
-            prev = p
-        for sg in (-1, 1):
-            x = cx + ax[0] * s + side[0] * r * sg
-            z = cz + ax[1] * s + side[1] * r * sg
-            beam("school_fittings", (x, z, terrain(x, z) - 0.2), (x, z, terrain(cx, cz) + spring), 0.05, 0.05, "#55595c")
-    for k in range(4):  # bike stands
+    rr = r - 0.035                            # the ribs under the sheets
+    at = lambda s, a, rad, y=None: (cx + ax[0] * s + side[0] * rad * math.cos(a), cz + ax[1] * s + side[1] * rad * math.cos(a),
+                                    g0 + spring + rad * math.sin(a) if y is None else y)
+    for s in np.linspace(-length / 2 + 0.05, length / 2 - 0.05, 4):
+        path = [at(s, math.pi, rr, g0 - 0.1)] + [at(s, math.pi * (1 - k / 14), rr) for k in range(15)] + [at(s, 0.0, rr, g0 - 0.1)]
+        bent(path, 0.03, AX, GALV, THINGS, n=8)
+    for a in (0.0, math.pi / 6, math.pi / 2, 5 * math.pi / 6, math.pi):
+        rod(at(-length / 2 - 0.02, a, rr - 0.045), at(length / 2 + 0.02, a, rr - 0.045), 0.02, GALV, THINGS, seg=8)
+    for k in range(4):  # the stands: hoops across the shelter
         s = -length / 2 + 0.7 + k * (length - 1.4) / 3
-        x0, z0 = cx + ax[0] * s - side[0] * 0.5, cz + ax[1] * s - side[1] * 0.5
-        x1, z1 = cx + ax[0] * s + side[0] * 0.5, cz + ax[1] * s + side[1] * 0.5
-        g0 = terrain(cx, cz)
-        beam("school_fittings", (x0, z0, g0), (x0, z0, g0 + 0.75), 0.04, 0.04, "#8e9294")
-        beam("school_fittings", (x1, z1, g0), (x1, z1, g0 + 0.75), 0.04, 0.04, "#8e9294")
-        beam("school_fittings", (x0, z0, g0 + 0.75), (x1, z1, g0 + 0.75), 0.04, 0.04, "#8e9294")
+        pts = [(-0.4, -0.1), (-0.4, 0.6)] + arc2((-0.25, 0.6), 0.15, 180, 90, 4)[1:] + arc2((0.25, 0.6), 0.15, 90, 0, 4) + [(0.4, -0.1)]
+        bent([(cx + ax[0] * s + side[0] * q, cz + ax[1] * s + side[1] * q, g0 + h) for q, h in pts], 0.024, AX, GALV, THINGS, n=8)
 
 
 shelter(478.95, -793.1, 4.6)
@@ -854,34 +1213,46 @@ shelter(484.25, -792.3, 4.6)
 for k, (x, z, r, h) in enumerate(((476.6, -790.4, 0.5, 0.55), (478.0, -790.25, 0.45, 0.4), (480.2, -789.85, 0.55, 0.65), (482.5, -789.55, 0.5, 0.5),
                                   (485.6, -789.15, 0.6, 0.7), (486.3, -791.9, 0.5, 0.45), (476.0, -795.6, 0.45, 0.5))):
     blob("school_fittings", x, z, terrain(x, z) - 0.05, r, h, ("#5f7d45", "#6d8a4c", "#55733f")[k % 3], seed=k)
-# On the pavement: the bench on orange legs in front of the garden, three yellow hoop barriers, the egg seat.
+# On the pavement: the bench on orange legs in front of the garden (two bent steel frames, four timber slats), three
+# yellow hoop barriers, the orange egg seat of moulded plastic.
 bc = (480.45, -788.25)
+WD, VD = (W2[0], W2[1], 0.0), (V2[0], V2[1], 0.0)
 for dw in (-0.75, 0.75):
     p = (bc[0] + W2[0] * dw, bc[1] + W2[1] * dw)
-    for dv in (-0.2, 0.2):
-        q = (p[0] + V2[0] * dv, p[1] + V2[1] * dv)
-        beam("school_fittings", q + (terrain(*q) - 0.05,), q + (terrain(*q) + 0.44,), 0.06, 0.06, "#e07a22")
-    beam("school_fittings", (p[0] - V2[0] * 0.22, p[1] - V2[1] * 0.22, terrain(*p) + 0.42), (p[0] + V2[0] * 0.22, p[1] + V2[1] * 0.22, terrain(*p) + 0.42),
-         0.07, 0.05, "#e07a22")
+    pts = [(-0.2, -0.05), (-0.2, 0.4)] + arc2((-0.16, 0.4), 0.04, 180, 90, 3)[1:] + arc2((0.16, 0.4), 0.04, 90, 0, 3) + [(0.2, -0.05)]
+    bent([(p[0] + V2[0] * q, p[1] + V2[1] * q, terrain(*p) + h) for q, h in pts], 0.028, WD, ORANGE, THINGS)
 for dv in (-0.18, -0.06, 0.06, 0.18):
-    solid("school_fittings", [(bc[0] + W2[0] * dw + V2[0] * v, bc[1] + W2[1] * dw + V2[1] * v, terrain(*bc) + y)
-                              for dw in (-0.95, 0.95) for v in (dv - 0.052, dv + 0.052) for y in (0.44, 0.5)], "#6d625a")
+    a = (bc[0] - W2[0] * 0.95 + V2[0] * dv, bc[1] - W2[1] * 0.95 + V2[1] * dv)
+    b = (bc[0] + W2[0] * 0.95 + V2[0] * dv, bc[1] + W2[1] * 0.95 + V2[1] * dv)
+    plank(a + (terrain(*bc) + 0.488,), b + (terrain(*bc) + 0.488,), 0.104, 0.04, UP, PINE2, THINGS, bev=0.006)
 for x, z in ((474.0, -786.4), (476.4, -786.05), (478.8, -785.7)):
-    a, b = (x - W2[0] * 0.5, z - W2[1] * 0.5), (x + W2[0] * 0.5, z + W2[1] * 0.5)
-    for p in (a, b):
-        beam("school_fittings", p + (terrain(*p) - 0.1,), p + (terrain(*p) + 0.95,), 0.06, 0.06, "#e8b51f")
-    beam("school_fittings", a + (terrain(*a) + 0.95,), b + (terrain(*b) + 0.95,), 0.06, 0.06, "#e8b51f")
+    hy = (terrain(x - W2[0] * 0.5, z - W2[1] * 0.5) + terrain(x + W2[0] * 0.5, z + W2[1] * 0.5)) / 2
+    pts = [(-0.5, -0.1), (-0.5, 0.8)] + arc2((-0.35, 0.8), 0.15, 180, 90, 4)[1:] + arc2((0.35, 0.8), 0.15, 90, 0, 4) + [(0.5, -0.1)]
+    bent([(x + W2[0] * q, z + W2[1] * q, hy + h) for q, h in pts], 0.03, VD, YELLOW, THINGS, n=12)
 ex, ez = P1(22.4, -1.0)
 eg = terrain(ex, ez)
-pts = []
-for i in range(7):
-    t = math.pi * i / 6
-    for k in range(10):
-        a = 2 * math.pi * k / 10
-        pts.append((ex + 0.48 * math.sin(t) * math.cos(a) * U1[0] - 0.27 * math.sin(t) * math.sin(a) * N1[0],
-                    ez + 0.48 * math.sin(t) * math.cos(a) * U1[1] - 0.27 * math.sin(t) * math.sin(a) * N1[1],
-                    eg + 0.24 - 0.26 * math.cos(t)))
-solid("school_fittings", [p for p in pts if p[2] >= eg - 0.02] + [(ex, ez, eg)], "#e3892b")
+bm = bmesh.new()
+rings = []
+for i in range(15):
+    t = math.pi * i / 14
+    y = eg + 0.24 - 0.26 * math.cos(t)
+    f = math.sin(t) * (1 + 0.06 * math.cos(t))  # an egg: fuller low down
+    if i in (0, 14):
+        rings.append([bm.verts.new(V(ex, ez, y))])
+        continue
+    rings.append([bm.verts.new(V(ex + 0.48 * f * math.cos(a) * U1[0] - 0.27 * f * math.sin(a) * N1[0],
+                                 ez + 0.48 * f * math.cos(a) * U1[1] - 0.27 * f * math.sin(a) * N1[1], y))
+                  for a in (2 * math.pi * k / 28 for k in range(28))])
+for r0, r1 in zip(rings, rings[1:]):
+    for k in range(28):
+        if len(r0) == 1:
+            bm.faces.new((r0[0], r1[k], r1[(k + 1) % 28]))
+        elif len(r1) == 1:
+            bm.faces.new((r0[k], r0[(k + 1) % 28], r1[0]))
+        else:
+            bm.faces.new((r0[k], r0[(k + 1) % 28], r1[(k + 1) % 28], r1[k]))
+bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+mk(bm, EGG, THINGS)
 
 
 # ---------------------------------------------------------------- the church square
@@ -1048,6 +1419,51 @@ for name, bm in BM.items():
     tris += len(me.loop_triangles)
     print(f"{name}: {len(me.loop_triangles)} triangles")
     objs.append(ob)
+
+
+def bake_things():
+    """Join each group of play things into one mesh, lay out its atlas and bake its textures (tools/blender_kit.py),
+    with the school and the ground round them shading them (the occlusion looks 0.7 m)."""
+    groups = [kit.join(TOWER_PARTS, "school_tower_fittings"), kit.join(THINGS, "school_things_fittings")]
+    for o in groups:
+        kit.atlas_uvs(o, 0.003)
+    bpy.data.objects.remove(kit.bake_setup(CPU))  # its own ground lies at the origin: the relief instead
+    bpy.context.scene.world.light_settings.distance = 0.35  # a contact shade at the feet, not a dark band up the legs
+    bm = bmesh.new()
+    xs, zs = np.arange(440.0, 501.0, 1.0), np.arange(-850.0, -779.0, 1.0)
+    vs = [[bm.verts.new(V(x, z, terrain(x, z) + 0.02)) for x in xs] for z in zs]
+    for j in range(len(zs) - 1):
+        for i in range(len(xs) - 1):
+            bm.faces.new((vs[j][i], vs[j][i + 1], vs[j + 1][i + 1], vs[j + 1][i]))
+    me = bpy.data.meshes.new("bake_ground")
+    bm.to_mesh(me)
+    bm.free()
+    me.materials.append(kit.plain_material("bake_ground", "#808080", 0.8))
+    occ = bpy.data.objects.new("bake_ground", me)
+    bpy.context.scene.collection.objects.link(occ)
+    tmp = tempfile.mkdtemp(prefix="school_bake_")
+    for o in groups:
+        imgs = kit.bake(o, [], 1024)
+        # The texels between the pieces stay at roughness 0 after the bake: in the small mip levels they mixed into the
+        # shingles and the thin tubes as a glitter of sky (seen on a phone). Matte there instead.
+        r = kit.px(imgs["rough"])
+        r[..., :3] = np.where(r[..., :3] < 0.02, 0.85, r[..., :3])
+        imgs["rough"].pixels.foreach_set(np.ascontiguousarray(r).ravel())
+        nm = kit.px(imgs["normal"])  # and a flat normal there, not (0, 0, 0)
+        gap = nm[..., :3].sum(axis=-1) < 0.05
+        nm[gap, 0], nm[gap, 1], nm[gap, 2] = 0.5, 0.5, 1.0
+        imgs["normal"].pixels.foreach_set(np.ascontiguousarray(nm).ravel())
+        kit.final_material(o, imgs, tmp)
+    bpy.data.objects.remove(occ)
+    return groups
+
+
+for ob in bake_things():
+    ob.parent = root
+    ob.data.calc_loop_triangles()
+    tris += len(ob.data.loop_triangles)
+    print(f"{ob.name}: {len(ob.data.loop_triangles)} triangles, baked")
+    objs.append(ob)
 print(f"school: {tris} triangles in {len(objs)} meshes; origin {ORIGIN} at {Y0:.2f} m")
 bpy.ops.object.select_all(action="DESELECT")
 root.select_set(True)
@@ -1061,5 +1477,5 @@ with open(PLAY_OUT, "w", encoding="utf-8", newline="\n") as f:
 print("written", PLAY_OUT)
 bpy.ops.export_scene.gltf(filepath=OUT, export_format="GLB", use_selection=True, export_apply=True, export_yup=True,
                           export_texcoords=True, export_normals=True, export_extras=True, export_vertex_color="MATERIAL",
-                          export_cameras=False, export_lights=False)
+                          export_cameras=False, export_lights=False, export_image_format="JPEG", export_image_quality=86)
 print("written", OUT, os.path.getsize(OUT), "bytes")
