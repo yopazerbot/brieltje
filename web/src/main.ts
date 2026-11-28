@@ -767,7 +767,7 @@ function applyQuality(q: Quality): void {
   undergrowth.setQuality(q, phone);
   nursery.setQuality(q, phone);
   bankPlants.setQuality(q, phone);
-  farTrees.mesh.visible = q !== 'low' && !phone; // the far land's tree strips: some 250 000 vertices a frame
+  farTrees.show(q !== 'low' && !phone); // the far land's trees: pictures of trees, fetched the first time
   woodDetail.value = q !== 'low' && !phone ? 1 : 0; // the woods' fallen leaves and sun flecks near by (world/forestFloor.ts)
   grassTufts.setQuality(q, phone);
   dynScale = 1;

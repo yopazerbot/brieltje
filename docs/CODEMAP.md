@@ -600,6 +600,7 @@ file's opening comment; run it again after adding, moving or removing a module.
 - `tools/dormer_house.py`: Build the exterior with Blender: blender -b -P tools/dormer_house.py -- output.glb [editable.blend].
 - `tools/facades.py`: Facades and gardens of the neighbouring houses (the data has only their outlines and heights).
 - `tools/fanlight.py`: Build the old bungalow's front door fanlight in Blender: a sunburst fanlight in a stone arch.
+- `tools/far_trees.py`: Render the far land's trees in Blender: a sheet of pictures for world/farLand.ts's tree lines (impostors).
 - `tools/fittings.py`: Build sanitary fittings in Blender: a bath, bowl basins and their mixers, pill mirrors, a shower set, two vanities and a recessed downlight.
 - `tools/football.py`: Build FC Smetlede's ground in Blender: the goals, the rails, fences and ball-stop nets, the floodlights, the dugouts, the clubhouse with its covered terrace...
 - `tools/football_site.py`: FC Smetlede's ground (Yoshi, 8 Nov 2026: "research the soccer field of the town.
