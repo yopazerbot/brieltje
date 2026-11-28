@@ -5,6 +5,7 @@ import { LOOT } from '../../shared/loot.mjs';
 import { paintball } from '../paintball';
 import { sound } from '../sound';
 import { gunModel, gunsReady } from '../weapon';
+import { itemMesh, itemParts, itemsIn, loadItemModels } from './rewardModels';
 import type { Ring } from './houseData';
 
 /**
@@ -26,6 +27,9 @@ import type { Ring } from './houseData';
  * rifle the same way, its own model (lasergun.glb), in an aqua of its own.
  * A music box taken opens where it lay and plays its tune; glowing dots on the ground mark the circle
  * it slows the zombies in (all of them one instanced draw).
+ * Once a game shows one of them, the models made in Blender (world/rewardModels.ts) take the built shapes' place:
+ * an ammo can, a scope, a first-aid bag, a plate carrier, grenades, a weapons crate, a claymore, a turret on its
+ * tripod, a walnut music box, hewn stakes and rails. What is already out is made again with them.
  */
 
 const COLORS: Record<LootKind, string> = {
@@ -222,10 +226,12 @@ const crateBandGeo = mergeGeometries([-1, 1].map((side) => new THREE.BoxGeometry
 /** A music box: open (playing on the ground) or shut (a reward's sign). Its foot at the origin. */
 function musicBox(open: boolean): THREE.Group {
   const g = new THREE.Group();
-  const lid = new THREE.Mesh(lidGeo, mats.musicWood);
+  const body = itemMesh('lull_body');
+  const lid = itemMesh('lull_lid') ?? new THREE.Mesh(lidGeo, mats.musicWood);
   lid.position.set(0, 0.11, -0.07);
   lid.rotation.x = open ? -1.9 : 0;
-  g.add(new THREE.Mesh(musicGeo, mats.musicWood), lid, new THREE.Mesh(crankGeo, mats.brass));
+  if (body) g.add(body, lid);
+  else g.add(new THREE.Mesh(musicGeo, mats.musicWood), lid, new THREE.Mesh(crankGeo, mats.brass));
   g.traverse((o) => (o.userData.ignoreRay = true));
   return g;
 }
@@ -266,7 +272,9 @@ function tune(at: THREE.Vector3): void {
 /** A claymore's own shape: its front is its -z (the way it faces). */
 function mineModel(paint: boolean): { g: THREE.Group; led: THREE.Mesh } {
   const g = new THREE.Group();
-  g.add(new THREE.Mesh(slabGeo, paint ? mats.minePaint : mats.mine), new THREE.Mesh(legGeo, mats.leg));
+  const model = itemMesh('claymore', paint);
+  if (model) g.add(model);
+  else g.add(new THREE.Mesh(slabGeo, paint ? mats.minePaint : mats.mine), new THREE.Mesh(legGeo, mats.leg));
   const led = new THREE.Mesh(ledGeo, mats.ledOff);
   led.position.set(0, 0.2, 0.01);
   g.add(led);
@@ -313,28 +321,38 @@ function turretModel(paint: boolean): TurretModel {
   const tilt = new THREE.Group();
   head.position.y = TURRET_Y + 0.06;
   g.add(body);
-  body.add(new THREE.Mesh(legsGeo, mats.leg), head);
+  body.add(itemMesh('turret_legs') ?? new THREE.Mesh(legsGeo, mats.leg), head);
   head.add(tilt);
   const eye = new THREE.Mesh(eyeGeo, new THREE.MeshBasicMaterial({ color: '#3a0d0a' }));
   eye.position.set(-0.045, 0.14, -0.08);
   const flash = new THREE.Mesh(flashGeo, flashMat);
   flash.visible = false;
-  tilt.add(new THREE.Mesh(headGeo, paint ? mats.minePaint : mats.mine), new THREE.Mesh(barrelGeo, mats.tube), eye, flash);
+  const model = itemMesh('turret_head', paint);
+  if (model) tilt.add(model, eye, flash);
+  else tilt.add(new THREE.Mesh(headGeo, paint ? mats.minePaint : mats.mine), new THREE.Mesh(barrelGeo, mats.tube), eye, flash);
   g.traverse((o) => (o.userData.ignoreRay = true));
   return { g, head, tilt, eye, flash };
 }
 
+/** The signs the Blender models have (rewardModels.ts), in the built ones' frame and size */
+const MODEL_SIGNS: Partial<Record<LootKind, 'sign_ammo' | 'sign_scope' | 'sign_medkit' | 'sign_armor' | 'sign_nades' | 'sign_gun'>> = {
+  ammo: 'sign_ammo', scope: 'sign_scope', medkit: 'sign_medkit', armor: 'sign_armor', nades: 'sign_nades', gun: 'sign_gun',
+};
+
 /** A reward's sign above its ring: an ammo box, a scope, a claymore, a bundle of stakes, a turret. */
 function sign(kind: LootKind): THREE.Group {
   const g = new THREE.Group();
-  if (kind === 'ammo') {
+  const model = MODEL_SIGNS[kind] ? itemMesh(MODEL_SIGNS[kind], kind === 'nades' && paintball.on) : null;
+  if (model) {
+    g.add(model);
+  } else if (kind === 'ammo') {
     g.add(new THREE.Mesh(boxGeo, mats.box), new THREE.Mesh(bandGeo, mats.band));
   } else if (kind === 'scope') {
     g.add(new THREE.Mesh(tubeGeo, mats.tube), new THREE.Mesh(lensGeo, mats.lens));
   } else if (kind === 'stakes') {
     // Three stakes tied in a bundle, lying across, points one way.
     for (const [dx, dy] of [[0, 0], [0.07, 0.06], [-0.07, 0.06]]) {
-      const s = new THREE.Mesh(stakeGeo, woodMat);
+      const s = itemMesh('stake') ?? new THREE.Mesh(stakeGeo, woodMat);
       s.scale.setScalar(0.42);
       s.rotation.z = -Math.PI / 2;
       s.position.set(-0.24, dy - 0.03, dx);
@@ -415,6 +433,8 @@ export class Rewards {
   /** A turret ran out of rounds and folded away: where (the caller puffs). */
   onSpent: (at: THREE.Vector3) => void = () => {};
   /** The music boxes playing: the open box on the ground, when its tune plays next (this clock). */
+  /** Whether the Blender models were asked for (wantModels) */
+  private modelsAsked = false;
   private lulls = new Map<number, { g: THREE.Group; at: THREE.Vector3; next: number }>();
   private dotMesh = new THREE.InstancedMesh(dotGeo, dotMat, LULL_DOTS * LOOT.lullsAll);
 
@@ -441,6 +461,7 @@ export class Rewards {
    * (LOOT.lullReach round it, each dot on the floor there) and plays its tune until it is gone.
    */
   setLulls(list: [number, number, number, number][]): void {
+    if (list.length) this.wantModels();
     const ids = new Set(list.map((l) => l[0]));
     let changed = false;
     for (const [id, l] of this.lulls) {
@@ -519,6 +540,7 @@ export class Rewards {
    * gone ones go (in splinters only by burst), and in a worn one the next stakes tip over.
    */
   setStakes(list: [number, number, number, number, number, number, number, number, string][]): void {
+    if (list.length) this.wantModels();
     let changed = false;
     const ids = new Set(list.map((r) => r[0]));
     for (const id of this.rows.keys()) {
@@ -568,6 +590,7 @@ export class Rewards {
    * in a puff (`onSpent`), unless `quiet` (the game ended).
    */
   setTurrets(list: [number, number, number, number, number, string][], quiet = false): void {
+    if (list.length) this.wantModels();
     const ids = new Set(list.map((t) => t[0]));
     for (const [id, t] of this.turrets) {
       if (ids.has(id) && t.paint === paintball.on) continue;
@@ -673,6 +696,7 @@ export class Rewards {
 
   /** The items lying now ([id, kind, x, y, z]): new ones come, taken or gone ones go. */
   setItems(list: [number, LootKind, number, number, number][]): void {
+    if (list.length) this.wantModels();
     const ids = new Set(list.map((i) => i[0]));
     for (const [id, s] of this.items) {
       if (ids.has(id)) continue;
@@ -697,6 +721,7 @@ export class Rewards {
 
   /** The claymores down now ([id, x, y, z, yaw, owner]). */
   setMines(list: [number, number, number, number, number, string][]): void {
+    if (list.length) this.wantModels();
     const ids = new Set(list.map((m) => m[0]));
     for (const [id, m] of this.mines) {
       if (ids.has(id) && m.paint === paintball.on) continue;
@@ -720,6 +745,40 @@ export class Rewards {
     if (!m) return;
     m.g.removeFromParent();
     this.mines.delete(id);
+  }
+
+  /** The Blender models (rewardModels.ts): fetched the first time something is out; then all out is made again with them. */
+  private wantModels(): void {
+    if (this.modelsAsked) return;
+    this.modelsAsked = true;
+    void loadItemModels().then((ok) => {
+      if (!ok || !itemsIn()) return;
+      for (const [mesh, name] of [[this.stakeMesh, 'stake'], [this.railMesh, 'rail']] as const) {
+        const parts = itemParts(name);
+        if (!parts) continue;
+        mesh.geometry = parts.geometry;
+        mesh.material = parts.material;
+      }
+      for (const s of this.items.values()) {
+        const icon = sign(s.kind);
+        icon.position.copy(s.icon.position);
+        icon.rotation.copy(s.icon.rotation);
+        s.g.remove(s.icon);
+        s.g.add(icon);
+        s.icon = icon;
+      }
+      // The claymores and turrets out are made again at the next update (as when paintball switches).
+      for (const m of this.mines.values()) m.paint = !m.paint;
+      for (const t of this.turrets.values()) t.paint = !t.paint;
+      for (const l of this.lulls.values()) {
+        const g = musicBox(true);
+        g.position.copy(l.g.position);
+        g.scale.copy(l.g.scale);
+        l.g.removeFromParent();
+        this.group.add(g);
+        l.g = g;
+      }
+    });
   }
 
   clear(): void {
