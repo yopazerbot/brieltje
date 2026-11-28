@@ -2,7 +2,7 @@ import * as THREE from 'three';
 
 /**
  * The hand-made houses among the generated ones: each a Blender model of our own (tools/village_houses_b1.py, _b2,
- * _b3) at /models/<name>.glb, standing in for one generated house (its root's `replaces`: the outline of that house's
+ * _b3, _b4) at /models/<name>.glb, standing in for one generated house (its root's `replaces`: the outline of that house's
  * wall blocks, which stay in the data for walking into and for the server). A name is added here in the commit that
  * adds its file (villageHouses.test.mjs checks that every listed file is there and stands in properly): a missing file
  * would still leave the generated house standing, but every load would fetch it for nothing. Each is named by its
@@ -24,6 +24,10 @@ export const VILLAGE_HOUSES: readonly (readonly [name: string, reach: number])[]
   ['vh_seventies', 350], // x 695.0, z 418.9: a dark brick house of the 1970s and the narrow house joined to it
   ['vh_hedge_bungalow', 350], // x 695.4, z 590.7: a low bungalow of the 1970s behind a beech hedge
   ['vh_cottage', 350], // x 1629.1, z -364.2: an old rendered cottage with a round window in its gable, past Molenhoek's end
+  ['vh_solar_house', 350], // x -200.2, z -1194.5: a modern buff house with solar panels, across from the football ground (tools/village_houses_b4.py)
+  ['vh_steep_gable', 350], // x -201.2, z -1213.3: a red brick house under a steep gable with a chimney at its top
+  ['vh_hip_bungalow', 350], // x -191.4, z -1164.7: a white bungalow of the 1970s under a hipped roof
+  ['vh_tall_gable', 350], // x -147.0, z -1157.3: a tall rosy brick house with clipped gables and a front gable over a bay
   ['kapellenhoek_home', 350], // x 616.5, z -352.6: home 4, the brick house on Kapellenhoek (tools/kapellenhoek_home.py, world/walkIn.ts)
   ['fb_stables_1255', 350], // x 1254.8, z -569.5: a cow stable of three halls with an open bay (tools/farm_buildings.py)
   ['fb_shed_31', 350], // x 30.5, z -956.4: a long machine shed with an open bay
