@@ -518,11 +518,14 @@ path_tube("CarryHandle", [(cx, HUB + 0.093, ZC - 0.03), (cx, HUB + 0.115, ZC - 0
                           (cx, HUB + 0.093, ZC + 0.05)], 0.005, webbing, GOODS["turret"])
 
 
-# 7. The cradle the laser rifle lies on: two notched wooden blocks with felt on their tops.
+# 7. The cradle the laser rifle lies on (on its side, from the front of the table to the back, turned LASER_YAW as
+#    stall.ts lays it): two wooden blocks across it with felt on their tops.
 cx = ITEM_X[6]
-for x in (-0.085, 0.085):
-    good_cuboid("laser", f"Cradle{x}", cx + x, T + 0.017, ZC, 0.035, 0.034, 0.11, tray_wood, bev=0.003)
-    good_cuboid("laser", f"Felt{x}", cx + x, T + 0.0355, ZC, 0.033, 0.003, 0.1, felt, bev=0.001)
+LASER_YAW = 0.2
+for d in (-0.17, 0.17):
+    x, z = cx + d * math.sin(LASER_YAW), ZC + d * math.cos(LASER_YAW)
+    good_cuboid("laser", f"Cradle{d}", x, T + 0.017, z, 0.12, 0.034, 0.04, tray_wood, bev=0.003, rot=(0, LASER_YAW, 0))
+    good_cuboid("laser", f"Felt{d}", x, T + 0.0355, z, 0.11, 0.003, 0.038, felt, bev=0.001, rot=(0, LASER_YAW, 0))
 
 
 # ------------------------------------------------------------------------------------------------ join

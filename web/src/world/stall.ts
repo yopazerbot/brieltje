@@ -55,6 +55,9 @@ const PAINTED = new Set<StallKind>(['nades', 'claymore', 'turret']);
 const PAINT = '#ff5fa2';
 /** The lamp's glow on the model's goods at night (an emissive, the goods' own colour times this) */
 const GOODS_GLOW = 0.35;
+/** The laser rifle on the stall: its length (m, the table is 0.8 m deep) and its turn from front-to-back (rad, as its cradle in tools/market_stall.py) */
+const LASER_LEN = 0.64;
+const LASER_YAW = 0.2;
 
 /** One part with a colour on its vertices: position, normal and colour only, not indexed (they all merge). */
 function part(geo: THREE.BufferGeometry, hex: string | THREE.Color, m?: THREE.Matrix4): THREE.BufferGeometry {
@@ -415,28 +418,30 @@ export class MarketStall {
     m.needsUpdate = true;
   }
 
-  /** The laser rifle's own model (its sign, world/rewards.ts), along the table on its cradle at item `i`, once the guns are in. */
+  /**
+   * The laser rifle's own model (its sign, world/rewards.ts) at item `i`, once the guns are in: as long as the table is
+   * deep (LASER_LEN), lying on its side on the cradle from the front to the back, turned LASER_YAW as the cradle is
+   * (tools/market_stall.py), so its whole outline shows from in front of the stall.
+   */
   private laserOnCradle(i: number): THREE.Group {
     const holder = new THREE.Group();
     const fit = () => {
       holder.clear();
       const gun = rewardSign('laser');
-      const box = new THREE.Box3().setFromObject(gun);
-      const size = box.getSize(new THREE.Vector3());
-      if (size.z > size.x) {
-        gun.rotation.y = Math.PI / 2;
-        gun.updateMatrixWorld(true);
-        box.setFromObject(gun);
-        box.getSize(size);
-      }
-      const s = 0.32 / Math.max(size.x, 1e-3);
+      const size = new THREE.Box3().setFromObject(gun).getSize(new THREE.Vector3());
+      if (size.x > size.z) gun.rotation.y = Math.PI / 2; // its length along z
+      const side = new THREE.Group();
+      side.add(gun);
+      side.rotation.z = Math.PI / 2; // on its side
+      const turn = new THREE.Group();
+      turn.add(side);
+      turn.rotation.y = LASER_YAW + Math.PI; // the muzzle (its -z) to the back
+      turn.scale.setScalar(LASER_LEN / Math.max(size.x, size.z, 1e-3));
+      turn.updateMatrixWorld(true);
+      const box = new THREE.Box3().setFromObject(turn);
       const c = box.getCenter(new THREE.Vector3());
-      const inner = new THREE.Group();
-      inner.add(gun);
-      gun.position.sub(c);
-      inner.scale.setScalar(s);
-      inner.position.set(ITEM_X[i], TOP_Y + 0.037 + (c.y - box.min.y) * s, ITEM_Z);
-      holder.add(inner);
+      turn.position.set(ITEM_X[i] - c.x, TOP_Y + 0.037 - box.min.y, ITEM_Z - c.z);
+      holder.add(turn);
       holder.traverse((o) => (o.userData.ignoreRay = true));
     };
     void gunsReady.then(fit);
