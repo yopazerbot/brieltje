@@ -25,6 +25,13 @@ export const VILLAGE_HOUSES: readonly (readonly [name: string, reach: number])[]
   ['vh_hedge_bungalow', 350], // x 695.4, z 590.7: a low bungalow of the 1970s behind a beech hedge
   ['vh_cottage', 350], // x 1629.1, z -364.2: an old rendered cottage with a round window in its gable, past Molenhoek's end
   ['kapellenhoek_home', 350], // x 616.5, z -352.6: home 4, the brick house on Kapellenhoek (tools/kapellenhoek_home.py, world/walkIn.ts)
+  ['fb_stables_1255', 350], // x 1254.8, z -569.5: a cow stable of three halls with an open bay (tools/farm_buildings.py)
+  ['fb_shed_31', 350], // x 30.5, z -956.4: a long machine shed with an open bay
+  ['fb_barn_537', 350], // x 536.5, z 102.5: a dark red sheet barn
+  ['fb_store_1399', 350], // x 1399.1, z 326.9: a tall storage hall on concrete push walls
+  ['fb_pair_1170', 350], // x 1173.7, z 470.6: a cow stable and a machine shed across a yard
+  ['fb_stable_m12', 350], // x -11.7, z -752.8: an older brick stable with a corrugated roof
+  ['fb_hall_1030', 350], // x 1033.2, z 47.7: a storage hall, its lean-to and an older brick wing
 ];
 
 /** m: the houses' small parts are drawn within this */
